@@ -1,4 +1,4 @@
-module chi_hnf_tracker #(
+module TSHR #(
   parameter int AddrWidth = 39,
   parameter int DataWidth = 128,
   parameter chi_pkg::node_id_e HNFID = 7'h40,
