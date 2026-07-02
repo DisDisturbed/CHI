@@ -259,6 +259,7 @@ module Tb_TSHR;
     req_opcode_e  req_op;
     dat_opcode_e  dat_op;
     rsp_opcode_e  rsp_op;
+    logic [11:0] snp_txnid;
     logic        rts;
     logic [127:0] data;
     logic [15:0]  be;
@@ -269,7 +270,7 @@ module Tb_TSHR;
     fork
       rnf0.send_req(txnid, REQ_WRITE_UNIQUE_PTL, 39'h1000, WIDTH_16);
       begin
-        rnf1.wait_snp(snp_op, snp_op, rts);
+        rnf1.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_UNIQUE || rts !== 1'b0) begin
           $display("FAIL A: expected SnpUnique/rettosrc=0, got %s/%0b", rsp_op.name(), rts);
           errors++;
@@ -310,6 +311,7 @@ module Tb_TSHR;
     req_opcode_e  req_op;
     dat_opcode_e  dat_op;
     rsp_opcode_e  rsp_op;
+    logic [11:0] snp_txnid;
     logic        rts;
     logic [127:0] data;
     logic [15:0]  be;
@@ -319,7 +321,7 @@ module Tb_TSHR;
     fork
       rnf0.send_req(txnid, REQ_READ_UNIQUE, 39'h2000, WIDTH_16);
       begin
-        rnf1.wait_snp(snp_op, snp_op, rts);
+        rnf1.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_SHARED || rts !== 1'b1) begin
           $display("FAIL B: expected SnpShared/rettosrc=1, got %s/%0b", snp_op.name(), rts);
           errors++;
@@ -347,6 +349,7 @@ module Tb_TSHR;
     req_opcode_e  req_op;
     dat_opcode_e  dat_op;
     rsp_opcode_e  rsp_op;
+    logic [11:0] snp_txnid;
     logic        rts;
     logic [127:0] data;
     logic [15:0]  be;
@@ -357,7 +360,7 @@ module Tb_TSHR;
     fork
       rnf1.send_req(txnid, REQ_READ_UNIQUE, 39'h3000, WIDTH_16);
       begin
-        rnf0.wait_snp(snp_op, snp_op, rts);
+        rnf1.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_SHARED || rts !== 1'b1) begin
           $display("FAIL C: expected SnpShared/rettosrc=1, got %s/%0b", snp_op.name(), rts);
           errors++;

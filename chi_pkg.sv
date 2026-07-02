@@ -1,3 +1,6 @@
+
+
+
 package chi_pkg;
    
   //---------------------------------------------------------- -----------
@@ -103,5 +106,5 @@ package chi_pkg;
         SNP_FWD_CLEAN_INVALID    = 8'h36,
         SNP_FWD_MAKE_INVALID     = 8'h37
     } snp_opcode_e;
-
+    
 endpackage : chi_pkg

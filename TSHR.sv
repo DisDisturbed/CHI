@@ -21,10 +21,10 @@
 `define DEMUX_TX(IDX, PROXY_V, PROXY_PEND, PROXY_FLIT, IF_ARRAY) \
   IF_ARRAY[0].flitv    = (IDX == 1'b0) ? PROXY_V : 1'b0; \
   IF_ARRAY[0].flitpend = (IDX == 1'b0) ? PROXY_PEND : 1'b0; \
-  IF_ARRAY[0].flit     = (IDX == 1'b0) ? PROXY_FLIT : '0; \
+  IF_ARRAY[0].flit     = (IDX == 1'b0) ? type(IF_ARRAY[0].flit)'(PROXY_FLIT) : '0; \
   IF_ARRAY[1].flitv    = (IDX == 1'b1) ? PROXY_V : 1'b0; \
   IF_ARRAY[1].flitpend = (IDX == 1'b1) ? PROXY_PEND : 1'b0; \
-  IF_ARRAY[1].flit     = (IDX == 1'b1) ? PROXY_FLIT : '0;
+  IF_ARRAY[1].flit     = (IDX == 1'b1) ? type(IF_ARRAY[1].flit)'(PROXY_FLIT) : '0;
   
 
 
@@ -210,24 +210,79 @@ module TSHR // transaction snoop handling register
       } tx_type_e;
       
       tx_type_e tx_type_q, tx_type_d;
-     
+     // ------------------------------------------------------------------------
+  // WORKAROUND: Local struct definitions for Vivado VRFC bug
+  // ------------------------------------------------------------------------
+  typedef struct packed {
+    logic [3:0]           qos;
+    node_id_e             srcid;
+    logic [11:0]          txnid;
+    node_id_e             fwdnid;
+    logic [11:0]          fwdtxnid;
+    snp_opcode_e          opcode;
+    logic [AddrWidth-1:0] addr;
+    logic                 ns;
+    logic                 donotgotosd;
+    logic                 rettosrc;
+    logic                 tracetag;
+  } local_snp_flit_t;
+
+  typedef struct packed {
+    logic [3:0]           qos;
+    node_id_e             tgtid;
+    node_id_e             srcid;
+    logic [11:0]          txnid;
+    rsp_opcode_e          opcode;
+    logic [1:0]           resperr;
+    logic [2:0]           resp;
+    logic [2:0]           fwdstate;
+    logic [2:0]           cbusy;
+    logic [11:0]          dbid;
+    logic [3:0]           pcrdttype;
+    logic [1:0]           tagop;
+    logic                 tracetag;
+  } local_rsp_flit_t;
+
+  typedef struct packed {
+    logic [3:0]                 qos;
+    node_id_e                   tgtid;
+    node_id_e                   srcid;
+    logic [11:0]                txnid;
+    node_id_e                   homenid;
+    dat_opcode_e                opcode;
+    logic [1:0]                 resperr;
+    logic [2:0]                 resp;
+    logic [2:0]                 fwdstate;
+    logic [2:0]                 cbusy;
+    logic [11:0]                dbid;
+    logic [1:0]                 ccid;
+    logic [1:0]                 dataid;
+    logic [1:0]                 tagop;
+    logic [(DataWidth/32)-1:0]  tag;
+    logic [(DataWidth/128)-1:0] tu;
+    logic                       tracetag;
+    logic [(DataWidth/8)-1:0]   be;
+    logic [DataWidth-1:0]       data;
+  } local_dat_flit_t;
     
   
-    logic                proxy_snp_flitv, proxy_snp_flitpend;
-    type(snp_tx[0].flit) proxy_snp_flit; 
+    logic            proxy_snp_flitv, proxy_snp_flitpend;
+    local_snp_flit_t proxy_snp_flit; 
     
-    logic                proxy_rsp_flitv, proxy_rsp_flitpend;
-    type(rsp_tx[0].flit) proxy_rsp_flit;
+    logic            proxy_rsp_flitv, proxy_rsp_flitpend;
+    local_rsp_flit_t proxy_rsp_flit;
     
-    logic                proxy_dat_flitv, proxy_dat_flitpend;
-    type(dat_tx[0].flit) proxy_dat_flit;
+    logic            proxy_dat_flitv, proxy_dat_flitpend;
+    local_dat_flit_t proxy_dat_flit;
 
-    logic                rx_rsp_flitv;
-    type(rsp_rx[0].flit) rx_rsp_flit;
-    logic                rx_dat_flitv_snp;
-    type(dat_rx[0].flit) rx_dat_flit_snp;
-    logic                rx_dat_flitv_req;
-    type(dat_rx[0].flit) rx_dat_flit_req;
+    logic            rx_rsp_flitv;
+    local_rsp_flit_t rx_rsp_flit;
+    
+    logic            rx_dat_flitv_snp;
+    local_dat_flit_t rx_dat_flit_snp;
+    
+    logic            rx_dat_flitv_req;
+    local_dat_flit_t rx_dat_flit_req;
     
    // simplest possible fsm that i can think of
    // the basic sequence of the fsm is the following:
@@ -291,18 +346,13 @@ module TSHR // transaction snoop handling register
     sn_dat_tx.flitpend = N;
     sn_dat_tx.flit     = '0;
 
-    rx_rsp_flitv = (state_q == ST_SNOOP_WAIT) ? 
-                   ((snp_idx_q == 1'b0) ? rsp_rx[0].flitv : rsp_rx[1].flitv) :
-                   ((req_idx_q == 1'b0) ? rsp_rx[0].flitv : rsp_rx[1].flitv);
     rx_rsp_flit  = (state_q == ST_SNOOP_WAIT) ? 
-                   ((snp_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit) :
-                   ((req_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit);
+                 local_rsp_flit_t'((snp_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit) :
+                 local_rsp_flit_t'((req_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit);
 
-    rx_dat_flitv_snp = (snp_idx_q == 1'b0) ? dat_rx[0].flitv : dat_rx[1].flitv;
-    rx_dat_flit_snp  = (snp_idx_q == 1'b0) ? dat_rx[0].flit  : dat_rx[1].flit;
-    
-    rx_dat_flitv_req = (req_idx_q == 1'b0) ? dat_rx[0].flitv : dat_rx[1].flitv;
-    rx_dat_flit_req  = (req_idx_q == 1'b0) ? dat_rx[0].flit  : dat_rx[1].flit;
+  rx_dat_flit_snp  = local_dat_flit_t'((snp_idx_q == 1'b0) ? dat_rx[0].flit  : dat_rx[1].flit);
+  
+  rx_dat_flit_req  = local_dat_flit_t'((req_idx_q == 1'b0) ? dat_rx[0].flit  : dat_rx[1].flit);
 
     case (state_q)
       ST_IDLE: begin
