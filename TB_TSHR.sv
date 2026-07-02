@@ -360,7 +360,7 @@ module Tb_TSHR;
     fork
       rnf1.send_req(txnid, REQ_READ_UNIQUE, 39'h3000, WIDTH_16);
       begin
-        rnf1.wait_snp(snp_txnid, snp_op, rts);
+        rnf0.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_SHARED || rts !== 1'b1) begin
           $display("FAIL C: expected SnpShared/rettosrc=1, got %s/%0b", snp_op.name(), rts);
           errors++;

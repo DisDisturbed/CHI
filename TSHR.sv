@@ -21,11 +21,10 @@
 `define DEMUX_TX(IDX, PROXY_V, PROXY_PEND, PROXY_FLIT, IF_ARRAY) \
   IF_ARRAY[0].flitv    = (IDX == 1'b0) ? PROXY_V : 1'b0; \
   IF_ARRAY[0].flitpend = (IDX == 1'b0) ? PROXY_PEND : 1'b0; \
-  IF_ARRAY[0].flit     = (IDX == 1'b0) ? type(IF_ARRAY[0].flit)'(PROXY_FLIT) : '0; \
+  IF_ARRAY[0].flit     = (IDX == 1'b0) ? PROXY_FLIT : '0; \
   IF_ARRAY[1].flitv    = (IDX == 1'b1) ? PROXY_V : 1'b0; \
   IF_ARRAY[1].flitpend = (IDX == 1'b1) ? PROXY_PEND : 1'b0; \
-  IF_ARRAY[1].flit     = (IDX == 1'b1) ? type(IF_ARRAY[1].flit)'(PROXY_FLIT) : '0;
-  
+  IF_ARRAY[1].flit     = (IDX == 1'b1) ? PROXY_FLIT : '0;
 
 
 module TSHR // transaction snoop handling register
