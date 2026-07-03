@@ -4,7 +4,7 @@
 // basic sequence of the mesi protocol
 // both RN-F0 and RN-F1 modules fetch the same line that line is shared
 // now RN-F0 wants to change a data in its cache it send a snoop signal to the Bus and ask for invaliate
-// RN-F1 snoops the bus and claim the request give a fetching persmion 
+// RN-F1 snoops the bus(send cleanunique or makeunique) and claim the request give a fetching persmion 
 // if RN-F0 has to change the state of the line of its cache to modified
 // if RN-F1 has to change the state of the line of its cahce to invalid
 // it is not permited to write or read from the invalid line
@@ -16,7 +16,7 @@
 
 
 //define macro for requester this is needed for configureable RN-F interface counts 
-// it is bsaicly couple of muxes workaround for dynamic slicing of interface arrays
+// it is basicly couple of muxes workaround for dynamic slicing of interface arrays
 // however credit system will also need a change 
 `define DEMUX_TX(IDX, PROXY_V, PROXY_PEND, PROXY_FLIT, IF_ARRAY) \
   IF_ARRAY[0].flitv    = (IDX == 1'b0) ? PROXY_V : 1'b0; \
@@ -25,6 +25,29 @@
   IF_ARRAY[1].flitv    = (IDX == 1'b1) ? PROXY_V : 1'b0; \
   IF_ARRAY[1].flitpend = (IDX == 1'b1) ? PROXY_PEND : 1'b0; \
   IF_ARRAY[1].flit     = (IDX == 1'b1) ? PROXY_FLIT : '0;
+
+
+
+
+
+// the things that this module has 
+// fully blocking, non-pipelined, one transaction system-wide at a time HN-F module 
+// this TSHR can be called a HN-F module because it's just what a pool-size-1 HN-F is.
+// the specs of this module 
+//request admission from either RN-F, arbitrated fairly (change between every request) 
+//snoop filter (only checks for the requester is trying to snoop itself)
+//snoop generator 
+//data collection/forwarding for snoop-response data, write data, read data 
+//SN-F request/response/data sequencing 
+//completion + CompAck handling 
+//per-channel credit tracking 
+
+// the things that this module doesnt have are the following
+//tracker pool
+//real persistent directory/snoop-filter state (this only increase efficiency by skipping snoops you already know the answer)
+//address hazard detection (it is basicly a edge case where 2 TSHR allocate same address at the same time window  it is impossible when there is only one TSHR) 
+//txnid uniqueness/remapping across RN-Fs (txnID is always correct system wide)
+// the upper comments is what real system HN-F should look like
 
 
 module TSHR // transaction snoop handling register
