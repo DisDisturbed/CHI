@@ -38,7 +38,7 @@ module TSHR // transaction snoop handling register
 ) (
   input  wire clk,
   input  wire resetn,
-
+  output logic busy_o,
   chi_req.rx req_rx [2],
   chi_snp.tx snp_tx [2],
   chi_rsp.tx rsp_tx [2],
@@ -53,7 +53,7 @@ module TSHR // transaction snoop handling register
 );
 
   
-
+  
   typedef enum logic [4:0] {
     ST_IDLE,
     ST_ALLOC,
@@ -98,8 +98,8 @@ module TSHR // transaction snoop handling register
   logic [3:0] sn_req_credit_q;
   logic [3:0] sn_dat_credit_q;
 
-  assign req_rx[0].lcrdv = (state_q == ST_IDLE) && (req_gnt_idx_q == 1'b0);
-  assign req_rx[1].lcrdv = (state_q == ST_IDLE) && (req_gnt_idx_q == 1'b1);
+  assign req_rx[0].lcrdv = (state_q == ST_IDLE);
+  assign req_rx[1].lcrdv = (state_q == ST_IDLE);
   assign rsp_rx[0].lcrdv = 1'b1;
   assign rsp_rx[1].lcrdv = 1'b1;
   assign dat_rx[0].lcrdv = 1'b1;
@@ -209,9 +209,7 @@ module TSHR // transaction snoop handling register
       } tx_type_e;
       
       tx_type_e tx_type_q, tx_type_d;
-     // ------------------------------------------------------------------------
-  // WORKAROUND: Local struct definitions for Vivado VRFC bug
-  // ------------------------------------------------------------------------
+  // WORKAROUND: Local struct definitions 
   typedef struct packed {
     logic [3:0]           qos;
     node_id_e             srcid;
@@ -311,7 +309,8 @@ module TSHR // transaction snoop handling register
    // implement cache hit on RN-F1 
    // implement cache miss everywhere (standart memory read however RN-F1 gets nothing)
    // implement standart memory write (RN-F1 gets validated after RN-F0 request)
-   // implement cache write back on the RN-F0 no snoop required just push data to the main memory since it is already modified 
+   // implement cache write back on the RN-F0 no snoop required just push data to the main memory since it is already modified
+   assign busy_o = (state_q != ST_IDLE); 
   always_comb begin
     state_d       = state_q;
     req_idx_d     = req_idx_q;
@@ -349,34 +348,65 @@ module TSHR // transaction snoop handling register
                  local_rsp_flit_t'((snp_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit) :
                  local_rsp_flit_t'((req_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit);
 
-  rx_dat_flit_snp  = local_dat_flit_t'((snp_idx_q == 1'b0) ? dat_rx[0].flit  : dat_rx[1].flit);
-  
-  rx_dat_flit_req  = local_dat_flit_t'((req_idx_q == 1'b0) ? dat_rx[0].flit  : dat_rx[1].flit);
+    rx_dat_flit_snp  = local_dat_flit_t'((snp_idx_q == 1'b0) ? dat_rx[0].flit  : dat_rx[1].flit);
+    
+    rx_dat_flit_req  = local_dat_flit_t'((req_idx_q == 1'b0) ? dat_rx[0].flit  : dat_rx[1].flit);
+    
+    rx_rsp_flitv = (state_q == ST_SNOOP_WAIT) ?
+               ((snp_idx_q == 1'b0) ? (rsp_rx[0].flitv == Y) : (rsp_rx[1].flitv == Y)) :
+               ((req_idx_q == 1'b0) ? (rsp_rx[0].flitv == Y) : (rsp_rx[1].flitv == Y));
+
+    rx_dat_flitv_snp = (snp_idx_q == 1'b0) ? (dat_rx[0].flitv == Y) : (dat_rx[1].flitv == Y);
+    
+    rx_dat_flitv_req = (req_idx_q == 1'b0) ? (dat_rx[0].flitv == Y) : (dat_rx[1].flitv == Y);
 
     case (state_q)
       ST_IDLE: begin
-        if ((req_gnt_idx_q == 1'b0) && (req_rx[0].flitv == Y)) begin
-          req_idx_d     = 1'b0;
-          addr_d        = req_rx[0].flit.addr;
-          srcid_d       = req_rx[0].flit.srcid;
-          txnid_d       = req_rx[0].flit.txnid;
-          opcode_d      = req_rx[0].flit.opcode;
-          size_d        = req_rx[0].flit.size;
-          qos_d         = req_rx[0].flit.qos;
-          req_gnt_idx_d = 1'b1; 
-          state_d       = ST_ALLOC;
-        end else if ((req_gnt_idx_q == 1'b1) && (req_rx[1].flitv == Y)) begin
-          req_idx_d     = 1'b1;
-          addr_d        = req_rx[1].flit.addr;
-          srcid_d       = req_rx[1].flit.srcid;
-          txnid_d       = req_rx[1].flit.txnid;
-          opcode_d      = req_rx[1].flit.opcode;
-          size_d        = req_rx[1].flit.size;
-          qos_d         = req_rx[1].flit.qos;
-          req_gnt_idx_d = 1'b0; 
-          state_d       = ST_ALLOC;
+          if (req_gnt_idx_q == 1'b0) begin
+            if (req_rx[0].flitv == Y) begin
+              req_idx_d = 1'b0;
+              addr_d    = req_rx[0].flit.addr;
+              srcid_d   = req_rx[0].flit.srcid;
+              txnid_d   = req_rx[0].flit.txnid;
+              opcode_d  = req_rx[0].flit.opcode;
+              size_d    = req_rx[0].flit.size;
+              qos_d     = req_rx[0].flit.qos;
+              req_gnt_idx_d = 1'b1;      // rotate priority only after actually granting 0
+              state_d   = ST_ALLOC;
+            end else if (req_rx[1].flitv == Y) begin
+              req_idx_d = 1'b1;
+              addr_d    = req_rx[1].flit.addr;
+              srcid_d   = req_rx[1].flit.srcid;
+              txnid_d   = req_rx[1].flit.txnid;
+              opcode_d  = req_rx[1].flit.opcode;
+              size_d    = req_rx[1].flit.size;
+              qos_d     = req_rx[1].flit.qos;
+              // idx0 wasn't using its turn - leave priority pointer alone
+              state_d   = ST_ALLOC;
+            end
+          end else begin // req_gnt_idx_q == 1'b1
+            if (req_rx[1].flitv == Y) begin
+              req_idx_d = 1'b1;
+              addr_d    = req_rx[1].flit.addr;
+              srcid_d   = req_rx[1].flit.srcid;
+              txnid_d   = req_rx[1].flit.txnid;
+              opcode_d  = req_rx[1].flit.opcode;
+              size_d    = req_rx[1].flit.size;
+              qos_d     = req_rx[1].flit.qos;
+              req_gnt_idx_d = 1'b0;
+              state_d   = ST_ALLOC;
+            end else if (req_rx[0].flitv == Y) begin
+              req_idx_d = 1'b0;
+              addr_d    = req_rx[0].flit.addr;
+              srcid_d   = req_rx[0].flit.srcid;
+              txnid_d   = req_rx[0].flit.txnid;
+              opcode_d  = req_rx[0].flit.opcode;
+              size_d    = req_rx[0].flit.size;
+              qos_d     = req_rx[0].flit.qos;
+              state_d   = ST_ALLOC;
+            end
+          end
         end
-      end
 
       ST_ALLOC: begin
         snp_idx_d  = ~req_idx_q;
