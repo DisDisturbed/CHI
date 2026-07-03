@@ -435,7 +435,7 @@ module TSHR // transaction snoop handling register
         if (opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_CLEAN_FULL) begin
           tx_type_d = TX_WRITE_BACK;
           is_write_d = 1;
-          state_d   = ST_DBIDRESP_SEND; // Skip snoop
+          state_d   = ST_DBIDRESP_SEND; //skip snoop
         end else if (opcode_q == REQ_WRITE_UNIQUE_PTL || opcode_q == REQ_WRITE_UNIQUE_FULL) begin
           tx_type_d = TX_WRITE_UNIQUE;
           is_write_d = 1;
