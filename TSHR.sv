@@ -285,7 +285,7 @@ module TSHR // transaction snoop handling register
     logic [DataWidth-1:0]       data;
   } local_dat_flit_t;
     
-  
+    // workaround for assigning the local workspace
     logic            proxy_snp_flitv, proxy_snp_flitpend;
     local_snp_flit_t proxy_snp_flit; 
     
@@ -329,10 +329,10 @@ module TSHR // transaction snoop handling register
    
    
    // ======================= TODO ==============================
-   // implement cache hit on RN-F1 
-   // implement cache miss everywhere (standart memory read however RN-F1 gets nothing)
-   // implement standart memory write (RN-F1 gets validated after RN-F0 request)
-   // implement cache write back on the RN-F0 no snoop required just push data to the main memory since it is already modified
+   // implement cache hit on RN-F1 - done
+   // implement cache miss everywhere (standart memory read however RN-F1 gets nothing) -done
+   // implement standart memory write (RN-F1 gets validated after RN-F0 request) -done
+   // implement cache write back on the RN-F0 no snoop required just push data to the main memory since it is already modified -done
    assign busy_o = (state_q != ST_IDLE); 
   always_comb begin
     state_d       = state_q;
@@ -366,7 +366,7 @@ module TSHR // transaction snoop handling register
     sn_dat_tx.flitv    = N;
     sn_dat_tx.flitpend = N;
     sn_dat_tx.flit     = '0;
-
+    //payload assignments 
     rx_rsp_flit  = (state_q == ST_SNOOP_WAIT) ? 
                  local_rsp_flit_t'((snp_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit) :
                  local_rsp_flit_t'((req_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit);
@@ -394,7 +394,7 @@ module TSHR // transaction snoop handling register
               opcode_d  = req_rx[0].flit.opcode;
               size_d    = req_rx[0].flit.size;
               qos_d     = req_rx[0].flit.qos;
-              req_gnt_idx_d = 1'b1;      // rotate priority only after actually granting 0
+              req_gnt_idx_d = 1'b1;      // rotate priority after granting 
               state_d   = ST_ALLOC;
             end else if (req_rx[1].flitv == Y) begin
               req_idx_d = 1'b1;
@@ -404,10 +404,9 @@ module TSHR // transaction snoop handling register
               opcode_d  = req_rx[1].flit.opcode;
               size_d    = req_rx[1].flit.size;
               qos_d     = req_rx[1].flit.qos;
-              // idx0 wasn't using its turn - leave priority pointer alone
               state_d   = ST_ALLOC;
             end
-          end else begin // req_gnt_idx_q == 1'b1
+          end else begin // req_gnt_idx_q == 1'b1;
             if (req_rx[1].flitv == Y) begin
               req_idx_d = 1'b1;
               addr_d    = req_rx[1].flit.addr;
@@ -516,7 +515,7 @@ module TSHR // transaction snoop handling register
 
       ST_WDATA_WAIT: begin 
       // wait state for RN-F response after DBIDresp given to RN-F it can wait here any arbitary time but if peer sends request it just vanishes
-      // in he future probably fix this
+      // in the future this will probably breaks ======= DONT FORGET
         if ((rx_dat_flitv_req == Y) && (rx_dat_flit_req.txnid == txnid_q)) begin
           data_d  = rx_dat_flit_req.data;
           be_d    = rx_dat_flit_req.be;
@@ -561,7 +560,7 @@ module TSHR // transaction snoop handling register
         end else begin
           //wait for memory write ack on RSP channel
           if ((sn_rsp_rx.flitv == Y) && (sn_rsp_rx.flit.opcode == RSP_COMP_DBID_RESP) && (sn_rsp_rx.flit.txnid == txnid_q)) begin
-            sn_dbid_d = sn_rsp_rx.flit.dbid; // Capture memory's DBID
+            sn_dbid_d = sn_rsp_rx.flit.dbid; // capture memory DBID
             state_d   = ST_SN_DATA_SEND;
           end
         end
@@ -589,7 +588,7 @@ module TSHR // transaction snoop handling register
         end
       end
 
-      ST_RDATA_SEND: begin
+      ST_RDATA_SEND: begin 
         if (dat_credit_q[req_idx_q] != 4'd0) begin
           proxy_dat_flitv       = Y;
           proxy_dat_flitpend    = Y;
@@ -604,7 +603,7 @@ module TSHR // transaction snoop handling register
         end
       end
 
-      ST_COMP_SEND: begin
+      ST_COMP_SEND: begin // completed send
         if (rsp_credit_q[req_idx_q] != 4'd0) begin
           proxy_rsp_flitv       = Y;
           proxy_rsp_flitpend    = Y;
@@ -617,7 +616,7 @@ module TSHR // transaction snoop handling register
         end
       end
 
-      ST_COMPACK_WAIT: begin
+      ST_COMPACK_WAIT: begin // wait for ack
         if ((rx_rsp_flitv == Y) && (rx_rsp_flit.opcode == RSP_COMP_ACK) && (rx_rsp_flit.txnid == txnid_q)) begin
           state_d = ST_DONE;
         end
@@ -636,7 +635,7 @@ module TSHR // transaction snoop handling register
         `DEMUX_TX (req_idx_q, proxy_rsp_flitv, proxy_rsp_flitpend, proxy_rsp_flit, rsp_tx)
         `DEMUX_TX (req_idx_q, proxy_dat_flitv, proxy_dat_flitpend, proxy_dat_flit, dat_tx)
   end
-
+   // just simple state transitions
   always_ff @(posedge clk or negedge resetn) begin
     if (!resetn) begin
       state_q       <= ST_IDLE;
