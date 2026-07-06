@@ -1,20 +1,18 @@
 `timescale 1ns/1ps
-//=============================================================================
-// Simple behavioral CHI bus-functional models for TSHR verification.
+
+// ============================= TODO ========================
+// check hit RN-F1 response on things other than unique
+// check RN-F0 and RN-F1 data combine on modified state on RN-F1
+// check REQ_READ_UNIQUE on readunique and readshared snoops
 //
-// rnf_model  - stands in for RN-F0 / RN-F1. Issues requests, answers
-//              snoops, sends write data, waits for/acks completions.
-// snf_model  - stands in for the SN-F (memory). Answers requests forwarded
-//              by TSHR with CompDBIDResp/data (writes) or CompData (reads).
-//
-// Credit handling is deliberately simplified: every RX-side port in these
-// models grants credit permanently (lcrdv tied high, unlimited receive
-// capacity), matching how TSHR itself treats rsp_rx/dat_rx/sn_rsp_rx/
-// sn_dat_rx. The one place a model must actually wait for credit is
-// rnf_model.send_req(), because TSHR's req_rx[i].lcrdv is state-gated
-// (only asserted while idle and while that port holds arbitration
-// priority) rather than free-running.
-//=============================================================================
+// ---------------------------------------------------------------------
+// EXTENDED with additional scenarios (E, F, G1, G2, H) that specifically
+// target the three TODOs above. These are EXPECTED TO FAIL against the
+// current TSHR implementation - that's the point. Each scenario is run
+// under a watchdog so a hang in one scenario doesn't take down the rest
+// of the regression, and the DUT is reset between every scenario so a
+// stuck FSM state doesn't corrupt the next test.
+// ---------------------------------------------------------------------
 
 module rnf_model  #(
   parameter chi_pkg::node_id_e  NODEID = 7'h00,
@@ -186,6 +184,27 @@ module snf_model #(
 endmodule
 
 
+// ---------------------------------------------------------------------
+// Watchdog-wrapped scenario runner. Runs CALL; if it doesn't finish
+// within LIMIT cycles, flags a failure and moves on. Either way the DUT
+// is force-reset afterwards so a stuck FSM state can't wreck the next
+// scenario.
+// ---------------------------------------------------------------------
+`define RUN_SCN(CALL, LIMIT) \
+  fork \
+    begin \
+      CALL ; \
+    end \
+    begin \
+      repeat (LIMIT) @(posedge clk); \
+      $display("[%0t] WATCHDOG: %s did not complete within %0d cycles - treating as FAIL", $time, `"CALL`", LIMIT); \
+      errors++; \
+    end \
+  join_any \
+  disable fork; \
+  reset_dut();
+
+
 module Tb_TSHR;
   import chi_pkg::*;
   import common_pkg::*;
@@ -248,6 +267,23 @@ module Tb_TSHR;
     .dat_tx(sn_dat_rd)
   );
 
+  // small helpers just to satisfy task output-arg signatures above where
+  // the value isn't actually checked by the caller
+  function automatic logic [38:0] addr_dummy(); return '0; endfunction
+  function automatic width_e size_dummy(); return WIDTH_1; endfunction
+
+  // Force the DUT back to a known idle state between scenarios. Needed
+  // because several scenarios below are expected to hang the FSM in a
+  // wait-state given the current (incomplete) TSHR implementation - we
+  // don't want one hung scenario to prevent the rest of the suite from
+  // running.
+  task automatic reset_dut();
+    resetn = 0;
+    repeat (3) @(posedge clk);
+    resetn = 1;
+    repeat (2) @(posedge clk);
+  endtask
+
   // ---------------------------------------------------------------------
   // Scenario A: WriteUniquePtl from RNF0, RNF1 has the line (invalidate),
   //             write pushed to memory. (write-with-snoop / separate-resp
@@ -302,8 +338,8 @@ module Tb_TSHR;
   endtask
 
   // ---------------------------------------------------------------------
-  // Scenario B: ReadUnique from RNF0, RNF1 has the line (cache hit) and
-  //             returns data directly on the snoop response - no SN access.
+  // Scenario B: ReadUnique from RNF0, RNF1 has the line (cache hit, CLEAN)
+  //             and returns data directly on the snoop response - no SN access.
   // ---------------------------------------------------------------------
   task automatic scenario_read_unique_hit();
     logic [11:0] txnid;
@@ -316,10 +352,15 @@ module Tb_TSHR;
     logic [127:0] data;
     logic [15:0]  be;
 
-    $display("\n===== Scenario B: ReadUnique, RNF1 cache HIT =====");
+    // NOTE: uses REQ_READ_SHARED (not REQ_READ_UNIQUE) on purpose. This
+    // scenario is only about clean cache-hit forwarding, not about which
+    // snoop opcode a given read maps to (that's Scenario G's job) - using
+    // ReadShared keeps this test's SnpShared assertion valid regardless
+    // of how the ReadUnique->SnpUnique mapping fix in G2 lands.
+    $display("\n===== Scenario B: ReadShared, RNF1 cache HIT (clean) =====");
     txnid = 12'h0B2;
     fork
-      rnf0.send_req(txnid, REQ_READ_UNIQUE, 39'h2000, WIDTH_16);
+      rnf0.send_req(txnid, REQ_READ_SHARED, 39'h2000, WIDTH_16);
       begin
         rnf1.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_SHARED || rts !== 1'b1) begin
@@ -355,10 +396,13 @@ module Tb_TSHR;
     logic [15:0]  be;
     logic [11:0]  dbid;
 
-    $display("\n===== Scenario C: ReadUnique, RNF0 cache MISS -> read from SN =====");
+    // NOTE: uses REQ_READ_SHARED for the same reason as Scenario B - this
+    // is testing the cache-miss fallback to SN-F, not the ReadUnique
+    // snoop-opcode mapping (Scenario G covers that).
+    $display("\n===== Scenario C: ReadShared, RNF0 cache MISS -> read from SN =====");
     txnid = 12'h0C3;
     fork
-      rnf1.send_req(txnid, REQ_READ_UNIQUE, 39'h3000, WIDTH_16);
+      rnf1.send_req(txnid, REQ_READ_SHARED, 39'h3000, WIDTH_16);
       begin
         rnf0.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_SHARED || rts !== 1'b1) begin
@@ -419,10 +463,290 @@ module Tb_TSHR;
     $display("Scenario D done.");
   endtask
 
-  // small helpers just to satisfy task output-arg signatures above where
-  // the value isn't actually checked by the caller
-  function automatic logic [38:0] addr_dummy(); return '0; endfunction
-  function automatic width_e size_dummy(); return WIDTH_1; endfunction
+  // ---------------------------------------------------------------------
+  // Scenario E (NEW): WriteUniquePtl from RNF0 hits a MODIFIED line in
+  //   RNF1. Agreed semantics: NO combining - RNF1's dirty data is simply
+  //   written back to SN-F first (as its own complete WriteNoSnoopFull /
+  //   CopyBackWrData transaction), and only afterwards does the TSHR
+  //   proceed to accept and forward RNF0's new (partial) write data as a
+  //   second, independent WriteNoSnoopPtl / NonCopyBackWrData transaction
+  //   that overwrites it. So SN-F should see TWO separate write
+  //   transactions, in this order, and RNF0 should only see its
+  //   DBIDResp/Comp after the RNF1 writeback has fully drained.
+  //
+  //   The current TSHR's ST_SNOOP_WAIT write-branch only ever looks at
+  //   the RSP channel for the write flow (it never reads the DAT channel
+  //   RNF1 used here), so it will never even notice the dirty data ->
+  //   the FSM is expected to hang at that first step (watchdog flags it).
+  // ---------------------------------------------------------------------
+  task automatic scenario_write_hits_modified();
+    logic [11:0] txnid;
+    snp_opcode_e  snp_op;
+    req_opcode_e  req_op;
+    dat_opcode_e  dat_op;
+    rsp_opcode_e  rsp_op;
+    logic [11:0] snp_txnid;
+    logic        rts;
+    logic [127:0] data;
+    logic [15:0]  be;
+    logic [11:0]  dbid;
+
+    $display("\n===== Scenario E: WriteUniquePtl hits MODIFIED line in RNF1 (writeback-then-overwrite, no combine) =====");
+    txnid = 12'h0E5;
+    fork
+      rnf0.send_req(txnid, REQ_WRITE_UNIQUE_PTL, 39'h5000, WIDTH_16);
+      begin
+        rnf1.wait_snp(snp_txnid, snp_op, rts);
+        if (snp_op !== SNP_UNIQUE) begin
+          $display("FAIL E: expected SnpUnique on write-hits-modified, got %s", snp_op.name());
+          errors++;
+        end
+        // RNF1's line is MODIFIED/dirty: it must hand back the dirty data
+        // when invalidating, not just ack the invalidate.
+        rnf1.send_dat(txnid, DAT_SNP_RESP_DATA, 128'hFEED_FACE_0000_0000_0000_0000_D00D_1234, 16'hFFFF);
+      end
+    join
+
+    // Leg 1: TSHR should push RNF1's dirty data down to SN-F on its own,
+    // as a full-line copy-back write, BEFORE touching RNF0's request.
+    snf.wait_req(txnid, req_op, addr_dummy(), size_dummy());
+    if (req_op !== REQ_WRITE_NO_SNOOP_FULL) begin
+      $display("FAIL E: expected WriteNoSnpFull for RNF1's dirty writeback, got %s", req_op.name());
+      errors++;
+    end
+    snf.send_rsp(txnid, RSP_COMP_DBID_RESP, 12'h700);
+
+    snf.wait_dat(txnid, dat_op, data, be, dbid);
+    if (dat_op !== DAT_COPY_BACK_WR_DATA) begin
+      $display("FAIL E: expected CopyBackWrData for RNF1's dirty writeback, got %s", dat_op.name());
+      errors++;
+    end
+    if (data !== 128'hFEED_FACE_0000_0000_0000_0000_D00D_1234) begin
+      $display("FAIL E: RNF1 writeback data mismatch, got %0h", data);
+      errors++;
+    end
+    if (dbid !== 12'h700) begin $display("FAIL E: writeback dbid not threaded through, got %0d", dbid); errors++; end
+
+    // Leg 2: only now should RNF0's own write proceed.
+    rnf0.wait_rsp(txnid, rsp_op);
+    if (rsp_op !== RSP_DBID_RESP) begin
+      $display("FAIL E: expected DBIDResp for RNF0's write after RNF1's writeback drained, got %s", rsp_op.name());
+      errors++;
+    end
+
+    rnf0.send_dat(txnid, DAT_DATA_FLIT, 128'hDEAD_DEAD_0000_0000_0000_0000_CAFE_CAFE, 16'hFFFF);
+
+    snf.wait_req(txnid, req_op, addr_dummy(), size_dummy());
+    if (req_op !== REQ_WRITE_NO_SNOOP_PTL) begin
+      $display("FAIL E: expected WriteNoSnpPtl for RNF0's overwrite, got %s", req_op.name());
+      errors++;
+    end
+    snf.send_rsp(txnid, RSP_COMP_DBID_RESP, 12'h701);
+
+    snf.wait_dat(txnid, dat_op, data, be, dbid);
+    if (dat_op !== DAT_NON_COPY_BACK_WR_DATA) begin
+      $display("FAIL E: expected NonCopyBackWrData for RNF0's overwrite, got %s", dat_op.name());
+      errors++;
+    end
+    if (data !== 128'hDEAD_DEAD_0000_0000_0000_0000_CAFE_CAFE) begin
+      $display("FAIL E: RNF0 overwrite data mismatch, got %0h", data);
+      errors++;
+    end
+
+    rnf0.wait_rsp(txnid, rsp_op);
+    if (rsp_op !== RSP_COMP) begin $display("FAIL E: expected final Comp to RNF0, got %s", rsp_op.name()); errors++; end
+    rnf0.send_rsp(txnid, RSP_COMP_ACK);
+
+    repeat (3) @(posedge clk);
+    $display("Scenario E done (exposes missing modified-line writeback-then-overwrite sequencing on write-hit).");
+  endtask
+
+  // ---------------------------------------------------------------------
+  // Scenario F (NEW): ReadUnique from RNF0 hits a MODIFIED line in RNF1.
+  //   RNF1 returns the dirty data on the snoop response (as in scenario
+  //   B), which the TSHR correctly forwards to RNF0 as CompData. BUT,
+  //   because the line was dirty/modified, SN-F's copy of memory is now
+  //   stale - a correct HN-F must push that dirty data down to SN-F as
+  //   well. Current TSHR goes straight to ST_COMPACK_WAIT/ST_DONE with
+  //   no SN-F write at all, so the wait below is expected to time out.
+  // ---------------------------------------------------------------------
+  task automatic scenario_read_hit_modified();
+    logic [11:0] txnid;
+    snp_opcode_e  snp_op;
+    req_opcode_e  req_op;
+    dat_opcode_e  dat_op;
+    rsp_opcode_e  rsp_op;
+    logic [11:0] snp_txnid;
+    logic        rts;
+    logic [127:0] data;
+    logic [15:0]  be;
+
+    $display("\n===== Scenario F: ReadUnique hits MODIFIED line in RNF1 (memory writeback expected) =====");
+    txnid = 12'h0F6;
+    fork
+      rnf0.send_req(txnid, REQ_READ_UNIQUE, 39'h6000, WIDTH_16);
+      begin
+        rnf1.wait_snp(snp_txnid, snp_op, rts);
+        // RNF1's line is dirty - it returns data on the snoop response.
+        rnf1.send_dat(txnid, DAT_SNP_RESP_DATA, 128'hB16B_00B5_0000_0000_0000_0000_DEAD_10CC, 16'hFFFF);
+      end
+    join
+
+    rnf0.wait_dat(txnid, dat_op, data, be);
+    if (dat_op !== DAT_COMP_DATA) begin $display("FAIL F: expected CompData, got %s", dat_op.name()); errors++; end
+    if (data !== 128'hB16B_00B5_0000_0000_0000_0000_DEAD_10CC) begin $display("FAIL F: data mismatch"); errors++; end
+    rnf0.send_rsp(txnid, RSP_COMP_ACK);
+
+    // MESI, no Owned state: once the dirty line is shared out, memory
+    // must be brought up to date. The dirty data must make it back to
+    // SN-F as its own full write-back transaction. Current TSHR has no
+    // path for this at all - expect the watchdog branch below to fire.
+    fork
+      begin
+        logic [11:0] dbid;
+        snf.wait_req(txnid, req_op, addr_dummy(), size_dummy());
+        if (req_op !== REQ_WRITE_NO_SNOOP_FULL) begin
+          $display("FAIL F: expected WriteNoSnpFull for the memory writeback, got %s", req_op.name());
+          errors++;
+        end
+        snf.send_rsp(txnid, RSP_COMP_DBID_RESP, 12'h7F0);
+
+        snf.wait_dat(txnid, dat_op, data, be, dbid);
+        if (dat_op !== DAT_COPY_BACK_WR_DATA) begin
+          $display("FAIL F: expected CopyBackWrData for the memory writeback, got %s", dat_op.name());
+          errors++;
+        end
+        if (data !== 128'hB16B_00B5_0000_0000_0000_0000_DEAD_10CC) begin
+          $display("FAIL F: writeback data mismatch, got %0h", data);
+          errors++;
+        end
+      end
+      begin
+        repeat (60) @(posedge clk);
+        $display("FAIL F: SN-F never received a writeback of the dirty data returned on the read-hit-modified snoop");
+        errors++;
+      end
+    join_any
+    disable fork;
+
+    repeat (3) @(posedge clk);
+    $display("Scenario F done (exposes missing dirty-line writeback-on-read-hit logic - MESI requires memory be updated here).");
+  endtask
+
+  // ---------------------------------------------------------------------
+  // Scenario G1 (NEW): ReadShared from RNF0 -> expect SnpShared/rettosrc=1
+  //   sent to RNF1. This is the "control" case: with the current
+  //   implementation, all TX_READ opcodes are treated identically, so
+  //   this should actually PASS.
+  // ---------------------------------------------------------------------
+  task automatic scenario_read_shared_snoop_map();
+    logic [11:0] txnid;
+    snp_opcode_e  snp_op;
+    logic [11:0] snp_txnid;
+    logic        rts;
+
+    $display("\n===== Scenario G1: ReadShared -> expect SnpShared/rettosrc=1 =====");
+    txnid = 12'h0071;
+    fork
+      rnf0.send_req(txnid, REQ_READ_SHARED, 39'h7000, WIDTH_16);
+      begin
+        rnf1.wait_snp(snp_txnid, snp_op, rts);
+        if (snp_op !== SNP_SHARED || rts !== 1'b1) begin
+          $display("FAIL G1: expected SnpShared/rettosrc=1 for ReadShared, got %s/%0b", snp_op.name(), rts);
+          errors++;
+        end
+        rnf1.send_rsp(txnid, RSP_SNP_RESP); // RNF1 doesn't have the line
+      end
+    join
+
+    // G1 only checks the snoop-opcode mapping for ReadShared; it
+    // deliberately does not chase the rest of the transaction (that would
+    // require standing up an SN-F responder for the read-miss path, which
+    // is unrelated to what this scenario is checking). reset_dut() in the
+    // RUN_SCN wrapper takes care of returning the FSM to idle afterward.
+    $display("Scenario G1 done.");
+  endtask
+
+  // ---------------------------------------------------------------------
+  // Scenario G2 (NEW): ReadUnique from RNF0 -> should map to SnpUnique
+  //   (rettosrc=1) so any other sharer is forced to invalidate while
+  //   still handing back its data, per the ReadUnique semantics called
+  //   out in the TODOs. The current TSHR always sends SnpShared for any
+  //   TX_READ opcode (it doesn't distinguish REQ_READ_UNIQUE from
+  //   REQ_READ_SHARED/REQ_READ_CLEAN/REQ_READ_ONCE), so this is expected
+  //   to FAIL.
+  // ---------------------------------------------------------------------
+  task automatic scenario_read_unique_snoop_map();
+    logic [11:0] txnid;
+    snp_opcode_e  snp_op;
+    logic [11:0] snp_txnid;
+    logic        rts;
+
+    $display("\n===== Scenario G2: ReadUnique -> expect SnpUnique/rettosrc=1 (NOT SnpShared) =====");
+    txnid = 12'h0072;
+    fork
+      rnf0.send_req(txnid, REQ_READ_UNIQUE, 39'h8000, WIDTH_16);
+      begin
+        rnf1.wait_snp(snp_txnid, snp_op, rts);
+        if (snp_op !== SNP_UNIQUE || rts !== 1'b1) begin
+          $display("FAIL G2: expected SnpUnique/rettosrc=1 for ReadUnique, got %s/%0b", snp_op.name(), rts);
+          errors++;
+        end
+        rnf1.send_rsp(txnid, RSP_SNP_RESP);
+      end
+    join
+
+    $display("Scenario G2 done (exposes ReadUnique vs ReadShared snoop-opcode mapping bug).");
+  endtask
+
+  // ---------------------------------------------------------------------
+  // Scenario H (NEW): RNF0 and RNF1 issue requests in the very same
+  //   cycle. req_rx[*].lcrdv is only asserted while state_q==ST_IDLE, and
+  //   each rnf_model.send_req only holds flitv high for a single cycle
+  //   with no retry logic on the requester side. So whichever request
+  //   loses arbitration this cycle simply vanishes - it is not queued,
+  //   retried, or NACKed. This scenario documents/exposes that gap: we
+  //   expect exactly one of the two txns to be serviced, and want the
+  //   watchdog to fire if somehow neither one gets through.
+  // ---------------------------------------------------------------------
+  task automatic scenario_simultaneous_requests();
+    logic [11:0] txnid0, txnid1;
+    snp_opcode_e  snp_op;
+    logic [11:0]  snp_txnid;
+    logic         rts;
+
+    $display("\n===== Scenario H: simultaneous RNF0+RNF1 requests (arbitration / silent-drop check) =====");
+    txnid0 = 12'h0AA0;
+    txnid1 = 12'h0BB0;
+
+    fork
+      rnf0.send_req(txnid0, REQ_READ_ONCE, 39'h9000, WIDTH_16);
+      rnf1.send_req(txnid1, REQ_READ_ONCE, 39'hA000, WIDTH_16);
+    join
+
+    // Only one of the two requests can actually be latched (whichever
+    // wins req_gnt_idx_q priority this cycle); service whichever snoop
+    // shows up, and flag a failure if neither ever does.
+    fork
+      begin
+        rnf1.wait_snp(snp_txnid, snp_op, rts);
+        rnf1.send_rsp(snp_txnid, RSP_SNP_RESP);
+      end
+      begin
+        rnf0.wait_snp(snp_txnid, snp_op, rts);
+        rnf0.send_rsp(snp_txnid, RSP_SNP_RESP);
+      end
+      begin
+        repeat (30) @(posedge clk);
+        $display("FAIL H: neither RNF0 nor RNF1 ever received a snoop - both simultaneous requests appear lost");
+        errors++;
+      end
+    join_any
+    disable fork;
+
+    repeat (20) @(posedge clk);
+    $display("Scenario H done - manually confirm exactly one of txnid0/txnid1 was serviced, and decide whether silently dropping the loser (no retry/queue) is acceptable.");
+  endtask
 
   initial begin
     resetn = 0;
@@ -430,10 +754,15 @@ module Tb_TSHR;
     resetn = 1;
     repeat (2) @(posedge clk);
 
-    scenario_write_unique_ptl();
-    scenario_read_unique_hit();
-    scenario_read_unique_miss();
-    scenario_writeback_full();
+    `RUN_SCN(scenario_write_unique_ptl(), 200)
+    `RUN_SCN(scenario_read_unique_hit(), 200)
+    `RUN_SCN(scenario_read_unique_miss(), 200)
+    `RUN_SCN(scenario_writeback_full(), 200)
+    `RUN_SCN(scenario_write_hits_modified(), 200)
+    `RUN_SCN(scenario_read_hit_modified(), 250)
+    `RUN_SCN(scenario_read_shared_snoop_map(), 200)
+    `RUN_SCN(scenario_read_unique_snoop_map(), 200)
+    `RUN_SCN(scenario_simultaneous_requests(), 200)
 
     if (errors == 0) $display("\n*** ALL SCENARIOS PASSED ***");
     else              $display("\n*** %0d FAILURE(S) ***", errors);
@@ -441,10 +770,11 @@ module Tb_TSHR;
     $finish;
   end
 
-  // safety timeout
+  // safety timeout - overall regression bound (each scenario also has
+  // its own per-scenario watchdog above)
   initial begin
-    #100000;
-    $display("TIMEOUT - a scenario hung");
+    #300000;
+    $display("TIMEOUT - overall regression hung");
     $finish;
   end
 

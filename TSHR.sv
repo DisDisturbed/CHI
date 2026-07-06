@@ -1,10 +1,9 @@
 
 
-
 // basic sequence of the mesi protocol
 // both RN-F0 and RN-F1 modules fetch the same line that line is shared
 // now RN-F0 wants to change a data in its cache it send a snoop signal to the Bus and ask for invaliate
-// RN-F1 snoops the bus(send cleanunique or makeunique) and claim the request give a fetching persmion 
+// RN-F1 snoops the bus and claim the request give a fetching persmion 
 // if RN-F0 has to change the state of the line of its cache to modified
 // if RN-F1 has to change the state of the line of its cahce to invalid
 // it is not permited to write or read from the invalid line
@@ -16,7 +15,7 @@
 
 
 //define macro for requester this is needed for configureable RN-F interface counts 
-// it is basicly couple of muxes workaround for dynamic slicing of interface arrays
+// it is bsaicly couple of muxes workaround for dynamic slicing of interface arrays
 // however credit system will also need a change 
 `define DEMUX_TX(IDX, PROXY_V, PROXY_PEND, PROXY_FLIT, IF_ARRAY) \
   IF_ARRAY[0].flitv    = (IDX == 1'b0) ? PROXY_V : 1'b0; \
@@ -25,29 +24,6 @@
   IF_ARRAY[1].flitv    = (IDX == 1'b1) ? PROXY_V : 1'b0; \
   IF_ARRAY[1].flitpend = (IDX == 1'b1) ? PROXY_PEND : 1'b0; \
   IF_ARRAY[1].flit     = (IDX == 1'b1) ? PROXY_FLIT : '0;
-
-
-
-
-
-// the things that this module has 
-// fully blocking, non-pipelined, one transaction system-wide at a time HN-F module 
-// this TSHR can be called a HN-F module because it's just what a pool-size-1 HN-F is.
-// the specs of this module 
-//request admission from either RN-F, arbitrated fairly (change between every request) 
-//snoop filter (only checks for the requester is trying to snoop itself)
-//snoop generator 
-//data collection/forwarding for snoop-response data, write data, read data 
-//SN-F request/response/data sequencing 
-//completion + CompAck handling 
-//per-channel credit tracking 
-
-// the things that this module doesnt have are the following
-//tracker pool
-//real persistent directory/snoop-filter state (this only increase efficiency by skipping snoops you already know the answer)
-//address hazard detection (it is basicly a edge case where 2 TSHR allocate same address at the same time window  it is impossible when there is only one TSHR) 
-//txnid uniqueness/remapping across RN-Fs (txnID is always correct system wide)
-// the upper comments is what real system HN-F should look like
 
 
 module TSHR // transaction snoop handling register
@@ -91,8 +67,10 @@ module TSHR // transaction snoop handling register
     ST_COMP_SEND,
     ST_COMPACK_WAIT,
     ST_DONE,
-    ST_READNO_SNOOP
-    
+    ST_READNO_SNOOP,
+    ST_DIRTY_WB_REQ_SEND,
+    ST_DIRTY_WB_RSP_WAIT,
+    ST_DIRTY_WB_DATA_SEND
   } state_e;
 
   state_e state_q, state_d;
@@ -141,19 +119,20 @@ module TSHR // transaction snoop handling register
           dat_credit_q[i] <= 4'd0;
         end else begin
           unique case ({snp_tx[i].lcrdv, (snp_tx[i].flitv == Y)})
-            2'b10:   snp_credit_q[i] <= snp_credit_q[i] + 4'd1;
-            2'b01:   snp_credit_q[i] <= snp_credit_q[i] - 4'd1;
+                     2'b10:   if (snp_credit_q[i] != 4'hF) snp_credit_q[i] <= snp_credit_q[i] + 1;
+                     2'b01:   snp_credit_q[i] <= snp_credit_q[i] - 4'd1;
             default: snp_credit_q[i] <= snp_credit_q[i];
           endcase
           
           unique case ({rsp_tx[i].lcrdv, (rsp_tx[i].flitv == Y)})
-            2'b10:   rsp_credit_q[i] <= rsp_credit_q[i] + 4'd1;
+               
+            2'b10:   if (rsp_credit_q[i] != 4'hF) rsp_credit_q[i] <= rsp_credit_q[i] + 1;
             2'b01:   rsp_credit_q[i] <= rsp_credit_q[i] - 4'd1;
             default: rsp_credit_q[i] <= rsp_credit_q[i];
           endcase
           
           unique case ({dat_tx[i].lcrdv, (dat_tx[i].flitv == Y)})
-            2'b10:   dat_credit_q[i] <= dat_credit_q[i] + 4'd1;
+            2'b10:   if (dat_credit_q[i] != 4'hF) dat_credit_q[i] <= dat_credit_q[i] + 1;
             2'b01:   dat_credit_q[i] <= dat_credit_q[i] - 4'd1;
             default: dat_credit_q[i] <= dat_credit_q[i];
           endcase
@@ -168,13 +147,13 @@ module TSHR // transaction snoop handling register
       sn_dat_credit_q <= 4'd0;
     end else begin
       unique case ({sn_req_tx.lcrdv, (sn_req_tx.flitv == Y)})
-        2'b10:   sn_req_credit_q <= sn_req_credit_q + 4'd1;
+        2'b10:   if(sn_req_credit_q != 4'hf ) sn_req_credit_q <= sn_req_credit_q + 4'd1;
         2'b01:   sn_req_credit_q <= sn_req_credit_q - 4'd1;
         default: sn_req_credit_q <= sn_req_credit_q;
       endcase
       
       unique case ({sn_dat_tx.lcrdv, (sn_dat_tx.flitv == Y)})
-        2'b10:   sn_dat_credit_q <= sn_dat_credit_q + 4'd1;
+        2'b10:   if(sn_req_credit_q != 4'hf ) sn_dat_credit_q <= sn_dat_credit_q + 4'd1;
         2'b01:   sn_dat_credit_q <= sn_dat_credit_q - 4'd1;
         default: sn_dat_credit_q <= sn_dat_credit_q;
       endcase
@@ -285,7 +264,7 @@ module TSHR // transaction snoop handling register
     logic [DataWidth-1:0]       data;
   } local_dat_flit_t;
     
-    // workaround for assigning the local workspace
+  
     logic            proxy_snp_flitv, proxy_snp_flitpend;
     local_snp_flit_t proxy_snp_flit; 
     
@@ -329,13 +308,15 @@ module TSHR // transaction snoop handling register
    
    
    // ======================= TODO ==============================
-   // implement cache hit on RN-F1 - done
-   // implement cache miss everywhere (standart memory read however RN-F1 gets nothing) -done
-   // implement standart memory write (RN-F1 gets validated after RN-F0 request) -done
-   // implement cache write back on the RN-F0 no snoop required just push data to the main memory since it is already modified -done
+   // implement cache hit on RN-F1 
+   // implement cache miss everywhere (standart memory read however RN-F1 gets nothing)
+   // implement standart memory write (RN-F1 gets validated after RN-F0 request)
+   // implement cache write back on the RN-F0 no snoop required just push data to the main memory since it is already modified
    assign busy_o = (state_q != ST_IDLE); 
+   logic dirty_hit_q, dirty_hit_d;
   always_comb begin
     state_d       = state_q;
+    tx_type_d = tx_type_q; // fixed bug
     req_idx_d     = req_idx_q;
     snp_idx_d     = snp_idx_q;
     is_write_d    = is_write_q;
@@ -349,13 +330,13 @@ module TSHR // transaction snoop handling register
     data_d        = data_q;
     be_d          = be_q;
     sn_dbid_d     = sn_dbid_q;
-
+    dirty_hit_d   = dirty_hit_q;
     proxy_snp_flitv    = 1'b0;
     proxy_snp_flitpend = 1'b0;
     proxy_snp_flit     = '0;
     proxy_rsp_flitv    = 1'b0;
     proxy_rsp_flitpend = 1'b0;
-    proxy_rsp_flit     = '0;
+    proxy_rsp_flit     = '0;    
     proxy_dat_flitv    = 1'b0;
     proxy_dat_flitpend = 1'b0;
     proxy_dat_flit     = '0;
@@ -366,7 +347,7 @@ module TSHR // transaction snoop handling register
     sn_dat_tx.flitv    = N;
     sn_dat_tx.flitpend = N;
     sn_dat_tx.flit     = '0;
-    //payload assignments 
+
     rx_rsp_flit  = (state_q == ST_SNOOP_WAIT) ? 
                  local_rsp_flit_t'((snp_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit) :
                  local_rsp_flit_t'((req_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit);
@@ -385,6 +366,7 @@ module TSHR // transaction snoop handling register
 
     case (state_q)
       ST_IDLE: begin
+          dirty_hit_d = 0;
           if (req_gnt_idx_q == 1'b0) begin
             if (req_rx[0].flitv == Y) begin
               req_idx_d = 1'b0;
@@ -394,7 +376,7 @@ module TSHR // transaction snoop handling register
               opcode_d  = req_rx[0].flit.opcode;
               size_d    = req_rx[0].flit.size;
               qos_d     = req_rx[0].flit.qos;
-              req_gnt_idx_d = 1'b1;      // rotate priority after granting 
+              req_gnt_idx_d = 1'b1;      // rotate priority only after actually granting 0
               state_d   = ST_ALLOC;
             end else if (req_rx[1].flitv == Y) begin
               req_idx_d = 1'b1;
@@ -404,9 +386,10 @@ module TSHR // transaction snoop handling register
               opcode_d  = req_rx[1].flit.opcode;
               size_d    = req_rx[1].flit.size;
               qos_d     = req_rx[1].flit.qos;
+              // idx0 wasn't using its turn - leave priority pointer alone
               state_d   = ST_ALLOC;
             end
-          end else begin // req_gnt_idx_q == 1'b1;
+          end else begin // req_gnt_idx_q == 1'b1
             if (req_rx[1].flitv == Y) begin
               req_idx_d = 1'b1;
               addr_d    = req_rx[1].flit.addr;
@@ -435,7 +418,7 @@ module TSHR // transaction snoop handling register
         if (opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_CLEAN_FULL) begin
           tx_type_d = TX_WRITE_BACK;
           is_write_d = 1;
-          state_d   = ST_DBIDRESP_SEND; //skip snoop
+          state_d   = ST_DBIDRESP_SEND; // Skip snoop
         end else if (opcode_q == REQ_WRITE_UNIQUE_PTL || opcode_q == REQ_WRITE_UNIQUE_FULL) begin
           tx_type_d = TX_WRITE_UNIQUE;
           is_write_d = 1;
@@ -456,28 +439,38 @@ module TSHR // transaction snoop handling register
           proxy_snp_flit.txnid     = txnid_q;
           proxy_snp_flit.fwdnid    = '0;
           proxy_snp_flit.fwdtxnid  = '0;
-          proxy_snp_flit.opcode    = SNP_UNIQUE;
           proxy_snp_flit.addr      = addr_q;
-          proxy_snp_flit.rettosrc  = is_write_q ? 1'b0 : 1'b1;
-               if (tx_type_q == TX_READ) begin
-                 proxy_snp_flit.opcode   = SNP_SHARED;
-                 proxy_snp_flit.rettosrc = 1'b1; // other RN-F must return data
-               end else begin
-                 proxy_snp_flit.opcode   = SNP_UNIQUE;
-                 proxy_snp_flit.rettosrc = 1'b0; // other RN-F just invalidates
-               end
+          
+          if (tx_type_q == TX_READ) begin
+            proxy_snp_flit.rettosrc = 1'b1; 
+            
+            if (opcode_q == REQ_READ_UNIQUE) begin
+              proxy_snp_flit.opcode = SNP_UNIQUE;
+            end else begin
+              proxy_snp_flit.opcode = SNP_SHARED; 
+            end
+            
+          end else begin
+            proxy_snp_flit.opcode   = SNP_UNIQUE;
+            proxy_snp_flit.rettosrc = 1'b0; 
+          end
+          
           state_d = ST_SNOOP_WAIT;
         end
       end
-        ST_SNOOP_WAIT: begin
+        ST_SNOOP_WAIT: begin 
+        // there is an edge i think in here this state doesnt account for modified state on the RN-F1 
+        //soo actually thing that should happen is RN-F1 send data and HN-F should combine both RN-F0/1
+        // i have no idea how o do it tho 
+        // it can stalled tho so SN-F should get 2 writes instead of 1 consume bandwith but should work 
         if (tx_type_q == TX_READ) begin
-          // read hit other RN-F has the line 
-          if ((rx_dat_flitv_snp == Y) && 
-          (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA) &&
-           (rx_dat_flit_snp.txnid == txnid_q)) begin
+          // read hit other RN-F has the NOT MODIFIED line 
+          // if modified this will break
+          if ((rx_dat_flitv_snp == Y) &&  (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA) && (rx_dat_flit_snp.txnid == txnid_q)) begin
             data_d  = rx_dat_flit_snp.data;
             be_d    = rx_dat_flit_snp.be;
             state_d = ST_RDATA_SEND;
+            dirty_hit_d = 1;
           end
           //  read miss other RN-F doesnt have the line
           else if ((rx_rsp_flitv == Y) && 
@@ -487,13 +480,69 @@ module TSHR // transaction snoop handling register
           end
         end else begin
           // wait for invalid ack)
-          if ((rx_rsp_flitv == Y) &&
-           (rx_rsp_flit.opcode == RSP_SNP_RESP) && 
-           (rx_rsp_flit.txnid == txnid_q)) begin
+          if ((rx_rsp_flitv == Y) && (rx_rsp_flit.opcode == RSP_SNP_RESP) && (rx_rsp_flit.txnid == txnid_q)) begin
             state_d = ST_DBIDRESP_SEND;
+          end
+          else if ((rx_dat_flitv_snp == Y) && (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA) && (rx_dat_flit_snp.txnid == txnid_q)) begin 
+               data_d = rx_dat_flit_snp.data ;
+               be_d = rx_dat_flit_snp.be;
+               state_d = ST_DIRTY_WB_REQ_SEND; 
+               
+          end
+          
+        end
+      end
+      ST_DIRTY_WB_REQ_SEND: begin
+        if (sn_req_credit_q != 4'd0) begin
+          sn_req_tx.flitv           = Y;
+          sn_req_tx.flitpend        = Y;
+          sn_req_tx.flit.qos        = qos_q;
+          sn_req_tx.flit.tgtid      = SNFID;
+          sn_req_tx.flit.srcid      = HNFID;
+          sn_req_tx.flit.txnid      = txnid_q;
+          sn_req_tx.flit.size       = size_q;
+          sn_req_tx.flit.addr       = addr_q;
+          sn_req_tx.flit.allowretry = Y;
+          sn_req_tx.flit.pcrdttype  = '0;
+          sn_req_tx.flit.memattr    = '0;
+         
+          sn_req_tx.flit.opcode     = REQ_WRITE_NO_SNOOP_FULL; 
+          
+          state_d = ST_DIRTY_WB_RSP_WAIT;
+        end
+      end
+
+      ST_DIRTY_WB_RSP_WAIT: begin
+        if ((sn_rsp_rx.flitv == Y) && 
+            (sn_rsp_rx.flit.opcode == RSP_COMP_DBID_RESP) && 
+            (sn_rsp_rx.flit.txnid == txnid_q)) begin
+          
+          sn_dbid_d = sn_rsp_rx.flit.dbid; 
+          state_d   = ST_DIRTY_WB_DATA_SEND;
+        end
+      end
+
+      ST_DIRTY_WB_DATA_SEND: begin
+        if (sn_dat_credit_q != 4'd0) begin
+          sn_dat_tx.flitv        = Y;
+          sn_dat_tx.flitpend     = Y;
+          sn_dat_tx.flit.qos     = qos_q;
+          sn_dat_tx.flit.tgtid   = SNFID;
+          sn_dat_tx.flit.srcid   = HNFID;
+          sn_dat_tx.flit.txnid   = txnid_q; 
+          sn_dat_tx.flit.dbid    = sn_dbid_q; 
+          sn_dat_tx.flit.be      = {(DataWidth/8){1'b1}}; 
+          sn_dat_tx.flit.data    = data_d;          
+          sn_dat_tx.flit.opcode  = DAT_COPY_BACK_WR_DATA;
+          
+          if (tx_type_q == TX_READ) begin
+            state_d = ST_DONE; 
+          end else begin
+            state_d = ST_DBIDRESP_SEND; 
           end
         end
       end
+      
       ST_DBIDRESP_SEND: begin
         if (rsp_credit_q[req_idx_q] != 4'd0) begin
           proxy_rsp_flitv       = Y;
@@ -515,7 +564,7 @@ module TSHR // transaction snoop handling register
 
       ST_WDATA_WAIT: begin 
       // wait state for RN-F response after DBIDresp given to RN-F it can wait here any arbitary time but if peer sends request it just vanishes
-      // in the future this will probably breaks ======= DONT FORGET
+      // in he future probably fix this
         if ((rx_dat_flitv_req == Y) && (rx_dat_flit_req.txnid == txnid_q)) begin
           data_d  = rx_dat_flit_req.data;
           be_d    = rx_dat_flit_req.be;
@@ -560,7 +609,7 @@ module TSHR // transaction snoop handling register
         end else begin
           //wait for memory write ack on RSP channel
           if ((sn_rsp_rx.flitv == Y) && (sn_rsp_rx.flit.opcode == RSP_COMP_DBID_RESP) && (sn_rsp_rx.flit.txnid == txnid_q)) begin
-            sn_dbid_d = sn_rsp_rx.flit.dbid; // capture memory DBID
+            sn_dbid_d = sn_rsp_rx.flit.dbid; // Capture memory's DBID
             state_d   = ST_SN_DATA_SEND;
           end
         end
@@ -588,7 +637,7 @@ module TSHR // transaction snoop handling register
         end
       end
 
-      ST_RDATA_SEND: begin 
+      ST_RDATA_SEND: begin
         if (dat_credit_q[req_idx_q] != 4'd0) begin
           proxy_dat_flitv       = Y;
           proxy_dat_flitpend    = Y;
@@ -603,7 +652,7 @@ module TSHR // transaction snoop handling register
         end
       end
 
-      ST_COMP_SEND: begin // completed send
+      ST_COMP_SEND: begin
         if (rsp_credit_q[req_idx_q] != 4'd0) begin
           proxy_rsp_flitv       = Y;
           proxy_rsp_flitpend    = Y;
@@ -616,9 +665,17 @@ module TSHR // transaction snoop handling register
         end
       end
 
-      ST_COMPACK_WAIT: begin // wait for ack
+      ST_COMPACK_WAIT: begin
         if ((rx_rsp_flitv == Y) && (rx_rsp_flit.opcode == RSP_COMP_ACK) && (rx_rsp_flit.txnid == txnid_q)) begin
-          state_d = ST_DONE;
+          
+          if (dirty_hit_q == 1'b1) begin
+            // We served the core, now go push the dirty data to memory
+            state_d = ST_DIRTY_WB_REQ_SEND;
+          end else begin
+            // Normal read, no writeback needed
+            state_d = ST_DONE;
+          end
+          
         end
       end
 
@@ -635,10 +692,11 @@ module TSHR // transaction snoop handling register
         `DEMUX_TX (req_idx_q, proxy_rsp_flitv, proxy_rsp_flitpend, proxy_rsp_flit, rsp_tx)
         `DEMUX_TX (req_idx_q, proxy_dat_flitv, proxy_dat_flitpend, proxy_dat_flit, dat_tx)
   end
-   // just simple state transitions
+
   always_ff @(posedge clk or negedge resetn) begin
     if (!resetn) begin
       state_q       <= ST_IDLE;
+      
       tx_type_q     <= TX_READ;
       req_idx_q     <= 1'b0;
       snp_idx_q     <= 1'b0;
@@ -652,9 +710,16 @@ module TSHR // transaction snoop handling register
       data_q        <= '0;
       be_q          <= '0;
       sn_dbid_q     <= '0;
+      dirty_hit_q    <= 0;
     end else begin
       state_q       <= state_d;
-      tx_type_q     <= tx_type_d;
+      if (tx_type_d == TX_READ || tx_type_d == TX_WRITE_UNIQUE || tx_type_d == TX_WRITE_BACK) begin
+         tx_type_q <= tx_type_d;
+      end else begin
+         $display("[%0t] TSHR Module line 640: unsupported tx_type  %s", $time, tx_type_d.name());
+         tx_type_q <= tx_type_q; //  dont send garbage
+      end
+      dirty_hit_q   <= dirty_hit_d;
       req_idx_q     <= req_idx_d;
       snp_idx_q     <= snp_idx_d;
       req_gnt_idx_q <= req_gnt_idx_d;
@@ -667,7 +732,7 @@ module TSHR // transaction snoop handling register
       data_q        <= data_d;
       be_q          <= be_d;
       sn_dbid_q     <= sn_dbid_d;
-    end
+    end 
   end
 
 endmodule
