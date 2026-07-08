@@ -1,58 +1,133 @@
 
-
-// basic sequence of the mesi protocol
-// both RN-F0 and RN-F1 modules fetch the same line that line is shared
-// now RN-F0 wants to change a data in its cache it send a snoop signal to the Bus and ask for invaliate
-// RN-F1 snoops the bus and claim the request give a fetching persmion 
-// if RN-F0 has to change the state of the line of its cache to modified
-// if RN-F1 has to change the state of the line of its cahce to invalid
-// it is not permited to write or read from the invalid line
-// exlusive lines can be written or read freely 
-// shared line can be read freely but cannot be written without turning to modified
-
-// if read miss happens it loads from the memory(or other caches) if other cores have the data it is shared if only memory has it it is exclusive 
-// if writeback happens it is free of snoop to push memory cuz it is already modified
-
-
-//define macro for requester this is needed for configureable RN-F interface counts 
-// it is bsaicly couple of muxes workaround for dynamic slicing of interface arrays
-// however credit system will also need a change 
-`define DEMUX_TX(IDX, PROXY_V, PROXY_PEND, PROXY_FLIT, IF_ARRAY) \
-  IF_ARRAY[0].flitv    = (IDX == 1'b0) ? PROXY_V : 1'b0; \
-  IF_ARRAY[0].flitpend = (IDX == 1'b0) ? PROXY_PEND : 1'b0; \
-  IF_ARRAY[0].flit     = (IDX == 1'b0) ? PROXY_FLIT : '0; \
-  IF_ARRAY[1].flitv    = (IDX == 1'b1) ? PROXY_V : 1'b0; \
-  IF_ARRAY[1].flitpend = (IDX == 1'b1) ? PROXY_PEND : 1'b0; \
-  IF_ARRAY[1].flit     = (IDX == 1'b1) ? PROXY_FLIT : '0;
+// TSHR - transaction snoop handling register
+//
+// Role in the HN-F node
+// this is the simplest possible or lets say "dumbest" tracker module i could think of
+// it only knows one transaction at time so HN-F node should be handle it
+// it has no idea about the interfaceses or RN-F port counts 
+// it only see 2 things one requester and one snoop target (snoop target can be SN-F dont forget this)
+// top module should instantiate this module multiple times to track multiple outstanding requests at one 
+// HN-F also need to track which TSHR is free to give request to them
+// HN-F also need to know which port RN-F plugs
+// HN-F also need its own snoop filter
+// HN-F also need address hazard detection to detect which tracker is safe to give
+// 
+// NONE OF THAT ROUTING AND ARBITRATION LIVES INSIDE THIS FILE. 
 
 
-module TSHR // transaction snoop handling register
+module TSHR
+
  import chi_pkg::*;
- import common_pkg::*;  #( 
-
-  parameter int AddrWidth = 39,
-  parameter int DataWidth = 128,
+ import common_pkg::*;
+ import tshr_flit_pkg::*;
+ #(
+  parameter int AddrWidth      = 39,
+  parameter int DataWidth      = 128,
+  // total data moved per transaction as bits .
+  // must be an integer multiple of DataWidth. NumBeats = CacheLineWidth /
+  parameter int CacheLineWidth = 512,
+  // depth of the registered credit bank on each TX channel. 2 gives a
+  // little pipelining headroom over the historical single-credit
+  // behavior; raise it if the surrounding fabric can usefully bank more.
+  parameter int TxCreditMax    = 2,
   parameter chi_pkg::node_id_e HNFID = 7'h40,
   parameter chi_pkg::node_id_e SNFID = 7'h00
 ) (
   input  wire clk,
   input  wire resetn,
-  output logic busy_o,
-  chi_req.rx req_rx [2],
-  chi_snp.tx snp_tx [2],
-  chi_rsp.tx rsp_tx [2],
-  chi_rsp.rx rsp_rx [2],
-  chi_dat.tx dat_tx [2],
-  chi_dat.rx dat_rx [2],
+  output logic ready_o,
+ 
+ 
+ 
+  output logic [11:0] TxnID_o,
+  output node_id_e SrcID_o, 
 
-  chi_req.tx sn_req_tx,
-  chi_rsp.rx sn_rsp_rx,
-  chi_dat.tx sn_dat_tx,
-  chi_dat.rx sn_dat_rx
+  
+  // ---- REQ from the requester (rx side): the original request ----
+  input  common_pkg::yn_status_e req_flitv,
+  input  common_pkg::yn_status_e req_flitpend,
+  input  local_req_flit_t        req_flit,
+  output logic                   req_lcrdv,
+
+  // ---- SNP to the snoop target (tx side): the snoop this tracker issues
+  output common_pkg::yn_status_e snp_flitv,
+  output common_pkg::yn_status_e snp_flitpend,
+  output local_snp_flit_t        snp_flit,
+  input  logic                   snp_lcrdv,
+
+  // ---- RSP to the requester (tx side): DBIDResp / CompDBIDResp / Comp
+  output common_pkg::yn_status_e rsp_tx_flitv,
+  output common_pkg::yn_status_e rsp_tx_flitpend,
+  output local_rsp_flit_t        rsp_tx_flit,
+  input  logic                   rsp_tx_lcrdv,
+
+  // ---- RSP from the requester (rx side): CompAck
+  input  common_pkg::yn_status_e rsp_rx_req_flitv,
+  input  common_pkg::yn_status_e rsp_rx_req_flitpend,
+  input  local_rsp_flit_t        rsp_rx_req_flit,
+  output logic                   rsp_rx_req_lcrdv,
+
+  // ---- RSP from the snoop target (rx side): SnpResp
+  input  common_pkg::yn_status_e rsp_rx_snp_flitv,
+  input  common_pkg::yn_status_e rsp_rx_snp_flitpend,
+  input  local_rsp_flit_t        rsp_rx_snp_flit,
+  output logic                   rsp_rx_snp_lcrdv,
+
+  // ---- DAT to the requester (tx side): CompData proxy forward
+  output common_pkg::yn_status_e dat_tx_flitv,
+  output common_pkg::yn_status_e dat_tx_flitpend,
+  output local_dat_flit_t        dat_tx_flit,
+  input  logic                   dat_tx_lcrdv,
+
+  // ---- DAT from the requester (rx side): write-data
+  input  common_pkg::yn_status_e dat_rx_req_flitv,
+  input  common_pkg::yn_status_e dat_rx_req_flitpend,
+  input  local_dat_flit_t        dat_rx_req_flit,
+  output logic                   dat_rx_req_lcrdv,
+
+  // ---- DAT from the snoop target (rx side): snoop-resp-data
+  input  common_pkg::yn_status_e dat_rx_snp_flitv,
+  input  common_pkg::yn_status_e dat_rx_snp_flitpend,
+  input  local_dat_flit_t        dat_rx_snp_flit,
+  output logic                   dat_rx_snp_lcrdv,
+
+  // ---- SN-F side (already scalar, unchanged) ----
+  output common_pkg::yn_status_e sn_req_flitv,
+  output common_pkg::yn_status_e sn_req_flitpend,
+  output local_req_flit_t        sn_req_flit,
+  input  logic                   sn_req_lcrdv,
+
+  input  common_pkg::yn_status_e sn_rsp_flitv,
+  input  common_pkg::yn_status_e sn_rsp_flitpend,
+  input  local_rsp_flit_t        sn_rsp_flit,
+  output logic                   sn_rsp_lcrdv,
+
+  output common_pkg::yn_status_e sn_dat_tx_flitv,
+  output common_pkg::yn_status_e sn_dat_tx_flitpend,
+  output local_dat_flit_t        sn_dat_tx_flit,
+  input  logic                   sn_dat_tx_lcrdv,
+
+  input  common_pkg::yn_status_e sn_dat_rx_flitv,
+  input  common_pkg::yn_status_e sn_dat_rx_flitpend,
+  input  local_dat_flit_t        sn_dat_rx_flit,
+  output logic                   sn_dat_rx_lcrdv
 );
+ 
+  localparam int NumBeats  = CacheLineWidth / DataWidth;
+  localparam int BeatCntW  = (NumBeats <= 1) ? 1 : $clog2(NumBeats);
+  localparam logic [BeatCntW-1:0] LAST_BEAT = BeatCntW'(NumBeats-1);
 
-  
-  
+  initial begin // simple beat tracker it is not parameterized  but this will give error if someone change it late on
+    if (CacheLineWidth % DataWidth != 0) begin
+      $fatal(1, "TSHR cacheline widht (%0d) must be an integer multiple of DataWidth (%0d)",
+             CacheLineWidth, DataWidth);
+    end
+    if (NumBeats > 4) begin
+      $fatal(1, "TSHR beat number (%0d) exceeds 4 - DataID is only 2 bits ",
+             NumBeats);
+    end
+  end
+
   typedef enum logic [4:0] {
     ST_IDLE,
     ST_ALLOC,
@@ -75,13 +150,6 @@ module TSHR // transaction snoop handling register
 
   state_e state_q, state_d;
 
-  logic                  req_idx_q, req_idx_d;
-  logic                  snp_idx_q, snp_idx_d;
-  logic                  is_write_q, is_write_d;
-
-
-  logic                  req_gnt_idx_q, req_gnt_idx_d;
-
   logic [AddrWidth-1:0]  addr_q, addr_d;
   node_id_e              srcid_q, srcid_d;
   logic [11:0]           txnid_q, txnid_d;
@@ -89,119 +157,86 @@ module TSHR // transaction snoop handling register
   width_e                 size_q, size_d;
   logic [3:0]             qos_q, qos_d;
 
-  logic [DataWidth-1:0]    data_q, data_d;
-  logic [(DataWidth/8)-1:0] be_q, be_d;
+  // beat data storage
+  logic [DataWidth-1:0]     data_q [NumBeats], data_d [NumBeats];
+  logic [(DataWidth/8)-1:0] be_q   [NumBeats], be_d   [NumBeats];
+  logic [BeatCntW-1:0]      beat_cnt_q, beat_cnt_d;
+
   logic [11:0]              sn_dbid_q, sn_dbid_d;
 
-  logic [3:0] snp_credit_q [2];
-  logic [3:0] rsp_credit_q [2];
-  logic [3:0] dat_credit_q [2];
-  logic [3:0] sn_req_credit_q;
-  logic [3:0] sn_dat_credit_q;
+  // RX credit grants
+  // these stay unconditional: this tracker never needs to backpressure a
+  // beat once it has committed to receiving one it just latches straight
+  // into data_d[] and be_d[] combinationally, so there's nothing to gate.
+  // sizing/pacing of what's allowed to arrive is the external Credit
+  assign req_lcrdv        = (state_q == ST_IDLE);
+  assign rsp_rx_req_lcrdv = 1'b1;
+  assign rsp_rx_snp_lcrdv = 1'b1;
+  assign dat_rx_req_lcrdv = 1'b1;
+  assign dat_rx_snp_lcrdv = 1'b1;
+  assign sn_rsp_lcrdv     = 1'b1;
+  assign sn_dat_rx_lcrdv  = 1'b1;
 
-  assign req_rx[0].lcrdv = (state_q == ST_IDLE);
-  assign req_rx[1].lcrdv = (state_q == ST_IDLE);
-  assign rsp_rx[0].lcrdv = 1'b1;
-  assign rsp_rx[1].lcrdv = 1'b1;
-  assign dat_rx[0].lcrdv = 1'b1;
-  assign dat_rx[1].lcrdv = 1'b1;
-  assign sn_rsp_rx.lcrdv = 1'b1;
-   
-  // fuck you vivado why cant you access interface arrays dynmaicly
-  // generate Block oly for interface;
-  genvar i;
-  generate 
-    for(i = 0; i < 2 ; i = i + 1) begin : gen_credit_base
-      always_ff @(posedge clk or negedge resetn) begin
-        if (!resetn) begin
-          snp_credit_q[i] <= 4'd0;
-          rsp_credit_q[i] <= 4'd0;
-          dat_credit_q[i] <= 4'd0;
-        end else begin
-          unique case ({snp_tx[i].lcrdv, (snp_tx[i].flitv == Y)})
-                     2'b10:   if (snp_credit_q[i] != 4'hF) snp_credit_q[i] <= snp_credit_q[i] + 1;
-                     2'b01:   snp_credit_q[i] <= snp_credit_q[i] - 4'd1;
-            default: snp_credit_q[i] <= snp_credit_q[i];
-          endcase
-          
-          unique case ({rsp_tx[i].lcrdv, (rsp_tx[i].flitv == Y)})
-               
-            2'b10:   if (rsp_credit_q[i] != 4'hF) rsp_credit_q[i] <= rsp_credit_q[i] + 1;
-            2'b01:   rsp_credit_q[i] <= rsp_credit_q[i] - 4'd1;
-            default: rsp_credit_q[i] <= rsp_credit_q[i];
-          endcase
-          
-          unique case ({dat_tx[i].lcrdv, (dat_tx[i].flitv == Y)})
-            2'b10:   if (dat_credit_q[i] != 4'hF) dat_credit_q[i] <= dat_credit_q[i] + 1;
-            2'b01:   dat_credit_q[i] <= dat_credit_q[i] - 4'd1;
-            default: dat_credit_q[i] <= dat_credit_q[i];
-          endcase
-        end
-      end
-    end
-  endgenerate
-  // non array element block;
-  always_ff @(posedge clk or negedge resetn) begin
-    if (!resetn) begin
-      sn_req_credit_q <= 4'd0;
-      sn_dat_credit_q <= 4'd0;
-    end else begin
-      unique case ({sn_req_tx.lcrdv, (sn_req_tx.flitv == Y)})
-        2'b10:   if(sn_req_credit_q != 4'hf ) sn_req_credit_q <= sn_req_credit_q + 4'd1;
-        2'b01:   sn_req_credit_q <= sn_req_credit_q - 4'd1;
-        default: sn_req_credit_q <= sn_req_credit_q;
-      endcase
-      
-      unique case ({sn_dat_tx.lcrdv, (sn_dat_tx.flitv == Y)})
-        2'b10:   if(sn_req_credit_q != 4'hf ) sn_dat_credit_q <= sn_dat_credit_q + 4'd1;
-        2'b01:   sn_dat_credit_q <= sn_dat_credit_q - 4'd1;
-        default: sn_dat_credit_q <= sn_dat_credit_q;
-      endcase
-    end
-  end
+  logic snp_flitv_b, rsp_tx_flitv_b, dat_tx_flitv_b, sn_req_flitv_b, sn_dat_tx_flitv_b;
+  logic snp_credit_have, rsp_tx_credit_have, dat_tx_credit_have,
+        sn_req_credit_have, sn_dat_tx_credit_have;
 
-  // ==========================================================================
-  // synthax error module
-//  always_ff @(posedge clk or negedge resetn) begin
-//    if (!resetn) begin
-//      for (int i = 0; i < 2; i++) begin
-//        snp_credit_q[i] <= 4'd0;
-//        rsp_credit_q[i] <= 4'd0;
-//        dat_credit_q[i] <= 4'd0;
-//      end
-//      sn_req_credit_q <= 4'd0;
-//      sn_dat_credit_q <= 4'd0;
-//    end else begin
-//      for (int i = 0; i < 2; i++) begin
-//        unique case ({snp_tx[i].lcrdv, (snp_tx[i].flitv == Y)})
-//          2'b10:   snp_credit_q[i] <= snp_credit_q[i] + 4'd1;
-//          2'b01:   snp_credit_q[i] <= snp_credit_q[i] - 4'd1;
-//          default: snp_credit_q[i] <= snp_credit_q[i];
-//        endcase
-//        unique case ({rsp_tx[i].lcrdv, (rsp_tx[i].flitv == Y)})
-//          2'b10:   rsp_credit_q[i] <= rsp_credit_q[i] + 4'd1;
-//          2'b01:   rsp_credit_q[i] <= rsp_credit_q[i] - 4'd1;
-//          default: rsp_credit_q[i] <= rsp_credit_q[i];
-//        endcase
-//        unique case ({dat_tx[i].lcrdv, (dat_tx[i].flitv == Y)})
-//          2'b10:   dat_credit_q[i] <= dat_credit_q[i] + 4'd1;
-//          2'b01:   dat_credit_q[i] <= dat_credit_q[i] - 4'd1;
-//          default: dat_credit_q[i] <= dat_credit_q[i];
-//        endcase
-//      end
-//      unique case ({sn_req_tx.lcrdv, (sn_req_tx.flitv == Y)})
-//        2'b10:   sn_req_credit_q <= sn_req_credit_q + 4'd1;
-//        2'b01:   sn_req_credit_q <= sn_req_credit_q - 4'd1;
-//        default: sn_req_credit_q <= sn_req_credit_q;
-//      endcase
-//      unique case ({sn_dat_tx.lcrdv, (sn_dat_tx.flitv == Y)})
-//        2'b10:   sn_dat_credit_q <= sn_dat_credit_q + 4'd1;
-//        2'b01:   sn_dat_credit_q <= sn_dat_credit_q - 4'd1;
-//        default: sn_dat_credit_q <= sn_dat_credit_q;
-//      endcase
-//    end
-//  end
-     // simple decoding block to understand where to go 
+  assign snp_flitv_b       = (snp_flitv       == Y);
+  assign rsp_tx_flitv_b    = (rsp_tx_flitv    == Y);
+  assign dat_tx_flitv_b    = (dat_tx_flitv    == Y);
+  assign sn_req_flitv_b    = (sn_req_flitv    == Y);
+  assign sn_dat_tx_flitv_b = (sn_dat_tx_flitv == Y);
+  
+  
+  /// this modules exist due to the possible combinational loop 
+  // on chi link credit must be tranmitters previous banked credit only 
+  // if these modules doesnt register the credit any arbiter that above this module 
+  // gives lcrdv in the same cycle then flitv depends on lcrdv 
+  // any reasonable arbiter must need to grant lcrdv based on the flitv which is the current requester
+  // then it will create a combinational loop 
+  // this modules breaks that loop with having credit counters for every channel 
+  // soo transmitter van gate the flitv without reading this cycles lcrdv without combinational loop
+  //
+  // incr = uper module pulsed lcrdv this cycle   -> accept one credit for later use
+  // decr = we are spending one credit right now
+  // it is just simple counter to track if we have credit or not 
+  credit_cntr #(.MaxCredits(TxCreditMax)) u_snp_cred (
+    .clk(clk),
+    .resetn(resetn),
+    .incr(snp_lcrdv), 
+    .decr(snp_flitv_b),
+    .have_credit(snp_credit_have)
+  );
+  credit_cntr #(.MaxCredits(TxCreditMax)) u_rsp_tx_cred (
+    .clk(clk),
+     .resetn(resetn),
+    .incr(rsp_tx_lcrdv),
+    .decr(rsp_tx_flitv_b),
+    .have_credit(rsp_tx_credit_have)
+  );
+  credit_cntr #(.MaxCredits(TxCreditMax)) u_dat_tx_cred (
+    .clk(clk),
+    .resetn(resetn),
+    .incr(dat_tx_lcrdv),
+    .decr(dat_tx_flitv_b),
+     .have_credit(dat_tx_credit_have)
+  );
+  credit_cntr #(.MaxCredits(TxCreditMax)) u_sn_req_cred (
+    .clk(clk),
+    .resetn(resetn),
+    .incr(sn_req_lcrdv),
+    .decr(sn_req_flitv_b),
+    .have_credit(sn_req_credit_have)
+  );
+  credit_cntr #(.MaxCredits(TxCreditMax)) u_sn_dat_tx_cred (
+    .clk(clk), 
+   .resetn(resetn),
+   .incr(sn_dat_tx_lcrdv), 
+   .decr(sn_dat_tx_flitv_b), 
+   .have_credit(sn_dat_tx_credit_have)
+  );
+
+     // simple decoding block to understand where to go
      // this simplify the if else blocks and makes us only check for tx_type
      // it is latched on the alloc state
     typedef enum logic [1:0] {
@@ -211,68 +246,6 @@ module TSHR // transaction snoop handling register
       } tx_type_e;
       
       tx_type_e tx_type_q, tx_type_d;
-  // WORKAROUND: Local struct definitions 
-  typedef struct packed {
-    logic [3:0]           qos;
-    node_id_e             srcid;
-    logic [11:0]          txnid;
-    node_id_e             fwdnid;
-    logic [11:0]          fwdtxnid;
-    snp_opcode_e          opcode;
-    logic [AddrWidth-1:0] addr;
-    logic                 ns;
-    logic                 donotgotosd;
-    logic                 rettosrc;
-    logic                 tracetag;
-  } local_snp_flit_t;
-
-  typedef struct packed {
-    logic [3:0]           qos;
-    node_id_e             tgtid;
-    node_id_e             srcid;
-    logic [11:0]          txnid;
-    rsp_opcode_e          opcode;
-    logic [1:0]           resperr;
-    logic [2:0]           resp;
-    logic [2:0]           fwdstate;
-    logic [2:0]           cbusy;
-    logic [11:0]          dbid;
-    logic [3:0]           pcrdttype;
-    logic [1:0]           tagop;
-    logic                 tracetag;
-  } local_rsp_flit_t;
-
-  typedef struct packed {
-    logic [3:0]                 qos;
-    node_id_e                   tgtid;
-    node_id_e                   srcid;
-    logic [11:0]                txnid;
-    node_id_e                   homenid;
-    dat_opcode_e                opcode;
-    logic [1:0]                 resperr;
-    logic [2:0]                 resp;
-    logic [2:0]                 fwdstate;
-    logic [2:0]                 cbusy;
-    logic [11:0]                dbid;
-    logic [1:0]                 ccid;
-    logic [1:0]                 dataid;
-    logic [1:0]                 tagop;
-    logic [(DataWidth/32)-1:0]  tag;
-    logic [(DataWidth/128)-1:0] tu;
-    logic                       tracetag;
-    logic [(DataWidth/8)-1:0]   be;
-    logic [DataWidth-1:0]       data;
-  } local_dat_flit_t;
-    
-  
-    logic            proxy_snp_flitv, proxy_snp_flitpend;
-    local_snp_flit_t proxy_snp_flit; 
-    
-    logic            proxy_rsp_flitv, proxy_rsp_flitpend;
-    local_rsp_flit_t proxy_rsp_flit;
-    
-    logic            proxy_dat_flitv, proxy_dat_flitpend;
-    local_dat_flit_t proxy_dat_flit;
 
     logic            rx_rsp_flitv;
     local_rsp_flit_t rx_rsp_flit;
@@ -291,308 +264,276 @@ module TSHR // transaction snoop handling register
    
    // path from ST_DBIDRESP_SEND (The Write Flow - WriteUniquePtl):
    // 1. ST_DBIDRESP_SEND: Send a DBIDResp back to the original requester (RN-F0), telling it "I am ready for your write data."
-   // 2. ST_WDATA_WAIT: Wait for the requester to send the actual write data on the DAT channel.
+   // 2. ST_WDATA_WAIT: Wait for the requester to send the actual write data on the DAT channel (now: NumBeats beats).
    // 3. ST_SN_REQ_SEND: Forward a request (WriteNoSnpPtl) down to the memory (SN-F).
    // 4. ST_SN_RSP_WAIT: Wait for the memory to reply with CompDBIDResp, meaning memory is ready for the data.
-   // 5. ST_SN_DATA_SEND: Push the captured write data down to the memory.
+   // 5. ST_SN_DATA_SEND: Push the captured write data down to the memory (now: NumBeats beats).
    // 6. ST_COMP_SEND: Send a final Completion (Comp) to the original requester.
    // 7. ST_COMPACK_WAIT: Wait for the requester to acknowledge the completion (CompAck).
    // 8. ST_DONE: Clean up and return to IDLE.
    
    
    // path from ST_RDATA_SEND (The Read Flow - ReadUnique):
-   // 1. ST_RDATA_SEND: We already got the requested data from snooping RN-F1. Forward this data directly to the original requester (RN-F0) as CompData.
+   // 1. ST_RDATA_SEND: We already got the requested data from snooping RN-F1. Forward this data directly to the original requester (RN-F0) as CompData (now: NumBeats beats).
    // 2. ( skipped Memory access steps for this flow).
    // 3. ST_COMPACK_WAIT: Wait for the requester to acknowledge receipt of the data (CompAck).
    // 4. ST_DONE: Clean up and return to IDLE.
    
-   
-   // ======================= TODO ==============================
-   // implement cache hit on RN-F1 
-   // implement cache miss everywhere (standart memory read however RN-F1 gets nothing)
-   // implement standart memory write (RN-F1 gets validated after RN-F0 request)
-   // implement cache write back on the RN-F0 no snoop required just push data to the main memory since it is already modified
-   assign busy_o = (state_q != ST_IDLE); 
+   assign ready_o = (state_q == ST_IDLE); 
    logic dirty_hit_q, dirty_hit_d;
   always_comb begin
     state_d       = state_q;
-    tx_type_d = tx_type_q; // fixed bug
-    req_idx_d     = req_idx_q;
-    snp_idx_d     = snp_idx_q;
-    is_write_d    = is_write_q;
-    req_gnt_idx_d = req_gnt_idx_q;
+    tx_type_d = tx_type_q; 
     addr_d        = addr_q;
     srcid_d       = srcid_q;
     txnid_d       = txnid_q;
     opcode_d      = opcode_q;
     size_d        = size_q;
     qos_d         = qos_q;
-    data_d        = data_q;
-    be_d          = be_q;
+    for (int i = 0; i < NumBeats; i++) begin
+      data_d[i] = data_q[i];
+      be_d[i]   = be_q[i];
+    end
+    beat_cnt_d    = beat_cnt_q;
     sn_dbid_d     = sn_dbid_q;
     dirty_hit_d   = dirty_hit_q;
-    proxy_snp_flitv    = 1'b0;
-    proxy_snp_flitpend = 1'b0;
-    proxy_snp_flit     = '0;
-    proxy_rsp_flitv    = 1'b0;
-    proxy_rsp_flitpend = 1'b0;
-    proxy_rsp_flit     = '0;    
-    proxy_dat_flitv    = 1'b0;
-    proxy_dat_flitpend = 1'b0;
-    proxy_dat_flit     = '0;
 
-    sn_req_tx.flitv    = N;
-    sn_req_tx.flitpend = N;
-    sn_req_tx.flit     = '0;
-    sn_dat_tx.flitv    = N;
-    sn_dat_tx.flitpend = N;
-    sn_dat_tx.flit     = '0;
+    // default all output ports to inactive
+    snp_flitv    = N; snp_flitpend    = N; snp_flit    = '0;
+    rsp_tx_flitv = N; rsp_tx_flitpend = N; rsp_tx_flit = '0;
+    dat_tx_flitv = N; dat_tx_flitpend = N; dat_tx_flit = '0;
 
-    rx_rsp_flit  = (state_q == ST_SNOOP_WAIT) ? 
-                 local_rsp_flit_t'((snp_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit) :
-                 local_rsp_flit_t'((req_idx_q == 1'b0) ? rsp_rx[0].flit : rsp_rx[1].flit);
+    sn_req_flitv    = N;
+    sn_req_flitpend = N;
+    sn_req_flit     = '0;
+    sn_dat_tx_flitv    = N;
+    sn_dat_tx_flitpend = N;
+    sn_dat_tx_flit     = '0;
 
-    rx_dat_flit_snp  = local_dat_flit_t'((snp_idx_q == 1'b0) ? dat_rx[0].flit  : dat_rx[1].flit);
-    
-    rx_dat_flit_req  = local_dat_flit_t'((req_idx_q == 1'b0) ? dat_rx[0].flit  : dat_rx[1].flit);
-    
-    rx_rsp_flitv = (state_q == ST_SNOOP_WAIT) ?
-               ((snp_idx_q == 1'b0) ? (rsp_rx[0].flitv == Y) : (rsp_rx[1].flitv == Y)) :
-               ((req_idx_q == 1'b0) ? (rsp_rx[0].flitv == Y) : (rsp_rx[1].flitv == Y));
+    // requester's CompAck comes in while we're waiting on it in
+    // ST_COMPACK_WAIT; the snoop target's SnpResp comes in while we're
+    // waiting on it in ST_SNOOP_WAIT. Each is now its own fixed port, so
+    // this is just a plain state-based pick, no index needed.
+    rx_rsp_flitv = (state_q == ST_SNOOP_WAIT) ? (rsp_rx_snp_flitv == Y) : (rsp_rx_req_flitv == Y);
+    rx_rsp_flit  = (state_q == ST_SNOOP_WAIT) ? rsp_rx_snp_flit          : rsp_rx_req_flit;
 
-    rx_dat_flitv_snp = (snp_idx_q == 1'b0) ? (dat_rx[0].flitv == Y) : (dat_rx[1].flitv == Y);
-    
-    rx_dat_flitv_req = (req_idx_q == 1'b0) ? (dat_rx[0].flitv == Y) : (dat_rx[1].flitv == Y);
+    rx_dat_flitv_snp = (dat_rx_snp_flitv == Y);
+    rx_dat_flit_snp  = dat_rx_snp_flit;
+
+    rx_dat_flitv_req = (dat_rx_req_flitv == Y);
+    rx_dat_flit_req  = dat_rx_req_flit;
 
     case (state_q)
       ST_IDLE: begin
-          dirty_hit_d = 0;
-          if (req_gnt_idx_q == 1'b0) begin
-            if (req_rx[0].flitv == Y) begin
-              req_idx_d = 1'b0;
-              addr_d    = req_rx[0].flit.addr;
-              srcid_d   = req_rx[0].flit.srcid;
-              txnid_d   = req_rx[0].flit.txnid;
-              opcode_d  = req_rx[0].flit.opcode;
-              size_d    = req_rx[0].flit.size;
-              qos_d     = req_rx[0].flit.qos;
-              req_gnt_idx_d = 1'b1;      // rotate priority only after actually granting 0
-              state_d   = ST_ALLOC;
-            end else if (req_rx[1].flitv == Y) begin
-              req_idx_d = 1'b1;
-              addr_d    = req_rx[1].flit.addr;
-              srcid_d   = req_rx[1].flit.srcid;
-              txnid_d   = req_rx[1].flit.txnid;
-              opcode_d  = req_rx[1].flit.opcode;
-              size_d    = req_rx[1].flit.size;
-              qos_d     = req_rx[1].flit.qos;
-              // idx0 wasn't using its turn - leave priority pointer alone
-              state_d   = ST_ALLOC;
-            end
-          end else begin // req_gnt_idx_q == 1'b1
-            if (req_rx[1].flitv == Y) begin
-              req_idx_d = 1'b1;
-              addr_d    = req_rx[1].flit.addr;
-              srcid_d   = req_rx[1].flit.srcid;
-              txnid_d   = req_rx[1].flit.txnid;
-              opcode_d  = req_rx[1].flit.opcode;
-              size_d    = req_rx[1].flit.size;
-              qos_d     = req_rx[1].flit.qos;
-              req_gnt_idx_d = 1'b0;
-              state_d   = ST_ALLOC;
-            end else if (req_rx[0].flitv == Y) begin
-              req_idx_d = 1'b0;
-              addr_d    = req_rx[0].flit.addr;
-              srcid_d   = req_rx[0].flit.srcid;
-              txnid_d   = req_rx[0].flit.txnid;
-              opcode_d  = req_rx[0].flit.opcode;
-              size_d    = req_rx[0].flit.size;
-              qos_d     = req_rx[0].flit.qos;
-              state_d   = ST_ALLOC;
-            end
-          end
+        dirty_hit_d = 0;
+        beat_cnt_d  = '0;
+        if (req_flitv == Y) begin
+          addr_d   = req_flit.addr;
+          srcid_d  = req_flit.srcid;
+          txnid_d  = req_flit.txnid;
+          opcode_d = req_flit.opcode;
+          size_d   = req_flit.size;
+          qos_d    = req_flit.qos;
+          state_d  = ST_ALLOC;
         end
+      end
 
       ST_ALLOC: begin
-        snp_idx_d  = ~req_idx_q;
         if (opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_CLEAN_FULL) begin
           tx_type_d = TX_WRITE_BACK;
-          is_write_d = 1;
           state_d   = ST_DBIDRESP_SEND; // Skip snoop
         end else if (opcode_q == REQ_WRITE_UNIQUE_PTL || opcode_q == REQ_WRITE_UNIQUE_FULL) begin
           tx_type_d = TX_WRITE_UNIQUE;
-          is_write_d = 1;
           state_d   = ST_SNOOP_SEND;
         end else begin
           tx_type_d = TX_READ;
-          is_write_d = 0;
           state_d   = ST_SNOOP_SEND;
         end
       end
 
       ST_SNOOP_SEND: begin
-        if (snp_credit_q[snp_idx_q] != 4'd0) begin
-          proxy_snp_flitv          = Y;
-          proxy_snp_flitpend       = Y;
-          proxy_snp_flit.qos       = qos_q;
-          proxy_snp_flit.srcid     = HNFID;
-          proxy_snp_flit.txnid     = txnid_q;
-          proxy_snp_flit.fwdnid    = '0;
-          proxy_snp_flit.fwdtxnid  = '0;
-          proxy_snp_flit.addr      = addr_q;
+
+        //  not depends combinationally on snp_lcrdv.
+        if (snp_credit_have) begin
+          snp_flitv          = Y;
+          snp_flitpend       = Y;
+          snp_flit.qos       = qos_q;
+          snp_flit.srcid     = HNFID;
+          snp_flit.txnid     = txnid_q;
+          snp_flit.fwdnid    = '0;
+          snp_flit.fwdtxnid  = '0;
+          snp_flit.addr      = addr_q;
           
           if (tx_type_q == TX_READ) begin
-            proxy_snp_flit.rettosrc = 1'b1; 
+            snp_flit.rettosrc = 1'b1; 
             
             if (opcode_q == REQ_READ_UNIQUE) begin
-              proxy_snp_flit.opcode = SNP_UNIQUE;
+              snp_flit.opcode = SNP_UNIQUE;
             end else begin
-              proxy_snp_flit.opcode = SNP_SHARED; 
+              snp_flit.opcode = SNP_SHARED; 
             end
             
           end else begin
-            proxy_snp_flit.opcode   = SNP_UNIQUE;
-            proxy_snp_flit.rettosrc = 1'b0; 
+            snp_flit.opcode   = SNP_UNIQUE;
+            snp_flit.rettosrc = 1'b0; 
           end
           
           state_d = ST_SNOOP_WAIT;
         end
       end
-        ST_SNOOP_WAIT: begin 
-        // there is an edge i think in here this state doesnt account for modified state on the RN-F1 
-        //soo actually thing that should happen is RN-F1 send data and HN-F should combine both RN-F0/1
-        // i have no idea how o do it tho 
-        // it can stalled tho so SN-F should get 2 writes instead of 1 consume bandwith but should work 
+
+      ST_SNOOP_WAIT: begin
+        // snoop-target identity is implicitly guaranteed by the crossbar's
+        // fixed physical wiring for the lifetime 
         if (tx_type_q == TX_READ) begin
-          // read hit other RN-F has the NOT MODIFIED line 
-          // if modified this will break
-          if ((rx_dat_flitv_snp == Y) &&  (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA) && (rx_dat_flit_snp.txnid == txnid_q)) begin
-            data_d  = rx_dat_flit_snp.data;
-            be_d    = rx_dat_flit_snp.be;
-            state_d = ST_RDATA_SEND;
+          // read hit: target has the (possibly dirty) line
+          if ((rx_dat_flitv_snp == Y) && (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA) && (rx_dat_flit_snp.txnid == txnid_q)) begin
+            data_d[beat_cnt_q] = rx_dat_flit_snp.data;
+            be_d[beat_cnt_q]   = rx_dat_flit_snp.be;
             dirty_hit_d = 1;
+            if (dat_rx_snp_flitpend == Y) begin
+              // more beats of this dirty line still coming
+              beat_cnt_d = beat_cnt_q + 1'b1;
+            end else begin
+              beat_cnt_d = '0;
+              state_d    = ST_RDATA_SEND;
+            end
           end
-          //  read miss other RN-F doesnt have the line
-          else if ((rx_rsp_flitv == Y) && 
-          (rx_rsp_flit.opcode == RSP_SNP_RESP) && 
-          (rx_rsp_flit.txnid == txnid_q)) begin
+          // read miss: target doesn't have the line
+          else if ((rx_rsp_flitv == Y) && (rx_rsp_flit.opcode == RSP_SNP_RESP) && (rx_rsp_flit.txnid == txnid_q)) begin
             state_d = ST_SN_REQ_SEND;
           end
         end else begin
-          // wait for invalid ack)
+          // wait for invalidate ack
           if ((rx_rsp_flitv == Y) && (rx_rsp_flit.opcode == RSP_SNP_RESP) && (rx_rsp_flit.txnid == txnid_q)) begin
             state_d = ST_DBIDRESP_SEND;
           end
-          else if ((rx_dat_flitv_snp == Y) && (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA) && (rx_dat_flit_snp.txnid == txnid_q)) begin 
-               data_d = rx_dat_flit_snp.data ;
-               be_d = rx_dat_flit_snp.be;
-               state_d = ST_DIRTY_WB_REQ_SEND; 
-               
+          else if ((rx_dat_flitv_snp == Y) && (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA) && (rx_dat_flit_snp.txnid == txnid_q)) begin
+            data_d[beat_cnt_q] = rx_dat_flit_snp.data;
+            be_d[beat_cnt_q]   = rx_dat_flit_snp.be;
+            if (dat_rx_snp_flitpend == Y) begin
+              beat_cnt_d = beat_cnt_q + 1'b1;
+            end else begin
+              beat_cnt_d = '0;
+              state_d    = ST_DIRTY_WB_REQ_SEND;
+            end
           end
-          
         end
       end
+
       ST_DIRTY_WB_REQ_SEND: begin
-        if (sn_req_credit_q != 4'd0) begin
-          sn_req_tx.flitv           = Y;
-          sn_req_tx.flitpend        = Y;
-          sn_req_tx.flit.qos        = qos_q;
-          sn_req_tx.flit.tgtid      = SNFID;
-          sn_req_tx.flit.srcid      = HNFID;
-          sn_req_tx.flit.txnid      = txnid_q;
-          sn_req_tx.flit.size       = size_q;
-          sn_req_tx.flit.addr       = addr_q;
-          sn_req_tx.flit.allowretry = Y;
-          sn_req_tx.flit.pcrdttype  = '0;
-          sn_req_tx.flit.memattr    = '0;
+        if (sn_req_credit_have) begin
+          sn_req_flitv           = Y;
+          sn_req_flitpend        = Y;
+          sn_req_flit.qos        = qos_q;
+          sn_req_flit.tgtid      = SNFID;
+          sn_req_flit.srcid      = HNFID;
+          sn_req_flit.txnid      = txnid_q;
+          sn_req_flit.size       = size_q;
+          sn_req_flit.addr       = addr_q;
+          sn_req_flit.allowretry = Y;
+          sn_req_flit.pcrdttype  = '0;
+          sn_req_flit.memattr    = '0;
          
-          sn_req_tx.flit.opcode     = REQ_WRITE_NO_SNOOP_FULL; 
+          sn_req_flit.opcode     = REQ_WRITE_NO_SNOOP_FULL; 
           
           state_d = ST_DIRTY_WB_RSP_WAIT;
         end
       end
 
       ST_DIRTY_WB_RSP_WAIT: begin
-        if ((sn_rsp_rx.flitv == Y) && 
-            (sn_rsp_rx.flit.opcode == RSP_COMP_DBID_RESP) && 
-            (sn_rsp_rx.flit.txnid == txnid_q)) begin
+        if ((sn_rsp_flitv == Y) && 
+            (sn_rsp_flit.opcode == RSP_COMP_DBID_RESP) && 
+            (sn_rsp_flit.txnid == txnid_q)) begin
           
-          sn_dbid_d = sn_rsp_rx.flit.dbid; 
+          sn_dbid_d = sn_rsp_flit.dbid; 
           state_d   = ST_DIRTY_WB_DATA_SEND;
         end
       end
 
       ST_DIRTY_WB_DATA_SEND: begin
-        if (sn_dat_credit_q != 4'd0) begin
-          sn_dat_tx.flitv        = Y;
-          sn_dat_tx.flitpend     = Y;
-          sn_dat_tx.flit.qos     = qos_q;
-          sn_dat_tx.flit.tgtid   = SNFID;
-          sn_dat_tx.flit.srcid   = HNFID;
-          sn_dat_tx.flit.txnid   = txnid_q; 
-          sn_dat_tx.flit.dbid    = sn_dbid_q; 
-          sn_dat_tx.flit.be      = {(DataWidth/8){1'b1}}; 
-          sn_dat_tx.flit.data    = data_d;          
-          sn_dat_tx.flit.opcode  = DAT_COPY_BACK_WR_DATA;
-          
-          if (tx_type_q == TX_READ) begin
-            state_d = ST_DONE; 
+        if (sn_dat_tx_credit_have) begin
+          sn_dat_tx_flitv        = Y;
+          sn_dat_tx_flitpend     = (beat_cnt_q != LAST_BEAT) ? Y : N;
+          sn_dat_tx_flit.qos     = qos_q;
+          sn_dat_tx_flit.tgtid   = SNFID;
+          sn_dat_tx_flit.srcid   = HNFID;
+          sn_dat_tx_flit.txnid   = txnid_q;
+          sn_dat_tx_flit.dbid    = sn_dbid_q;
+          sn_dat_tx_flit.dataid  = beat_cnt_q[1:0];
+          sn_dat_tx_flit.be      = {(DataWidth/8){1'b1}};
+          sn_dat_tx_flit.data    = data_q[beat_cnt_q];
+          sn_dat_tx_flit.opcode  = DAT_COPY_BACK_WR_DATA;
+
+          if (beat_cnt_q == LAST_BEAT) begin
+            beat_cnt_d = '0;
+            state_d = (tx_type_q == TX_READ) ? ST_DONE : ST_DBIDRESP_SEND;
           end else begin
-            state_d = ST_DBIDRESP_SEND; 
+            beat_cnt_d = beat_cnt_q + 1'b1;
           end
         end
       end
       
       ST_DBIDRESP_SEND: begin
-        if (rsp_credit_q[req_idx_q] != 4'd0) begin
-          proxy_rsp_flitv       = Y;
-          proxy_rsp_flitpend    = Y;
-          proxy_rsp_flit.qos    = qos_q;
-          proxy_rsp_flit.tgtid  = srcid_q;
-          proxy_rsp_flit.srcid  = HNFID;
-          proxy_rsp_flit.txnid  = txnid_q;
-          proxy_rsp_flit.dbid   = txnid_q;
+        if (rsp_tx_credit_have) begin
+          rsp_tx_flitv       = Y;
+          rsp_tx_flitpend    = Y;
+          rsp_tx_flit.qos    = qos_q;
+          rsp_tx_flit.tgtid  = srcid_q;
+          rsp_tx_flit.srcid  = HNFID;
+          rsp_tx_flit.txnid  = txnid_q;
+          rsp_tx_flit.dbid   = txnid_q;
           
           if (tx_type_q == TX_WRITE_BACK) begin
-            proxy_rsp_flit.opcode = RSP_COMP_DBID_RESP;
+            rsp_tx_flit.opcode = RSP_COMP_DBID_RESP;
           end else begin
-            proxy_rsp_flit.opcode = RSP_DBID_RESP;
+            rsp_tx_flit.opcode = RSP_DBID_RESP;
           end
           state_d = ST_WDATA_WAIT;
         end
       end
 
-      ST_WDATA_WAIT: begin 
-      // wait state for RN-F response after DBIDresp given to RN-F it can wait here any arbitary time but if peer sends request it just vanishes
-      // in he future probably fix this
-        if ((rx_dat_flitv_req == Y) && (rx_dat_flit_req.txnid == txnid_q)) begin
-          data_d  = rx_dat_flit_req.data;
-          be_d    = rx_dat_flit_req.be;
-          state_d = ST_SN_REQ_SEND;
+      ST_WDATA_WAIT: begin
+        // srcid check added: txnid alone is NOT a unique transaction key
+        // across different requesters (CHI only guarantees TxnID
+        // uniqueness *within* one requester's own outstanding set), so if
+        // two different RN-Fs happen to pick the same TxnID, matching on
+        // txnid alone could let a write-data beat meant for a different
+        // requester's transaction get accepted here. srcid_q was latched
+        // from the original request, so requiring it to match fixes the issue
+        if ((rx_dat_flitv_req == Y) && (rx_dat_flit_req.txnid == txnid_q) && (rx_dat_flit_req.srcid == srcid_q)) begin
+          data_d[beat_cnt_q] = rx_dat_flit_req.data;
+          be_d[beat_cnt_q]   = rx_dat_flit_req.be;
+          if (dat_rx_req_flitpend == Y) begin
+            beat_cnt_d = beat_cnt_q + 1'b1;
+          end else begin
+            beat_cnt_d = '0;
+            state_d    = ST_SN_REQ_SEND;
+          end
         end
       end
 
       ST_SN_REQ_SEND: begin
         // send req to the slave node 
-        if (sn_req_credit_q != 4'd0) begin
-          sn_req_tx.flitv        = Y;
-          sn_req_tx.flitpend     = Y;
-          sn_req_tx.flit.qos     = qos_q;
-          sn_req_tx.flit.tgtid   = SNFID;
-          sn_req_tx.flit.srcid   = HNFID;
-          sn_req_tx.flit.txnid   = txnid_q;
-          sn_req_tx.flit.size    = size_q;
-          sn_req_tx.flit.addr    = addr_q;
-          sn_req_tx.flit.allowretry = Y;
-          sn_req_tx.flit.pcrdttype  = '0;
-          sn_req_tx.flit.memattr    = '0;
+        if (sn_req_credit_have) begin
+          sn_req_flitv        = Y;
+          sn_req_flitpend     = Y;
+          sn_req_flit.qos     = qos_q;
+          sn_req_flit.tgtid   = SNFID;
+          sn_req_flit.srcid   = HNFID;
+          sn_req_flit.txnid   = txnid_q;
+          sn_req_flit.size    = size_q;
+          sn_req_flit.addr    = addr_q;
+          sn_req_flit.allowretry = Y;
+          sn_req_flit.pcrdttype  = '0;
+          sn_req_flit.memattr    = '0;
 
           if (tx_type_q == TX_READ) begin
-            sn_req_tx.flit.opcode = REQ_READ_NO_SNOOP;
+            sn_req_flit.opcode = REQ_READ_NO_SNOOP;
           end else if (tx_type_q == TX_WRITE_BACK) begin
-            sn_req_tx.flit.opcode = REQ_WRITE_NO_SNOOP_FULL;
+            sn_req_flit.opcode = REQ_WRITE_NO_SNOOP_FULL;
           end else begin
-            sn_req_tx.flit.opcode = REQ_WRITE_NO_SNOOP_PTL;
+            sn_req_flit.opcode = REQ_WRITE_NO_SNOOP_PTL;
           end
           state_d = ST_SN_RSP_WAIT;
         end
@@ -600,79 +541,103 @@ module TSHR // transaction snoop handling register
 
       ST_SN_RSP_WAIT: begin
         if (tx_type_q == TX_READ) begin
-            // wait for memory respose on the data
-          if ((sn_dat_rx.flitv == Y) && (sn_dat_rx.flit.opcode == DAT_COMP_DATA) && (sn_dat_rx.flit.txnid == txnid_q)) begin
-            data_d  = sn_dat_rx.flit.data;
-            be_d    = sn_dat_rx.flit.be;
-            state_d = ST_RDATA_SEND;
+          // wait for memory response on the data (SN-F is a single fixed
+          // target we ourselves issued the txnid to, so txnid-only
+          // matching is unambiguous here).
+          if ((sn_dat_rx_flitv == Y) && (sn_dat_rx_flit.opcode == DAT_COMP_DATA) && (sn_dat_rx_flit.txnid == txnid_q)) begin
+            data_d[beat_cnt_q] = sn_dat_rx_flit.data;
+            be_d[beat_cnt_q]   = sn_dat_rx_flit.be;
+            if (sn_dat_rx_flitpend == Y) begin
+              beat_cnt_d = beat_cnt_q + 1'b1;
+            end else begin
+              beat_cnt_d = '0;
+              state_d    = ST_RDATA_SEND;
+            end
           end
         end else begin
           //wait for memory write ack on RSP channel
-          if ((sn_rsp_rx.flitv == Y) && (sn_rsp_rx.flit.opcode == RSP_COMP_DBID_RESP) && (sn_rsp_rx.flit.txnid == txnid_q)) begin
-            sn_dbid_d = sn_rsp_rx.flit.dbid; // Capture memory's DBID
+          if ((sn_rsp_flitv == Y) && (sn_rsp_flit.opcode == RSP_COMP_DBID_RESP) && (sn_rsp_flit.txnid == txnid_q)) begin
+            sn_dbid_d = sn_rsp_flit.dbid; // Capture memory's DBID
             state_d   = ST_SN_DATA_SEND;
           end
         end
       end
 
       ST_SN_DATA_SEND: begin
-        if (sn_dat_credit_q != 4'd0) begin
-          sn_dat_tx.flitv        = Y;
-          sn_dat_tx.flitpend     = Y;
-          sn_dat_tx.flit.qos     = qos_q;
-          sn_dat_tx.flit.tgtid   = SNFID;
-          sn_dat_tx.flit.srcid   = HNFID;
-          sn_dat_tx.flit.txnid   = txnid_q; // not sure about this specs says different things
-          sn_dat_tx.flit.dbid    = sn_dbid_q; 
-          sn_dat_tx.flit.be      = be_q;
-          sn_dat_tx.flit.data    = data_q;
-          
+        if (sn_dat_tx_credit_have) begin
+          sn_dat_tx_flitv        = Y;
+          sn_dat_tx_flitpend     = (beat_cnt_q != LAST_BEAT) ? Y : N;
+          sn_dat_tx_flit.qos     = qos_q;
+          sn_dat_tx_flit.tgtid   = SNFID;
+          sn_dat_tx_flit.srcid   = HNFID;
+          sn_dat_tx_flit.txnid   = txnid_q;
+          sn_dat_tx_flit.dbid    = sn_dbid_q;
+          sn_dat_tx_flit.dataid  = beat_cnt_q[1:0];
+          sn_dat_tx_flit.be      = be_q[beat_cnt_q];
+          sn_dat_tx_flit.data    = data_q[beat_cnt_q];
+
           if (tx_type_q == TX_WRITE_BACK) begin
-            sn_dat_tx.flit.opcode = DAT_COPY_BACK_WR_DATA;
-            state_d = ST_DONE; // already modified no snoop
+            sn_dat_tx_flit.opcode = DAT_COPY_BACK_WR_DATA;
           end else begin
-            sn_dat_tx.flit.opcode = DAT_NON_COPY_BACK_WR_DATA;
-            state_d = ST_COMP_SEND;
+            sn_dat_tx_flit.opcode = DAT_NON_COPY_BACK_WR_DATA;
+          end
+
+          if (beat_cnt_q == LAST_BEAT) begin
+            beat_cnt_d = '0;
+            state_d = (tx_type_q == TX_WRITE_BACK) ? ST_DONE : ST_COMP_SEND;
+          end else begin
+            beat_cnt_d = beat_cnt_q + 1'b1;
           end
         end
       end
 
       ST_RDATA_SEND: begin
-        if (dat_credit_q[req_idx_q] != 4'd0) begin
-          proxy_dat_flitv       = Y;
-          proxy_dat_flitpend    = Y;
-          proxy_dat_flit.qos    = qos_q;
-          proxy_dat_flit.tgtid  = srcid_q;
-          proxy_dat_flit.srcid  = HNFID;
-          proxy_dat_flit.txnid  = txnid_q;
-          proxy_dat_flit.opcode = DAT_COMP_DATA;
-          proxy_dat_flit.be     = be_q;
-          proxy_dat_flit.data   = data_q;
-          state_d = ST_COMPACK_WAIT;
+        if (dat_tx_credit_have) begin
+          dat_tx_flitv       = Y;
+          dat_tx_flitpend    = (beat_cnt_q != LAST_BEAT) ? Y : N;
+          dat_tx_flit.qos    = qos_q;
+          dat_tx_flit.tgtid  = srcid_q;
+          dat_tx_flit.srcid  = HNFID;
+          dat_tx_flit.txnid  = txnid_q;
+          dat_tx_flit.opcode = DAT_COMP_DATA;
+          dat_tx_flit.dataid = beat_cnt_q[1:0];
+          dat_tx_flit.be     = be_q[beat_cnt_q];
+          dat_tx_flit.data   = data_q[beat_cnt_q];
+
+          if (beat_cnt_q == LAST_BEAT) begin
+            beat_cnt_d = '0;
+            state_d = ST_COMPACK_WAIT;
+          end else begin
+            beat_cnt_d = beat_cnt_q + 1'b1;
+          end
         end
       end
 
       ST_COMP_SEND: begin
-        if (rsp_credit_q[req_idx_q] != 4'd0) begin
-          proxy_rsp_flitv       = Y;
-          proxy_rsp_flitpend    = Y;
-          proxy_rsp_flit.qos    = qos_q;
-          proxy_rsp_flit.tgtid  = srcid_q;
-          proxy_rsp_flit.srcid  = HNFID;
-          proxy_rsp_flit.txnid  = txnid_q;
-          proxy_rsp_flit.opcode = RSP_COMP;
+        if (rsp_tx_credit_have) begin
+          rsp_tx_flitv       = Y;
+          rsp_tx_flitpend    = Y;
+          rsp_tx_flit.qos    = qos_q;
+          rsp_tx_flit.tgtid  = srcid_q;
+          rsp_tx_flit.srcid  = HNFID;
+          rsp_tx_flit.txnid  = txnid_q;
+          rsp_tx_flit.opcode = RSP_COMP;
           state_d = ST_COMPACK_WAIT;
         end
       end
 
       ST_COMPACK_WAIT: begin
-        if ((rx_rsp_flitv == Y) && (rx_rsp_flit.opcode == RSP_COMP_ACK) && (rx_rsp_flit.txnid == txnid_q)) begin
+        // srcid check added for the same reason as ST_WDATA_WAIT: a
+        // CompAck is always sent by the original requester, so its srcid
+        // must match the requester we actually allocated this tracker
+        // for, not just its txnid.
+        if ((rx_rsp_flitv == Y) && (rx_rsp_flit.opcode == RSP_COMP_ACK) && (rx_rsp_flit.txnid == txnid_q) && (rx_rsp_flit.srcid == srcid_q)) begin
           
           if (dirty_hit_q == 1'b1) begin
-            // We served the core, now go push the dirty data to memory
+            // served the core, now go push the dirty data to memory
             state_d = ST_DIRTY_WB_REQ_SEND;
           end else begin
-            // Normal read, no writeback needed
+            // normal read, no writeback needed
             state_d = ST_DONE;
           end
           
@@ -687,10 +652,6 @@ module TSHR // transaction snoop handling register
         state_d = ST_IDLE;
       end
     endcase
-
-        `DEMUX_TX (snp_idx_q, proxy_snp_flitv, proxy_snp_flitpend, proxy_snp_flit, snp_tx)
-        `DEMUX_TX (req_idx_q, proxy_rsp_flitv, proxy_rsp_flitpend, proxy_rsp_flit, rsp_tx)
-        `DEMUX_TX (req_idx_q, proxy_dat_flitv, proxy_dat_flitpend, proxy_dat_flit, dat_tx)
   end
 
   always_ff @(posedge clk or negedge resetn) begin
@@ -698,17 +659,17 @@ module TSHR // transaction snoop handling register
       state_q       <= ST_IDLE;
       
       tx_type_q     <= TX_READ;
-      req_idx_q     <= 1'b0;
-      snp_idx_q     <= 1'b0;
-      req_gnt_idx_q <= 1'b0;
       addr_q        <= '0;
       srcid_q       <= '0;
       txnid_q       <= '0;
       opcode_q      <= req_opcode_e'(8'h00);
       size_q        <= WIDTH_1;
       qos_q         <= '0;
-      data_q        <= '0;
-      be_q          <= '0;
+      for (int i = 0; i < NumBeats; i++) begin
+        data_q[i] <= '0;
+        be_q[i]   <= '0;
+      end
+      beat_cnt_q    <= '0;
       sn_dbid_q     <= '0;
       dirty_hit_q    <= 0;
     end else begin
@@ -716,23 +677,25 @@ module TSHR // transaction snoop handling register
       if (tx_type_d == TX_READ || tx_type_d == TX_WRITE_UNIQUE || tx_type_d == TX_WRITE_BACK) begin
          tx_type_q <= tx_type_d;
       end else begin
-         $display("[%0t] TSHR Module line 640: unsupported tx_type  %s", $time, tx_type_d.name());
+         $display("[%0t] TSHR Module: unsupported tx_type  %s", $time, tx_type_d.name());
          tx_type_q <= tx_type_q; //  dont send garbage
       end
       dirty_hit_q   <= dirty_hit_d;
-      req_idx_q     <= req_idx_d;
-      snp_idx_q     <= snp_idx_d;
-      req_gnt_idx_q <= req_gnt_idx_d;
       addr_q        <= addr_d;
       srcid_q       <= srcid_d;
       txnid_q       <= txnid_d;
       opcode_q      <= opcode_d;
       size_q        <= size_d;
       qos_q         <= qos_d;
-      data_q        <= data_d;
-      be_q          <= be_d;
+      for (int i = 0; i < NumBeats; i++) begin
+        data_q[i] <= data_d[i];
+        be_q[i]   <= be_d[i];
+      end
+      beat_cnt_q    <= beat_cnt_d;
       sn_dbid_q     <= sn_dbid_d;
     end 
   end
-
+  assign TxnID_o = txnid_q;
+  assign SrcID_o = srcid_q;
+  
 endmodule
