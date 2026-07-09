@@ -1,19 +1,4 @@
-// ---------------------------------------------------------------------
-// rx_port_select
-//
-// Fans a physical port's incoming flit out to whichever tracker(s) are
-// currently assigned to listen on it. Unlike the TX side, RX needs no
-// arbitration: multiple trackers can legitimately all "see" the same
-// incoming flit and independently filter it by txnid/srcid (that's
-// already how each TSHR instance's own FSM works) - this is a one-to-
-// many broadcast read, not a many-to-one write contest.
-//
-// phy_lcrdv[p] (the credit HN_F reports back to the real RN-F/SN-F on
-// port p) is just "is at least one tracker currently listening here" -
-// every TSHR always asserts its own *_lcrdv=1 unconditionally (see
-// TSHR's "unlimited receive capacity" comment), so aggregating down to a
-// plain OR-reduce over trk_target_valid/trk_target_idx==p is correct.
-// ---------------------------------------------------------------------
+
 module rx_port_select
   import common_pkg::*;
 #(
@@ -22,19 +7,17 @@ module rx_port_select
   parameter type flit_t       = logic,
   localparam int PORT_IDXW    = (NUM_PORTS <= 1) ? 1 : $clog2(NUM_PORTS)
 ) (
-  // physical ports (broadcast source)
+
   input  common_pkg::yn_status_e phy_flitv    [NUM_PORTS],
   input  common_pkg::yn_status_e phy_flitpend [NUM_PORTS],
   input  flit_t                  phy_flit     [NUM_PORTS],
   output logic                   phy_lcrdv    [NUM_PORTS],
 
-  // which physical port each tracker is currently assigned to for this
-  // role, and whether that assignment is even meaningful right now
-  // (tracker actually allocated to a live transaction)
+
   input  logic [PORT_IDXW-1:0]   trk_target_idx   [NUM_TRACKERS],
   input  logic                   trk_target_valid [NUM_TRACKERS],
 
-  // per-tracker fanned-out view
+
   output common_pkg::yn_status_e trk_flitv    [NUM_TRACKERS],
   output common_pkg::yn_status_e trk_flitpend [NUM_TRACKERS],
   output flit_t                  trk_flit     [NUM_TRACKERS]

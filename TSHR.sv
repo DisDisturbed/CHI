@@ -627,10 +627,9 @@ module TSHR
       end
 
       ST_COMPACK_WAIT: begin
-        // srcid check added for the same reason as ST_WDATA_WAIT: a
-        // CompAck is always sent by the original requester, so its srcid
-        // must match the requester we actually allocated this tracker
-        // for, not just its txnid.
+        
+        // ERROR IN HERE PROBABLY ON THE RX ROUTING ON CONCURRENT INDEPENENT TRANSACTIONS TSHR1 DOESNT GET THE REQUIRED SIGNALS
+        // RX_RSP_FLITV NEVER COMES 
         if ((rx_rsp_flitv == Y) && (rx_rsp_flit.opcode == RSP_COMP_ACK) && (rx_rsp_flit.txnid == txnid_q) && (rx_rsp_flit.srcid == srcid_q)) begin
           
           if (dirty_hit_q == 1'b1) begin
