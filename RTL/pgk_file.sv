@@ -1,5 +1,6 @@
+`timescale 1ns/1ps
 package common_pkg;
-   
+
   typedef enum logic {
     N = 1'b0, // guess: CHI Y/N status encoding
     Y = 1'b1  // guess: CHI Y/N status encoding
@@ -92,7 +93,52 @@ package chi_pkg;
         SNP_FWD_CLEAN_INVALID    = 8'h36,
         SNP_FWD_MAKE_INVALID     = 8'h37
     } snp_opcode_e;
-    
+
+  // ---------------------------------------------------------------------------
+  // Resp[2:0] field encodings (IHI0050 B4.5). The meaning of an encoding
+  // depends on the message it is carried on, so several names share a value:
+  //   CompData / Comp       : I, SC, UC, UD_PD, SD_PD
+  //   SnpResp               : I, SC, UC (=UD on SnpResp), SD
+  //   SnpRespData           : I, SC, UC, SD, I_PD, SC_PD, UD_PD, SD_PD
+  //   CopyBackWrData        : I, SC, UC, UD_PD, SD_PD
+  //   NonCopyBackWrData etc.: always I (3'b000)
+  // The flit structs keep resp as plain logic [2:0]; assign these directly.
+  // ---------------------------------------------------------------------------
+  localparam logic [2:0] RESP_I     = 3'b000;
+  localparam logic [2:0] RESP_SC    = 3'b001;
+  localparam logic [2:0] RESP_UC    = 3'b010;
+  localparam logic [2:0] RESP_UD    = 3'b010;  // SnpResp only (same code as UC)
+  localparam logic [2:0] RESP_SD    = 3'b011;
+  localparam logic [2:0] RESP_I_PD  = 3'b100;
+  localparam logic [2:0] RESP_SC_PD = 3'b101;
+  localparam logic [2:0] RESP_UC_PD = 3'b110;  // SnpRespData only
+  localparam logic [2:0] RESP_UD_PD = 3'b110;  // CompData / CopyBackWrData / SnpRespData
+  localparam logic [2:0] RESP_SD_PD = 3'b111;
+
+  // RespErr[1:0] field encodings (IHI0050 B9.4)
+  localparam logic [1:0] RESPERR_OK    = 2'b00; // Normal Okay
+  localparam logic [1:0] RESPERR_EXOK  = 2'b01; // Exclusive Okay
+  localparam logic [1:0] RESPERR_DERR  = 2'b10; // Data Error
+  localparam logic [1:0] RESPERR_NDERR = 2'b11; // Non-data Error
+
+  // cache line states as tracked by an RN-F (and by an HN-F snoop filter /
+  // directory). Not a flit field - use it for the snoop filter you still need.
+  typedef enum logic [2:0] {
+    CS_I  = 3'd0, // Invalid
+    CS_SC = 3'd1, // Shared Clean
+    CS_UC = 3'd2, // Unique Clean
+    CS_UD = 3'd3, // Unique Dirty
+    CS_SD = 3'd4  // Shared Dirty
+  } cache_state_e;
+
+  // MemAttr[3:0] bit positions: {Allocate, Cacheable, Device, EWA}
+  localparam int MEMATTR_EWA_BIT       = 0;
+  localparam int MEMATTR_DEVICE_BIT    = 1;
+  localparam int MEMATTR_CACHEABLE_BIT = 2;
+  localparam int MEMATTR_ALLOCATE_BIT  = 3;
+  localparam mem_attr_e MEMATTR_NORMAL_WB = 4'b1101; // Allocate, Cacheable, EWA - what the TB RN-Fs send on coherent requests
+  localparam mem_attr_e MEMATTR_NORMAL_NC = 4'b0001; // non-cacheable, EWA       - what the TB RN-Fs send on ReadNoSnp / WriteNoSnp
+
 endpackage : chi_pkg
 
 package tshr_flit_pkg;

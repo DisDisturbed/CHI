@@ -39,10 +39,11 @@ package chi_tb_pkg;
                  SC_DATA_INTLV = 16, SC_HOT_LINES = 17;
   localparam int SC_LAST = 17;
 
-  // Resp[2:0] encodings (IHI0050H B4.5, Tables B4.27/B4.33)
-  localparam logic [2:0] R_I = 3'b000, R_SC = 3'b001, R_UC = 3'b010, R_SD = 3'b011,
-                         R_I_PD = 3'b100, R_SC_PD = 3'b101, R_UD_PD = 3'b110, R_SD_PD = 3'b111;
-  localparam logic [1:0] ERR_OK = 2'b00, ERR_EXOK = 2'b01, ERR_DERR = 2'b10, ERR_NDERR = 2'b11;
+  // Resp[2:0] / RespErr[1:0] encodings - short TB aliases of the RTL package
+  // definitions (chi_pkg::RESP_* / RESPERR_*), so TB and RTL share one source
+  localparam logic [2:0] R_I = RESP_I, R_SC = RESP_SC, R_UC = RESP_UC, R_SD = RESP_SD,
+                         R_I_PD = RESP_I_PD, R_SC_PD = RESP_SC_PD, R_UD_PD = RESP_UD_PD, R_SD_PD = RESP_SD_PD;
+  localparam logic [1:0] ERR_OK = RESPERR_OK, ERR_EXOK = RESPERR_EXOK, ERR_DERR = RESPERR_DERR, ERR_NDERR = RESPERR_NDERR;
 
   // ---------------------------------------------------------------------------
   // logging. log_mode bit0: ANSI red timestamp, bit1: "ERROR:" line prefix
@@ -201,6 +202,8 @@ package chi_tb_pkg;
   endclass
 
   // tiny mutex (events instead of semaphore for simulator portability)
+  // NOTE: the unlock method must not be called release() - that is a
+  // reserved SystemVerilog keyword (force/release) and fails to compile.
   class tx_lock;
     bit   busy;
     event ev;
@@ -209,7 +212,7 @@ package chi_tb_pkg;
       while (busy) @(ev);
       busy = 1;
     endtask
-    function void release();
+    function void unlock();
       busy = 0;
       -> ev;
     endfunction
@@ -250,6 +253,7 @@ package chi_tb_pkg;
     int num_rnf, num_snf, ilv_lsb;
     bit lock_all;       // legacy behaviour: one op per line system-wide
     bit chk_ids;        // check TgtID/SrcID on HN->RN/SN traffic
+    bit use_memattr;    // drive MemAttr on RN requests (coherent: 4'b1101, non-coherent: 4'b0001)
     // ---- runtime knobs (top randomises these per round) ----
     int unsigned rx_cr_cap, rx_cr_pct;       // credits this agent grants to HN
     int unsigned snp_lat_max, bubble_pct, op_timeout, max_out, ack_lat_max;
@@ -284,7 +288,7 @@ package chi_tb_pkg;
 
     function new(int nrnf, int nsnf, int ilv, bit lock_all_);
       num_rnf = nrnf; num_snf = nsnf; ilv_lsb = ilv; lock_all = lock_all_;
-      chk_ids = 1;
+      chk_ids = 1; use_memattr = 1;
       rx_cr_cap = 15; rx_cr_pct = 100; snp_lat_max = 6; bubble_pct = 0;
       op_timeout = 2000; max_out = 4; ack_lat_max = 3;
       dat_interleave = 0; dat_shuffle = 0; compack_readonce = 0; compack_write = 0; wb_race = 1;
@@ -515,12 +519,14 @@ package chi_tb_pkg;
 
     function void mem_check_line(addr_t a, string who, string ctx);
       line_info L;
+      line_t    m;
       L = get_line(a);
       if (!L.known) return;
-      if (snf_line(L.a) !== L.cur) begin
+      m = snf_line(L.a);              // part-select on a function call result is not legal SV
+      if (m !== L.cur) begin
         n_mem_mis++;
         err("MEM_MISMATCH", $sformatf("%s (%s) addr=%0h: memory does not hold the architectural value (mem beat0=%032h exp=%032h)",
-                                      who, ctx, L.a, snf_line(L.a)[127:0], L.cur[127:0]));
+                                      who, ctx, L.a, m[127:0], L.cur[127:0]));
       end
     endfunction
 

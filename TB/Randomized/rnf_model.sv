@@ -181,7 +181,7 @@ module rnf_model #(
     end else if (ep == sb.epoch) begin
       sb.err("LINK_CREDIT", $sformatf("%s: HN-F never granted a REQ credit (cannot send %s txnid=%0d)", NAME, f.opcode.name(), f.txnid));
     end
-    lk.release();
+    lk.unlock();
   endtask
 
   task automatic send_rsp_flit(input local_rsp_flit_t f, input int unsigned ep);
@@ -202,7 +202,7 @@ module rnf_model #(
     end else if (ep == sb.epoch) begin
       sb.err("LINK_CREDIT", $sformatf("%s: HN-F never granted an RSP credit (cannot send %s txnid=%0d)", NAME, f.opcode.name(), f.txnid));
     end
-    lk.release();
+    lk.unlock();
   endtask
 
   task automatic send_dat_beats(input logic [11:0] txnid, input node_id_e tgt, input dat_opcode_e op,
@@ -242,10 +242,10 @@ module rnf_model #(
       end else if (ep == sb.epoch) begin
         sb.err("LINK_CREDIT", $sformatf("%s: HN-F never granted a DAT credit (cannot send beat %0d txnid=%0d)", NAME, i, txnid));
       end
-      if (sb.dat_interleave) lk.release();
+      if (sb.dat_interleave) lk.unlock();
       if (sb.bubble_pct != 0 && rng.chance(sb.bubble_pct)) repeat (rng.range(1, 3)) @(posedge clk);
     end
-    if (!sb.dat_interleave) lk.release();
+    if (!sb.dat_interleave) lk.unlock();
   endtask
 
   function automatic local_rsp_flit_t mk_rsp(node_id_e tgt, logic [11:0] txnid, rsp_opcode_e op, logic [2:0] resp);
@@ -292,7 +292,7 @@ module rnf_model #(
     if (found) begin
       t = new();
       t.txnid = cand; t.opcode = op; t.addr = a; t.size = sz; t.t0 = cyc; t.retries = 0;
-      t.allowretry = 1; t.pcrdttype = 4'h0; t.memattr = sb.use_memattr ? (coherent ? 4'b1101 : 4'b0001) : 4'b0000;
+      t.allowretry = 1; t.pcrdttype = 4'h0; t.memattr = sb.use_memattr ? (coherent ? MEMATTR_NORMAL_WB : MEMATTR_NORMAL_NC) : 4'b0000;
     end
     return found;
   endfunction
@@ -651,11 +651,13 @@ module rnf_model #(
     width_e sz;
     int off, nbytes;
     req_opcode_e opc;
+    bit [NUM_OPS-1:0] al;
     ran = 0;
     a  = line_of(a_in);
     st = get_st(a);
     lk = lock_kind(k);
-    if (allowed_ops(st)[k] && sb.try_begin(a, IDX, lk)) begin
+    al = allowed_ops(st);                   // bit-select on a function call result is not legal SV
+    if (al[k] && sb.try_begin(a, IDX, lk)) begin
       ok = 1;
       sb.n_op[k]++;
       ran = 1;

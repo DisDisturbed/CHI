@@ -190,7 +190,7 @@ module snf_model #(
     end else if (ep == sb.epoch) begin
       sb.err("LINK_CREDIT", $sformatf("%s: HN-F never granted an RSP credit (cannot send %s txnid=%0d)", NAME, f.opcode.name(), f.txnid));
     end
-    rsp_lock.release();
+    rsp_lock.unlock();
   endtask
 
   task automatic send_dat_beats(input logic [11:0] txnid, input node_id_e tgt, input logic [2:0] resp,
@@ -226,10 +226,10 @@ module snf_model #(
         dat_tx.flitv    <= N;
         dat_tx.flitpend <= N;
       end
-      if (sb.dat_interleave) dat_lock.release();
+      if (sb.dat_interleave) dat_lock.unlock();
       if (sb.bubble_pct != 0 && rng.chance(sb.bubble_pct)) repeat (rng.range(1, 3)) @(posedge clk);
     end
-    if (!sb.dat_interleave) dat_lock.release();
+    if (!sb.dat_interleave) dat_lock.unlock();
   endtask
 
   function automatic local_rsp_flit_t mk_rsp(local_req_flit_t rq, rsp_opcode_e op, logic [11:0] dbid, logic [1:0] rerr);
