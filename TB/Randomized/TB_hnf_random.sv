@@ -1,46 +1,5 @@
 `timescale 1ns/1ps
 
-// ---------------------------------------------------------------------
-// Tb_HNF_Random
-//
-// Randomized companion to the directed Tb_HNF scenario suite. Same DUT
-// wiring, but instead of a fixed scenario list, two independent RN-F
-// agents each run a free-running loop of issue_random_op() calls (see
-// rnf_model.sv) against a small shared address pool, self-checked
-// against chi_scoreboard's golden memory as they go. SN-F runs fully
-// autonomously (snf_model.autonomous_responder) since multiple
-// transactions can be genuinely outstanding to it at once.
-//
-// WHAT THIS DOES vs. THE DIRECTED SUITE:
-//   - Directed suite (Tb_HNF.sv): exact, hand-picked sequences - the
-//     right tool for confirming one specific behavior works, and for
-//     regression-locking already-fixed bugs (like the race Scenario I
-//     exposed).
-//   - This file: throws many pseudo-random interleavings of reads/
-//     writes/evictions across 2 RN-Fs at a shared address pool, looking
-//     for anything the directed suite's hand-picked orderings didn't
-//     happen to hit - crossed beats, wrong-tracker matches, arbitration
-//     starvation, etc. It trades precision for coverage breadth.
-//
-// SCOPE BOUNDARIES (both intentional - see chi_scoreboard.sv headers):
-//   - Same-address concurrent access is avoided by the address-busy
-//     lock, since there's no hazard detection yet (separately tracked
-//     by its own directed scenario, not re-litigated here).
-//   - The two RN-Fs draw TxnIDs from disjoint ranges by default, since
-//     TSHR currently matches SN-F-facing traffic on plain txnid_q with
-//     no per-tracker disambiguation - a same-cycle-outstanding TxnID
-//     collision between trackers is a known gap, not something this
-//     "clean" random run is trying to rediscover every time. Flip
-//     ENABLE_TXNID_COLLISION_STRESS below to deliberately go looking
-//     for it instead (expect failures if that gap is still open).
-//
-// REPRODUCIBILITY: SEED is passed to $srandom() once at time 0. Rerunning
-// the same compiled binary with the same SEED reproduces the same
-// sequence of $urandom_range()/shuffle() calls, since the DUT itself is
-// deterministic and process scheduling for a fixed compiled testbench is
-// stable run-to-run in a given simulator - use this to replay a failure.
-// (Not guaranteed to reproduce bit-for-bit across DIFFERENT simulators.)
-// ---------------------------------------------------------------------
 
 module Tb_HNF_Random;
   import chi_pkg::*;

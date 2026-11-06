@@ -338,7 +338,7 @@ module TSHR
         end
       end
 
-      ST_ALLOC: begin
+      ST_ALLOC: begin // allocate a place in the TSHR
         if (opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_CLEAN_FULL) begin
           tx_type_d = TX_WRITE_BACK;
           state_d   = ST_DBIDRESP_SEND; // Skip snoop
@@ -351,7 +351,7 @@ module TSHR
         end
       end
 
-      ST_SNOOP_SEND: begin
+      ST_SNOOP_SEND: begin   // sending a required snoop to the destination depending of the credit
 
         //  not depends combinationally on snp_lcrdv.
         if (snp_credit_have) begin
@@ -382,7 +382,7 @@ module TSHR
         end
       end
 
-      ST_SNOOP_WAIT: begin
+      ST_SNOOP_WAIT: begin // waiting for the response of the snoop it means that response are waiting from the destination
         // snoop-target identity is implicitly guaranteed by the crossbar's
         // fixed physical wiring for the lifetime 
         if (tx_type_q == TX_READ) begin
@@ -458,7 +458,7 @@ module TSHR
           sn_dat_tx_flit.qos     = qos_q;
           sn_dat_tx_flit.tgtid   = SNFID;
           sn_dat_tx_flit.srcid   = HNFID;
-          sn_dat_tx_flit.txnid   = txnid_q;
+          sn_dat_tx_flit.txnid   = sn_dbid_q;
           sn_dat_tx_flit.dbid    = sn_dbid_q;
           sn_dat_tx_flit.dataid  = beat_cnt_q[1:0];
           sn_dat_tx_flit.be      = {(DataWidth/8){1'b1}};
@@ -603,7 +603,11 @@ module TSHR
           dat_tx_flit.dataid = beat_cnt_q[1:0];
           dat_tx_flit.be     = be_q[beat_cnt_q];
           dat_tx_flit.data   = data_q[beat_cnt_q];
-
+          if(opcode_q == REQ_READ_UNIQUE) begin
+              dat_tx_flit.resp = chi_pkg::RESP_UC; 
+          end else begin
+              dat_tx_flit.resp = chi_pkg::RESP_SC;
+          end
           if (beat_cnt_q == LAST_BEAT) begin
             beat_cnt_d = '0;
             state_d = ST_COMPACK_WAIT;
@@ -628,8 +632,6 @@ module TSHR
 
       ST_COMPACK_WAIT: begin
         
-        // ERROR IN HERE PROBABLY ON THE RX ROUTING ON CONCURRENT INDEPENENT TRANSACTIONS TSHR1 DOESNT GET THE REQUIRED SIGNALS
-        // RX_RSP_FLITV NEVER COMES 
         if ((rx_rsp_flitv == Y) && (rx_rsp_flit.opcode == RSP_COMP_ACK) && (rx_rsp_flit.txnid == txnid_q) && (rx_rsp_flit.srcid == srcid_q)) begin
           
           if (dirty_hit_q == 1'b1) begin

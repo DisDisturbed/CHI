@@ -1,15 +1,3 @@
-// ---------------------------------------------------------------------
-// chi_scoreboard (patched: in-flight tracking for diagnosable timeouts)
-//
-// Same golden-memory + address-lock + req-gate mutex as before. Added:
-// note_inflight()/clear_inflight() let an agent record "here's what I'm
-// currently waiting on" right after issuing a request, so that if the
-// watchdog in Tb_HNF_Random fires, report_timeout can print WHICH
-// address/opcode/txnid actually got stuck instead of a bare "RNF0 timed
-// out" with no clue what it was doing. Without this, every timeout looks
-// identical and there's no way to tell if it's the same bug repeating or
-// several different ones.
-// ---------------------------------------------------------------------
 
 class chi_scoreboard #(parameter int NUM_BEATS = 4);
 
