@@ -1,0 +1,118 @@
+# Verilator simulation workspace
+
+Run everything from this `sim/` directory.
+
+```bash
+make run  TB=random SEED=3     # build if needed, simulate, write an FST
+make wave TB=random SEED=3     # open that run in GTKWave
+make sim  TB=directed          # run, then open the waveform
+```
+
+| Command | What it does |
+| --- | --- |
+| `make build` | Compile only |
+| `make run` | Compile if sources changed, then simulate |
+| `make wave` | Open the matching `wave.fst` in GTKWave |
+| `make sim` | `run`, then `wave` |
+| `make lint` | Show all Verilator `-Wall` warnings without building |
+| `make regress SEEDS='1 2 3'` | Run several seeds without waveforms and print one result line each |
+| `make clean` | Delete `build/` and `out/` |
+
+| Option | Default | Meaning |
+| --- | --- | --- |
+| `TB` | `random` | `random` (top `Tb_HNF_Random`) or `directed` (top `Tb_HNF`) |
+| `SEED` | `1` | Seed for `TB=random` |
+| `G` | empty | Other top-level parameters, e.g. `G='NUM_ROUNDS=2 RUN_SCENARIOS=0'` |
+| `WAVES` | `1` | `WAVES=0` skips the waveform |
+| `JOBS` | `8` | Parallel Verilator and C++ compile jobs |
+
+## Where files go
+
+```
+filelists/     source lists: rtl.f, random.f, directed.f
+support/       sim_dump.sv, which enables FST dumping
+waves/         GTKWave views, one per testbench (File > Write Save File updates them)
+build/<tb>/<params>/   compiled model and verilator.log (not in git)
+out/<tb>/<params>/     sim.log and wave.fst (not in git)
+```
+
+For example, `make run TB=random SEED=3` writes `out/random/SEED=3/wave.fst`.
+
+## Surfer
+
+```bash
+make wave VIEWER=surfer TB=random SEED=3
+```
+
+Leave the window open: when `make run` finishes for the same options, Surfer
+refreshes by itself and keeps the signal list and cursor. Zoom may reset.
+
+| Action | Key |
+| --- | --- |
+| Zoom in / out / fit | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` |
+| Next / previous transition | Select a signal, then `Right` / `Left` |
+| Zoom at the mouse | `Ctrl+wheel` |
+| Command prompt (add signals by name, and more) | `Space` |
+| Keyboard help | `show_controls` in the command prompt |
+
+- Starter signal lists are `waves/<tb>.sucl`, settings are `.surfer/config.toml`.
+- A mistake in `config.toml` stops Surfer from starting, and `make wave` hides the
+  message. Run `surfer` from `sim/` in a terminal to see it.
+- Arrays of vectors sit one level deeper than they look:
+  `dut.trk_txnid.trk_txnid`, with rows named `[0] [11:0]`. A `divider_add` line
+  above them keeps track of which array they are.
+- A red `ERROR (00000000)` on an enum means the value is not in the enum. For
+  `opcode` this is just the idle value 0.
+
+## GTKWave for xsim users
+
+| In xsim | Here |
+| --- | --- |
+| Relaunch simulation | `make run` in the terminal, then `F5` in GTKWave. Signals and zoom stay. |
+| `.wcfg` waveform config | `waves/<tb>.gtkw`, saved with `Ctrl+S` |
+| Scope and Objects panes | SST panel: click a scope, select signals, press Append |
+| Zoom in / out / fit | `Ctrl+=` / `Ctrl+-` / `Ctrl+0` |
+| Next / previous transition | Select a signal, then `Ctrl+Right` / `Ctrl+Left` |
+| Mouse wheel | Scrolls signals. `Ctrl+wheel` zooms at the cursor. |
+| Value column | Click in the waves: values appear beside the names at the marker |
+| Radix and enum names | `Alt+X` hex, `Alt+D` decimal, `Alt+B` binary, `Alt+E` enum names |
+| Menu bar | The menu is the `☰` button at the top left |
+
+Settings live in `support/gtkwaverc`.
+
+**There is no red X.** Verilator is a 2-state simulator, so unknown, uninitialized
+and undriven values appear as 0 or 1. A clean-looking signal can be one xsim would
+show as X, so check reset and initialization in xsim if they are in doubt.
+
+Unpacked arrays and interfaces appear as flat lists of signals rather than xsim's
+expandable tree.
+
+## Things to know
+
+- **`SEED` and `G` are compile-time parameters.** Each new combination gets its
+  own build (about 10 s and 190 MB). `make clean` removes them all.
+- **A finished run is not a passing run.** The testbenches call `$finish` even
+  after failures, so `make` still succeeds. Read the summary at the end of the
+  log.
+- **Waveforms need no testbench changes.** `sim_dump.sv` is bound into the top
+  module, and a new top only needs a block in the `Makefile` and a filelist.
+- **`TB/Randomized/chi_scoreboard.sv` is not compiled.** It is unused: the active
+  scoreboard class is inside `chi_tb_pkg.sv`.
+- **Do not put "Verilator" first in a `/* */` or `//` comment line.** Verilator
+  reads it as a pragma and fails with `BADVLTPRAGMA`.
+
+## Changes `TB/Randomized/rnf_model.sv` needs for Verilator
+
+Verilator inlines every task call. The many calls to `do_op` and `run_*` grow the
+design tree from 2 MB to 1.5 GB, and elaboration never finishes. Two changes keep
+it working, and both are plain SystemVerilog or comments to other simulators:
+
+1. `run_read`, `run_write`, `run_cmo`, `do_op` and `do_op_f` carry a
+   `/*verilator no_inline_task*/` comment. The Makefile's `-Wno-IMPURE` allows it.
+2. The TX tasks no longer write interface pins directly. They set `*_d_*`
+   variables and fire an event, and `always @(req_drive)` style blocks drive the
+   pins.
+
+**Keep rule 2 when editing that file.** Verilator does not schedule logic that
+depends on signals written inside a `no_inline_task` task. A direct write compiles
+without complaint, but the DUT sees stale values and you get false failures.

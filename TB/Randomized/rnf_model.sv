@@ -158,6 +158,22 @@ module rnf_model #(
     end
   end
 
+  // ---------------------------------------------------------------- TX pin drivers
+  // The TX tasks below end up inside tasks marked no_inline_task, which keeps
+  // elaboration in the Verilator flow from blowing up. That tool does not
+  // schedule logic sensitive to signals written from such tasks, so the tasks
+  // must not write the interfaces directly: they set req/rsp/dat_d_* and fire
+  // the event, and these module-level blocks apply it with the same NBA timing.
+  local_req_flit_t req_d_flit;
+  local_rsp_flit_t rsp_d_flit;
+  local_dat_flit_t dat_d_flit;
+  yn_status_e req_d_v, req_d_pend, rsp_d_v, rsp_d_pend, dat_d_v, dat_d_pend;
+  event req_drive, rsp_drive, dat_drive;
+
+  always @(req_drive) begin req_tx.flit <= req_d_flit; req_tx.flitv <= req_d_v; req_tx.flitpend <= req_d_pend; end
+  always @(rsp_drive) begin rsp_tx.flit <= rsp_d_flit; rsp_tx.flitv <= rsp_d_v; rsp_tx.flitpend <= rsp_d_pend; end
+  always @(dat_drive) begin dat_tx.flit <= dat_d_flit; dat_tx.flitv <= dat_d_v; dat_tx.flitpend <= dat_d_pend; end
+
   // ---------------------------------------------------------------- TX primitives
   task automatic send_req_flit(input local_req_flit_t f, input int unsigned ep, output bit sent);
     int unsigned t0;
@@ -170,14 +186,16 @@ module rnf_model #(
     while ((req_cr_in - req_cr_out) <= 0 && ep == sb.epoch && (cyc - t0) < sb.op_timeout) @(posedge clk);
     if (ep == sb.epoch && (req_cr_in - req_cr_out) > 0) begin
       req_cr_out++;
-      req_tx.flit     <= f;
-      req_tx.flitv    <= Y;
-      req_tx.flitpend <= Y;
+      req_d_flit = f;
+      req_d_v    = Y;
+      req_d_pend = Y;
+      -> req_drive;
       sb.n_req++;
       sent = 1;
       @(posedge clk);
-      req_tx.flitv    <= N;
-      req_tx.flitpend <= N;
+      req_d_v    = N;
+      req_d_pend = N;
+      -> req_drive;
     end else if (ep == sb.epoch) begin
       sb.err("LINK_CREDIT", $sformatf("%s: HN-F never granted a REQ credit (cannot send %s txnid=%0d)", NAME, f.opcode.name(), f.txnid));
     end
@@ -193,12 +211,14 @@ module rnf_model #(
     while ((rsp_cr_in - rsp_cr_out) <= 0 && ep == sb.epoch && (cyc - t0) < sb.op_timeout) @(posedge clk);
     if (ep == sb.epoch && (rsp_cr_in - rsp_cr_out) > 0) begin
       rsp_cr_out++;
-      rsp_tx.flit     <= f;
-      rsp_tx.flitv    <= Y;
-      rsp_tx.flitpend <= Y;
+      rsp_d_flit = f;
+      rsp_d_v    = Y;
+      rsp_d_pend = Y;
+      -> rsp_drive;
       @(posedge clk);
-      rsp_tx.flitv    <= N;
-      rsp_tx.flitpend <= N;
+      rsp_d_v    = N;
+      rsp_d_pend = N;
+      -> rsp_drive;
     end else if (ep == sb.epoch) begin
       sb.err("LINK_CREDIT", $sformatf("%s: HN-F never granted an RSP credit (cannot send %s txnid=%0d)", NAME, f.opcode.name(), f.txnid));
     end
@@ -233,12 +253,14 @@ module rnf_model #(
       while ((dat_cr_in - dat_cr_out) <= 0 && ep == sb.epoch && (cyc - t0) < sb.op_timeout) @(posedge clk);
       if (ep == sb.epoch && (dat_cr_in - dat_cr_out) > 0) begin
         dat_cr_out++;
-        dat_tx.flit     <= f;
-        dat_tx.flitv    <= Y;
-        dat_tx.flitpend <= (i == n - 1) ? N : Y;
+        dat_d_flit = f;
+        dat_d_v    = Y;
+        dat_d_pend = (i == n - 1) ? N : Y;
+        -> dat_drive;
         @(posedge clk);
-        dat_tx.flitv    <= N;
-        dat_tx.flitpend <= N;
+        dat_d_v    = N;
+        dat_d_pend = N;
+        -> dat_drive;
       end else if (ep == sb.epoch) begin
         sb.err("LINK_CREDIT", $sformatf("%s: HN-F never granted a DAT credit (cannot send beat %0d txnid=%0d)", NAME, i, txnid));
       end
@@ -402,7 +424,7 @@ module rnf_model #(
     endcase
   endfunction
 
-  task automatic run_read(input rn_txn t, input int unsigned ep, output bit ok);
+  task automatic run_read(input rn_txn t, input int unsigned ep, output bit ok); /*verilator no_inline_task*/
     rd_rec rr;
     local_dat_flit_t df;
     local_rsp_flit_t rf;
@@ -493,7 +515,7 @@ module rnf_model #(
     endcase
   endfunction
 
-  task automatic run_write(input rn_txn t, input line_t data, input bemask_t mask, input int unsigned ep, output bit ok);
+  task automatic run_write(input rn_txn t, input line_t data, input bemask_t mask, input int unsigned ep, output bit ok); /*verilator no_inline_task*/
     local_rsp_flit_t rf;
     bit have_dbid, have_comp, data_sent, abort, sent, alive, is_cb, is_coh, got_err;
     logic [11:0] dbid;
@@ -578,7 +600,7 @@ module rnf_model #(
   endtask
 
   // ---------------------------------------------------------------- dataless (CMO) family
-  task automatic run_cmo(input rn_txn t, input int unsigned ep, output bit ok);
+  task automatic run_cmo(input rn_txn t, input int unsigned ep, output bit ok); /*verilator no_inline_task*/
     local_rsp_flit_t rf;
     bit sent, alive;
     addr_t la;
@@ -640,7 +662,7 @@ module rnf_model #(
     return m;
   endfunction
 
-  task automatic do_op(input opkind_e k, input addr_t a_in, input int unsigned ep, output bit ran);
+  task automatic do_op(input opkind_e k, input addr_t a_in, input int unsigned ep, output bit ran); /*verilator no_inline_task*/
     addr_t a, wa;
     cstate_e st;
     lockkind_e lk;
@@ -724,7 +746,7 @@ module rnf_model #(
   endtask
 
   // directed helper: bring the line into a state from which `k` is legal, then run it
-  task automatic do_op_f(input opkind_e k, input addr_t a, input int unsigned ep);
+  task automatic do_op_f(input opkind_e k, input addr_t a, input int unsigned ep); /*verilator no_inline_task*/
     bit ran;
     cstate_e st;
     st = get_st(line_of(a));
