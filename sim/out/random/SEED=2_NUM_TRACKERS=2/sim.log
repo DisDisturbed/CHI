@@ -1,0 +1,288 @@
+=== Tb_HNF_Random: SEED=2 NUM_TRACKERS=2 LOCK_ALL=0 scenarios=1(1..25) rounds=8 x 50 ops/RN mid_resets=4 ===
+=== features: comp_first=1 comp_early=1 pcrd_early=1 compack_opt=1 snp_opt_data=1 zero_be=1 nc_multi=1 unaligned=1 txid_collide=1 ===
+[145000] TOP: start scenario 1
+[6195000] TOP: done  scenario 1 (605 cycles, failures so far 0)
+[6195000] TOP: start scenario 2
+[17575000] TOP: done  scenario 2 (1138 cycles, failures so far 0)
+[17575000] TOP: start scenario 3
+[25715000] TOP: done  scenario 3 (814 cycles, failures so far 0)
+[25715000] TOP: start scenario 4
+[31425000] TOP: done  scenario 4 (571 cycles, failures so far 0)
+[31425000] TOP: start scenario 5
+[39615000] TOP: done  scenario 5 (819 cycles, failures so far 0)
+[39615000] TOP: start scenario 6
+[40965000] TOP: done  scenario 6 (135 cycles, failures so far 0)
+[40965000] TOP: start scenario 7
+[49185000] TOP: done  scenario 7 (822 cycles, failures so far 0)
+[49185000] TOP: start scenario 8
+[60365000] TOP: done  scenario 8 (1118 cycles, failures so far 0)
+[60365000] TOP: start scenario 9
+[63225000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=143 srcid=1 opcode=REQ_WRITE_UNIQUE_FULL addr=10000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[63285000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=3011 srcid=2 opcode=REQ_WRITE_UNIQUE_PTL addr=10018 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[63445000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 121 cycles (only slow, not deadlocked)
+[63535000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 124 cycles (only slow, not deadlocked)
+[66035000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2940 srcid=2 opcode=REQ_WRITE_BACK_FULL addr=20000 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[66055000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=704 srcid=1 opcode=REQ_READ_SHARED addr=80000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[66225000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 118 cycles (only slow, not deadlocked)
+[66305000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[67885000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1908 srcid=1 opcode=REQ_READ_UNIQUE addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[68105000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 121 cycles (only slow, not deadlocked)
+[69255000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1261 srcid=1 opcode=REQ_READ_NO_SNOOP addr=21000d tx_type=TX_READ_NOSNP beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[69455000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 119 cycles (only slow, not deadlocked)
+[70285000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1912 srcid=1 opcode=REQ_WRITE_NO_SNOOP_PTL addr=220000 tx_type=TX_WRITE_NOSNP beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[70585000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[70775000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=37 srcid=1 opcode=REQ_WRITE_UNIQUE_FULL addr=10000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[71015000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[72875000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=280 srcid=1 opcode=REQ_READ_ONCE addr=30000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[73145000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 126 cycles (only slow, not deadlocked)
+[74635000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=3717 srcid=2 opcode=REQ_READ_UNIQUE addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[74935000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[75055000] TOP: done  scenario 9 (1469 cycles, failures so far 0)
+[75055000] TOP: start scenario 10
+[78325000] TOP: done  scenario 10 (327 cycles, failures so far 0)
+[78325000] TOP: start scenario 11
+[83505000] TOP: done  scenario 11 (518 cycles, failures so far 0)
+[83505000] TOP: start scenario 12
+[89745000] TOP: done  scenario 12 (624 cycles, failures so far 0)
+[89745000] TOP: start scenario 13
+[95505000] TOP: done  scenario 13 (576 cycles, failures so far 0)
+[95505000] TOP: start scenario 14
+[100765000] TOP: done  scenario 14 (526 cycles, failures so far 0)
+[100765000] TOP: start scenario 15
+[118225000] TOP: done  scenario 15 (1746 cycles, failures so far 0)
+[118225000] TOP: start scenario 16
+[125435000] TOP: done  scenario 16 (721 cycles, failures so far 0)
+[125435000] TOP: start scenario 17
+[128335000] TOP: done  scenario 17 (290 cycles, failures so far 0)
+[128335000] TOP: start scenario 18
+[153275000] TOP: done  scenario 18 (2494 cycles, failures so far 0)
+[153275000] TOP: start scenario 19
+[176335000] TOP: done  scenario 19 (2306 cycles, failures so far 0)
+[176335000] TOP: start scenario 20
+[190365000] TOP: done  scenario 20 (1403 cycles, failures so far 0)
+[190365000] TOP: start scenario 21
+[193155000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_COMP_WAIT for 100 cycles: waits for Comp from SN-F after the write data
+           txnid=398 srcid=1 opcode=REQ_WRITE_UNIQUE_PTL addr=50038 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[195355000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_COMP_WAIT for 100 cycles: waits for Comp from SN-F after the write data
+           txnid=3837 srcid=2 opcode=REQ_WRITE_NO_SNOOP_PTL addr=200000 tx_type=TX_WRITE_NOSNP beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+ERROR: [1;31m[211485000][0m TIMEOUT: RNF0: REQ_WRITE_UNIQUE_PTL did not complete (dbid=1 comp=0 data_sent=1) (addr=50038 opcode=REQ_WRITE_UNIQUE_PTL txnid=398)
+ERROR: [1;31m[212755000][0m TIMEOUT: RNF1: REQ_WRITE_NO_SNOOP_PTL did not complete (dbid=1 comp=0 data_sent=1) (addr=200000 opcode=REQ_WRITE_NO_SNOOP_PTL txnid=3837)
+ERROR: [1;31m[214045000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_READ_UNIQUE txnid=1588)
+ERROR: [1;31m[214045000][0m TIMEOUT: RNF0: REQ_READ_UNIQUE did not complete (0/4 beats received) (addr=10000 opcode=REQ_READ_UNIQUE txnid=1588)
+ERROR: [1;31m[214205000][0m LINK_CREDIT: RNF1: HN-F never granted a REQ credit (cannot send REQ_READ_CLEAN txnid=2560)
+ERROR: [1;31m[214205000][0m TIMEOUT: RNF1: REQ_READ_CLEAN did not complete (0/4 beats received) (addr=50000 opcode=REQ_READ_CLEAN txnid=2560)
+ERROR: [1;31m[234045000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_WRITE_BACK_FULL txnid=560)
+ERROR: [1;31m[234045000][0m TIMEOUT: RNF0: REQ_WRITE_BACK_FULL did not complete (dbid=0 comp=0 data_sent=0) (addr=20000 opcode=REQ_WRITE_BACK_FULL txnid=560)
+ERROR: [1;31m[234205000][0m LINK_CREDIT: RNF1: HN-F never granted a REQ credit (cannot send REQ_READ_NO_SNOOP txnid=2147)
+ERROR: [1;31m[234205000][0m TIMEOUT: RNF1: REQ_READ_NO_SNOOP did not complete (0/1 beats received) (addr=210010 opcode=REQ_READ_NO_SNOOP txnid=2147)
+ERROR: [1;31m[254045000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_READ_UNIQUE txnid=1899)
+ERROR: [1;31m[254045000][0m TIMEOUT: RNF0: REQ_READ_UNIQUE did not complete (0/4 beats received) (addr=30000 opcode=REQ_READ_UNIQUE txnid=1899)
+ERROR: [1;31m[254205000][0m LINK_CREDIT: RNF1: HN-F never granted a REQ credit (cannot send REQ_WRITE_BACK_FULL txnid=3557)
+ERROR: [1;31m[254205000][0m TIMEOUT: RNF1: REQ_WRITE_BACK_FULL did not complete (dbid=0 comp=0 data_sent=0) (addr=10000 opcode=REQ_WRITE_BACK_FULL txnid=3557)
+ERROR: [1;31m[274045000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_WRITE_NO_SNOOP_FULL txnid=75)
+ERROR: [1;31m[274045000][0m TIMEOUT: RNF0: REQ_WRITE_NO_SNOOP_FULL did not complete (dbid=0 comp=0 data_sent=0) (addr=200000 opcode=REQ_WRITE_NO_SNOOP_FULL txnid=75)
+ERROR: [1;31m[274205000][0m LINK_CREDIT: RNF1: HN-F never granted a REQ credit (cannot send REQ_READ_CLEAN txnid=2788)
+ERROR: [1;31m[274205000][0m TIMEOUT: RNF1: REQ_READ_CLEAN did not complete (0/4 beats received) (addr=20000 opcode=REQ_READ_CLEAN txnid=2788)
+ERROR: [1;31m[294045000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_WRITE_NO_SNOOP_FULL txnid=936)
+ERROR: [1;31m[294045000][0m TIMEOUT: RNF0: REQ_WRITE_NO_SNOOP_FULL did not complete (dbid=0 comp=0 data_sent=0) (addr=210000 opcode=REQ_WRITE_NO_SNOOP_FULL txnid=936)
+ERROR: [1;31m[314045000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_WRITE_BACK_FULL txnid=1024)
+ERROR: [1;31m[314045000][0m TIMEOUT: RNF0: REQ_WRITE_BACK_FULL did not complete (dbid=0 comp=0 data_sent=0) (addr=b0000 opcode=REQ_WRITE_BACK_FULL txnid=1024)
+ERROR: [1;31m[334045000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_WRITE_UNIQUE_FULL txnid=478)
+ERROR: [1;31m[334045000][0m TIMEOUT: RNF0: REQ_WRITE_UNIQUE_FULL did not complete (dbid=0 comp=0 data_sent=0) (addr=a0000 opcode=REQ_WRITE_UNIQUE_FULL txnid=478)
+[334065000] TOP: done  scenario 21 (14370 cycles, failures so far 24)
+[334065000] TOP: reset (isolate the failure of scenario 21)
+[334065000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon was stuck in ST_SN_COMP_WAIT since 194365000
+[334065000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon was stuck in ST_SN_COMP_WAIT since 192165000
+[334215000] TOP: start scenario 22
+[346555000] TOP: done  scenario 22 (1234 cycles, failures so far 24)
+[346555000] TOP: start scenario 23
+[349785000] TOP: done  scenario 23 (323 cycles, failures so far 24)
+[349785000] TOP: start scenario 24
+[356945000] TOP: done  scenario 24 (716 cycles, failures so far 24)
+[356945000] TOP: start scenario 25
+[375315000] TOP: done  scenario 25 (1837 cycles, failures so far 24)
+[375315000] TOP: round 0 knobs: cr_cap=4 cr_pct=100 snp_lat=9 bubble=0 max_out=4 ack_lat=5 intlv=1 shuffle=0 snf_lat=6 snf_slow=18 hot=2/61% txid_mode=3 | retry=0% pcrd_types=9 pcrd_early=0% comp_first=34% comp_early=8% compack ro/wr=0/0 snp_opt_data=0% zero_be=20% nc_multi=0 unaligned=31%
+[375315000] TOP: start random round 0
+[377995000] TOP: done  random round 0 (268 cycles, failures so far 24)
+[377995000] TOP: round 1 knobs: cr_cap=7 cr_pct=100 snp_lat=4 bubble=0 max_out=1 ack_lat=2 intlv=1 shuffle=0 snf_lat=4 snf_slow=0 hot=4/44% txid_mode=3 | retry=0% pcrd_types=2 pcrd_early=0% comp_first=0% comp_early=0% compack ro/wr=1/0 snp_opt_data=44% zero_be=0% nc_multi=0 unaligned=33%
+[377995000] TOP: start random round 1
+[388855000] TOP: done  random round 1 (1086 cycles, failures so far 24)
+[388855000] TOP: round 2 knobs: cr_cap=1 cr_pct=100 snp_lat=9 bubble=0 max_out=4 ack_lat=3 intlv=0 shuffle=0 snf_lat=7 snf_slow=0 hot=2/32% txid_mode=0 | retry=0% pcrd_types=9 pcrd_early=0% comp_first=0% comp_early=0% compack ro/wr=0/0 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=0%
+[388855000] TOP: start random round 2
+[399265000] TOP: done  random round 2 (1041 cycles, failures so far 24)
+[399265000] TOP: round 3 knobs: cr_cap=13 cr_pct=100 snp_lat=10 bubble=26 max_out=3 ack_lat=2 intlv=1 shuffle=0 snf_lat=0 snf_slow=0 hot=1/30% txid_mode=2 | retry=40% pcrd_types=4 pcrd_early=69% comp_first=40% comp_early=0% compack ro/wr=1/1 snp_opt_data=39% zero_be=0% nc_multi=1 unaligned=0%
+[399265000] TOP: start random round 3
+[403935000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_COMP_WAIT for 100 cycles: waits for Comp from SN-F after the write data
+           txnid=1144 srcid=2 opcode=REQ_WRITE_BACK_FULL addr=a0000 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[414245000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=2206 srcid=2 opcode=REQ_READ_CLEAN addr=a0000 tx_type=TX_WRITE_NOSNP beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+ERROR: [1;31m[431935000][0m TIMEOUT: RNF1: REQ_READ_CLEAN did not complete (0/4 beats received) (addr=a0000 opcode=REQ_READ_CLEAN txnid=2206)
+ERROR: [1;31m[432965000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_READ_NO_SNOOP txnid=400)
+ERROR: [1;31m[432965000][0m TIMEOUT: RNF0: REQ_READ_NO_SNOOP did not complete (0/4 beats received) (addr=220000 opcode=REQ_READ_NO_SNOOP txnid=400)
+ERROR: [1;31m[433225000][0m LINK_CREDIT: RNF1: HN-F never granted a REQ credit (cannot send REQ_READ_SHARED txnid=1093)
+ERROR: [1;31m[433225000][0m TIMEOUT: RNF1: REQ_READ_SHARED did not complete (0/4 beats received) (addr=e0000 opcode=REQ_READ_SHARED txnid=1093)
+ERROR: [1;31m[452965000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_READ_SHARED txnid=3588)
+ERROR: [1;31m[452965000][0m TIMEOUT: RNF0: REQ_READ_SHARED did not complete (0/4 beats received) (addr=a0000 opcode=REQ_READ_SHARED txnid=3588)
+ERROR: [1;31m[453225000][0m LINK_CREDIT: RNF1: HN-F never granted a REQ credit (cannot send REQ_READ_UNIQUE txnid=3049)
+ERROR: [1;31m[453225000][0m TIMEOUT: RNF1: REQ_READ_UNIQUE did not complete (0/4 beats received) (addr=10000 opcode=REQ_READ_UNIQUE txnid=3049)
+ERROR: [1;31m[472965000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_READ_UNIQUE txnid=1386)
+ERROR: [1;31m[472965000][0m TIMEOUT: RNF0: REQ_READ_UNIQUE did not complete (0/4 beats received) (addr=10000 opcode=REQ_READ_UNIQUE txnid=1386)
+ERROR: [1;31m[473225000][0m LINK_CREDIT: RNF1: HN-F never granted a REQ credit (cannot send REQ_WRITE_UNIQUE_FULL txnid=3703)
+ERROR: [1;31m[473225000][0m TIMEOUT: RNF1: REQ_WRITE_UNIQUE_FULL did not complete (dbid=0 comp=0 data_sent=0) (addr=100000 opcode=REQ_WRITE_UNIQUE_FULL txnid=3703)
+ERROR: [1;31m[492965000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_READ_SHARED txnid=2684)
+ERROR: [1;31m[492965000][0m TIMEOUT: RNF0: REQ_READ_SHARED did not complete (0/4 beats received) (addr=e0000 opcode=REQ_READ_SHARED txnid=2684)
+[492985000] TOP: done  random round 3 (9372 cycles, failures so far 39)
+[492985000] TOP: reset (isolate the failure of random round 3)
+[492985000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon was stuck in ST_HAZARD_WAIT since 413255000
+[492985000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon was stuck in ST_SN_COMP_WAIT since 402945000
+[493135000] TOP: round 4 knobs: cr_cap=6 cr_pct=100 snp_lat=7 bubble=0 max_out=4 ack_lat=5 intlv=0 shuffle=0 snf_lat=4 snf_slow=0 hot=3/66% txid_mode=3 | retry=0% pcrd_types=12 pcrd_early=49% comp_first=0% comp_early=0% compack ro/wr=0/0 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=33%
+[493135000] TOP: start random round 4
+[494865000] TOP: done  random round 4 (173 cycles, failures so far 39)
+[494865000] TOP: round 5 knobs: cr_cap=8 cr_pct=100 snp_lat=0 bubble=0 max_out=2 ack_lat=1 intlv=0 shuffle=0 snf_lat=0 snf_slow=0 hot=4/24% txid_mode=3 | retry=39% pcrd_types=8 pcrd_early=52% comp_first=30% comp_early=0% compack ro/wr=0/1 snp_opt_data=37% zero_be=0% nc_multi=1 unaligned=0%
+[494865000] TOP: start random round 5
+[497555000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_COMP_WAIT for 100 cycles: waits for Comp from SN-F after the write data
+           txnid=0 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=10000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[500735000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_COMP_WAIT for 100 cycles: waits for Comp from SN-F after the write data
+           txnid=1 srcid=2 opcode=REQ_WRITE_NO_SNOOP_PTL addr=210034 tx_type=TX_WRITE_NOSNP beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+ERROR: [1;31m[516095000][0m TIMEOUT: RNF1: REQ_WRITE_UNIQUE_FULL did not complete (dbid=1 comp=0 data_sent=1) (addr=10000 opcode=REQ_WRITE_UNIQUE_FULL txnid=0)
+ERROR: [1;31m[519465000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_WRITE_UNIQUE_FULL txnid=1)
+ERROR: [1;31m[519465000][0m TIMEOUT: RNF0: REQ_WRITE_UNIQUE_FULL did not complete (dbid=0 comp=0 data_sent=0) (addr=d0000 opcode=REQ_WRITE_UNIQUE_FULL txnid=1)
+ERROR: [1;31m[519465000][0m TIMEOUT: RNF1: REQ_WRITE_NO_SNOOP_PTL did not complete (dbid=1 comp=0 data_sent=1) (addr=210034 opcode=REQ_WRITE_NO_SNOOP_PTL txnid=1)
+ERROR: [1;31m[539465000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_READ_CLEAN txnid=0)
+ERROR: [1;31m[539465000][0m TIMEOUT: RNF0: REQ_READ_CLEAN did not complete (0/4 beats received) (addr=e0000 opcode=REQ_READ_CLEAN txnid=0)
+[539485000] TOP: done  random round 5 (4462 cycles, failures so far 45)
+[539485000] TOP: reset (isolate the failure of random round 5)
+[539485000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon was stuck in ST_SN_COMP_WAIT since 496565000
+[539485000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon was stuck in ST_SN_COMP_WAIT since 499745000
+[539635000] TOP: round 6 knobs: cr_cap=13 cr_pct=100 snp_lat=7 bubble=0 max_out=3 ack_lat=1 intlv=0 shuffle=1 snf_lat=3 snf_slow=5 hot=1/86% txid_mode=0 | retry=33% pcrd_types=7 pcrd_early=45% comp_first=0% comp_early=0% compack ro/wr=0/1 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=0%
+[539635000] TOP: start random round 6
+[545815000] TOP: done  random round 6 (618 cycles, failures so far 45)
+[545815000] TOP: round 7 knobs: cr_cap=13 cr_pct=37 snp_lat=3 bubble=22 max_out=4 ack_lat=2 intlv=0 shuffle=0 snf_lat=4 snf_slow=0 hot=1/75% txid_mode=2 | retry=0% pcrd_types=16 pcrd_early=0% comp_first=0% comp_early=14% compack ro/wr=0/0 snp_opt_data=0% zero_be=26% nc_multi=1 unaligned=0%
+[545815000] TOP: start random round 7
+[551505000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_COMP_WAIT for 100 cycles: waits for Comp from SN-F after the write data
+           txnid=41 srcid=2 opcode=REQ_WRITE_BACK_FULL addr=10000 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+ERROR: [1;31m[570345000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_WRITE_UNIQUE_FULL txnid=958)
+ERROR: [1;31m[570345000][0m TIMEOUT: (further messages of this category suppressed, still counted)
+ERROR: [1;31m[590345000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_READ_UNIQUE txnid=3933)
+ERROR: [1;31m[610345000][0m LINK_CREDIT: RNF0: HN-F never granted a REQ credit (cannot send REQ_WRITE_NO_SNOOP_FULL txnid=3376)
+[610365000] TOP: done  random round 7 (6455 cycles, failures so far 51)
+[610365000] TOP: reset (isolate the failure of random round 7)
+[610365000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon was stuck in ST_SN_COMP_WAIT since 550515000
+[610515000] TOP: reset round 0 knobs: cr_cap=2 cr_pct=71 snp_lat=2 bubble=8 max_out=2 ack_lat=3 intlv=0 shuffle=0 snf_lat=7 snf_slow=22 hot=1/31% txid_mode=2 | retry=34% pcrd_types=11 pcrd_early=37% comp_first=0% comp_early=0% compack ro/wr=0/1 snp_opt_data=0% zero_be=28% nc_multi=1 unaligned=0%
+[610515000] TOP: start reset round 0
+[613515000] TOP: reset (mid-traffic reset after 300 cycles)
+[613665000] TOP: reset round 1 knobs: cr_cap=2 cr_pct=76 snp_lat=4 bubble=0 max_out=4 ack_lat=2 intlv=0 shuffle=0 snf_lat=3 snf_slow=0 hot=2/55% txid_mode=0 | retry=0% pcrd_types=6 pcrd_early=0% comp_first=0% comp_early=39% compack ro/wr=0/0 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=0%
+[613665000] TOP: start reset round 1
+[616255000] TOP: reset (mid-traffic reset after 259 cycles)
+[616405000] TOP: reset round 2 knobs: cr_cap=11 cr_pct=28 snp_lat=0 bubble=30 max_out=4 ack_lat=2 intlv=0 shuffle=0 snf_lat=7 snf_slow=0 hot=4/34% txid_mode=3 | retry=0% pcrd_types=16 pcrd_early=68% comp_first=34% comp_early=0% compack ro/wr=1/0 snp_opt_data=36% zero_be=0% nc_multi=1 unaligned=0%
+[616405000] TOP: start reset round 2
+[618225000] TOP: reset (mid-traffic reset after 182 cycles)
+[618375000] TOP: reset round 3 knobs: cr_cap=13 cr_pct=100 snp_lat=7 bubble=0 max_out=4 ack_lat=5 intlv=1 shuffle=0 snf_lat=0 snf_slow=0 hot=2/42% txid_mode=0 | retry=0% pcrd_types=5 pcrd_early=54% comp_first=28% comp_early=20% compack ro/wr=0/0 snp_opt_data=33% zero_be=0% nc_multi=1 unaligned=54%
+[618375000] TOP: start reset round 3
+[622665000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_COMP_WAIT for 100 cycles: waits for Comp from SN-F after the write data
+           txnid=562 srcid=1 opcode=REQ_WRITE_NO_SNOOP_PTL addr=22001a tx_type=TX_WRITE_NOSNP beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[623105000] TOP: reset (mid-traffic reset after 473 cycles)
+[623105000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon was stuck in ST_SN_COMP_WAIT since 621675000
+[623255000] TOP: post-reset round knobs: cr_cap=6 cr_pct=100 snp_lat=8 bubble=0 max_out=3 ack_lat=3 intlv=1 shuffle=0 snf_lat=2 snf_slow=20 hot=3/37% txid_mode=0 | retry=0% pcrd_types=11 pcrd_early=0% comp_first=0% comp_early=46% compack ro/wr=1/0 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=18%
+[623255000] TOP: start random round after the mid-traffic resets
+[636135000] TOP: done  random round after the mid-traffic resets (1288 cycles, failures so far 51)
+[636135000] TOP: start end-of-test flush
+[638115000] TOP: done  end-of-test flush (198 cycles, failures so far 51)
+
+================= SCOREBOARD SUMMARY (seed=2) =================
+  requests issued     : 1741 (retries 0, PCrdGrants 0)
+  ops by kind         : RS=343 RC=107 RU=471 RO=112 WUF=167 WUP=164 WB=150 WC=12 CS=43 CI=56 MI=20 ST=221 SE=203 NRD=199 NWR=226
+  reads checked       : 1025 (43 unchecked: unknown value / RespErr; 0 of those: too many writes in flight)
+  writes committed    : 475, silent stores 221
+  snoops answered     : 1225
+  SN-F errors injected: 12 (seen at RN 12)
+  resets applied      : 8
+  ---- failures ----
+  read mismatches     : 0
+  stale cached data   : 0
+  SWMR violations     : 0
+  protocol errors     : 23
+  unexpected responses: 0
+  SN-F misroutes      : 0
+  memory mismatches   : 0
+  timeouts            : 28
+  DUT state/credit/cov: 0
+  ---- coverage ----
+  hnf: P-credit banked with no tracker waiting     177
+  hnf: all trackers busy                           40946
+  hnf: all trackers busy (cycles)                  40946
+  hnf: both RN-F REQ on the same cycle             59
+  hnf: both RN-F REQ on the same cycle, same line  34
+  rn: CompAck delayed > 8 cycles possible          13
+  rn: CompAck on ReadOnce/ReadNoSnp                53
+  rn: CompAck on a write                           47
+  rn: clean SnpRespData_I on SnpUnique RetToSrc=0  7
+  rn: partial write with BE=0                      19
+  rn: unaligned ReadNoSnp                          28
+  rn: unaligned WriteNoSnpPtl                      15
+  sb: writes in flight on one line >=2             91
+  snf: Comp after DBIDResp, before write data      4
+  snf: Comp before DBIDResp                        4
+  snf: PCrdGrant before RetryAck                   52
+  snf: PCrdType != 0                               110
+  snf: RetryAck                                    122
+  top: reset with traffic in flight                3
+  tshr: dirty write-back after TX_CMO              13
+  tshr: dirty write-back after TX_READ             75
+  tshr: dirty write-back after TX_WRITE_UNIQUE     28
+  tshr: enter ST_ALLOC                             2022
+  tshr: enter ST_COMPACK_WAIT                      851
+  tshr: enter ST_COMP_SEND                         582
+  tshr: enter ST_DBIDRESP_SEND                     629
+  tshr: enter ST_DIRTY_WB_DATA_SEND                116
+  tshr: enter ST_DIRTY_WB_REQ_SEND                 119
+  tshr: enter ST_DIRTY_WB_RSP_WAIT                 119
+  tshr: enter ST_DONE                              1728
+  tshr: enter ST_HAZARD_WAIT                       282
+  tshr: enter ST_RDATA_SEND                        1007
+  tshr: enter ST_SNOOP_SEND                        1225
+  tshr: enter ST_SNOOP_WAIT                        1225
+  tshr: enter ST_SN_COMP_WAIT                      277
+  tshr: enter ST_SN_DATA_SEND                      592
+  tshr: enter ST_SN_REQ_SEND                       1387
+  tshr: enter ST_SN_RETRY_WAIT                     122
+  tshr: enter ST_SN_RSP_WAIT                       1387
+  tshr: enter ST_WDATA_WAIT                        629
+========================================================
+
+  ---- error categories ----
+  LINK_CREDIT: 23
+  TIMEOUT: 28
+*** HN-F REGRESSION: 51 FAILURES (seed=2) - rerun with this SEED to reproduce ***
+- ../TB/Randomized/TB_hnf_random.sv:502: Verilog $finish
+- S i m u l a t i o n   R e p o r t: Verilator 5.048 2026-04-26
+- Verilator: $finish at 643us; walltime 0.209 s; speed 3.084 ms/s
+- Verilator: cpu 0.209 s on 1 threads; allocated 9 MB

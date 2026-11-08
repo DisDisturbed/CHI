@@ -54,7 +54,7 @@ VFLAGS := --binary --timing -sv --top-module $(TOP) \
 # because Surfer stops noticing changes if the file is replaced by a rename.
 PLUS := $(if $(filter 1,$(WAVES)),+wave=$(FST).tmp,+no_wave)
 
-.PHONY: help build run wave sim lint regress clean
+.PHONY: help build run wave sim lint regress stress clean
 .DEFAULT_GOAL := help
 
 help:
@@ -64,6 +64,7 @@ help:
 	@echo "make sim     run, then wave"
 	@echo "make lint    all Verilator warnings, no build"
 	@echo "make regress TB=random SEEDS='1 2 3' (no waveforms, prints a summary)"
+	@echo "make stress  SEEDS='1 2 3' (regress over every configuration in STRESS_CFGS)"
 	@echo "make clean   delete build/ and out/"
 
 $(BIN): $(SRCS)
@@ -102,7 +103,17 @@ regress:
 	@test $(TB) = random || { echo 'regress needs TB=random: only that testbench has a SEED'; exit 1; }
 	@for s in $(SEEDS); do \
 	  $(MAKE) --no-print-directory run TB=$(TB) SEED=$$s WAVES=0 G='$(G)' > /dev/null 2>&1; \
-	  echo "SEED=$$s: rc=$$? $$(grep -a 'HN-F REGRESSION' out/$(TB)/SEED=$$s$(if $(strip $(G)),_$(subst $(eval) ,_,$(strip $(G))))/sim.log | tail -1)"; \
+	  echo "SEED=$$s: rc=$$? $$(grep -a 'HN-F REGRESSION' out/$(TB)/$$(echo SEED=$$s $(G) | xargs | tr ' ' '_')/sim.log | tail -1)"; \
+	done
+
+# One regress per configuration. "" is the default build (every feature on).
+STRESS_CFGS ?= "" "NUM_TRACKERS=2" "NUM_TRACKERS=8" "MID_RESETS=16 RANDOM_RESETS=1" \
+               "NUM_ROUNDS=40" "LOCK_ALL=1" "SNF_EARLY_COMP=0"
+
+stress:
+	@for g in $(STRESS_CFGS); do \
+	  echo "== G='$$g'"; \
+	  $(MAKE) --no-print-directory regress TB=random SEEDS='$(SEEDS)' G="$$g"; \
 	done
 
 clean:

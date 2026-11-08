@@ -46,6 +46,8 @@ module rnf_model #(
   local_snp_flit_t snp_q [$];
   bit      snp_busy [logic [11:0]];
   logic [3:0] pcr_q [$];
+  int      ack_wait [addr_t];          // lines with CompData received and CompAck not sent yet
+  bit      dbid_inuse [logic [11:0]];  // DBIDs of my writes whose data is not sent yet
 
   int unsigned cyc = 0;
   int unsigned my_epoch = 0;
@@ -74,6 +76,7 @@ module rnf_model #(
   function automatic void reset_state();
     lstate.delete(); ldata.delete(); evicting.delete(); wb_lost.delete();
     tbl.delete(); leaked.delete(); snp_q.delete(); snp_busy.delete(); pcr_q.delete();
+    ack_wait.delete(); dbid_inuse.delete();
     req_cr_out = 0; rsp_cr_out = 0; dat_cr_out = 0;
     outstanding = 0; launched = 0;
     req_lock = new(); rsp_lock = new(); dat_lock = new();
@@ -98,6 +101,8 @@ module rnf_model #(
   function automatic void rx_dat_handle(local_dat_flit_t f);
     if (sb.chk_ids && (f.tgtid !== NODEID || f.srcid !== HNID))
       sb.err("PROTOCOL", $sformatf("%s: DAT %s txnid=%0d has TgtID=%0h SrcID=%0h (expected %0h/%0h)", NAME, f.opcode.name(), f.txnid, f.tgtid, f.srcid, NODEID, HNID));
+    if (sb.chk_ids && f.opcode == DAT_COMP_DATA && f.homenid !== HNID)
+      sb.err("PROTOCOL", $sformatf("%s: CompData txnid=%0d has HomeNID=%0h (expected %0h): CompAck would go to the wrong node", NAME, f.txnid, f.homenid, HNID));
     if (tbl.exists(f.txnid)) tbl[f.txnid].dat_q.push_back(f);
     else begin
       sb.n_unexp++;
@@ -106,6 +111,12 @@ module rnf_model #(
   endfunction
 
   function automatic void rx_snp_handle(local_snp_flit_t f);
+    addr_t la;
+    la = line_of(f.addr);
+    if (sb.chk_ids && f.srcid !== HNID)
+      sb.err("PROTOCOL", $sformatf("%s: snoop %s txnid=%0d has SrcID=%0h (expected %0h): the response would go to the wrong node", NAME, f.opcode.name(), f.txnid, f.srcid, HNID));
+    if (ack_wait.exists(la) && ack_wait[la] > 0)
+      sb.err("SNOOP_ORDER", $sformatf("%s: snoop %s addr=%0h arrived after CompData and before my CompAck for that line (HN-F must hold snoops until CompAck)", NAME, f.opcode.name(), la));
     if (snp_busy.exists(f.txnid) && snp_busy[f.txnid])
       sb.err("TXNID_REUSE", $sformatf("%s: HN-F reused snoop TxnID %0d while the previous snoop is still unanswered", NAME, f.txnid));
     snp_busy[f.txnid] = 1;
@@ -282,9 +293,9 @@ module rnf_model #(
     case (op)
       REQ_READ_SHARED, REQ_READ_CLEAN, REQ_READ_UNIQUE:      return 1'b1;
       REQ_READ_ONCE, REQ_READ_NO_SNOOP:                      return sb.compack_readonce;
-      REQ_WRITE_BACK_FULL, REQ_WRITE_CLEAN_FULL,
       REQ_WRITE_UNIQUE_FULL, REQ_WRITE_UNIQUE_PTL,
       REQ_WRITE_NO_SNOOP_FULL, REQ_WRITE_NO_SNOOP_PTL:       return sb.compack_write;
+      REQ_WRITE_BACK_FULL, REQ_WRITE_CLEAN_FULL:             return 1'b0;   // CopyBack writes never use CompAck
       default:                                               return 1'b0;
     endcase
   endfunction
@@ -295,7 +306,7 @@ module rnf_model #(
     f.tgtid = HNID; f.srcid = NODEID; f.txnid = t.txnid; f.opcode = t.opcode; f.size = t.size;
     f.addr = t.addr; f.allowretry = t.allowretry ? Y : N; f.pcrdttype = t.pcrdttype;
     f.memattr = t.memattr;
-    f.expcompack = exp_compack(t.opcode);
+    f.expcompack = t.expack;
     return f;
   endfunction
 
@@ -328,6 +339,7 @@ module rnf_model #(
       t = new();
       t.txnid = cand; t.opcode = op; t.addr = a; t.size = sz; t.t0 = cyc; t.retries = 0;
       t.allowretry = 1; t.pcrdttype = 4'h0; t.memattr = sb.use_memattr ? (coherent ? MEMATTR_NORMAL_WB : MEMATTR_NORMAL_NC) : 4'b0000;
+      t.expack = exp_compack(op);
     end
     return found;
   endfunction
@@ -446,6 +458,7 @@ module rnf_model #(
     bit [3:0] expect_mask, seen;
     bit sent, abort, alive, retry_ok, rerr_seen, resp_set, coherent, legal, ack;
     logic [2:0] resp;
+    logic [11:0] cdbid;
     cstate_e nst;
     addr_t la;
     ok = 0; abort = 0; cnt = 0; seen = '0; rerr_seen = 0; resp_set = 0; resp = R_I; got = '0;
@@ -482,9 +495,13 @@ module rnf_model #(
           else begin
             seen[df.dataid] = 1;
             got[df.dataid*128 +: 128] = df.data;
-            if (!resp_set) begin resp = df.resp; resp_set = 1; end
-            else if (df.resp !== resp)
-              sb.err("PROTOCOL", $sformatf("%s: %s txnid=%0d CompData beats carry different Resp (%0b vs %0b)", NAME, t.opcode.name(), t.txnid, resp, df.resp));
+            if (!resp_set) begin resp = df.resp; cdbid = df.dbid; resp_set = 1; end
+            else begin
+              if (df.resp !== resp)
+                sb.err("PROTOCOL", $sformatf("%s: %s txnid=%0d CompData beats carry different Resp (%0b vs %0b)", NAME, t.opcode.name(), t.txnid, resp, df.resp));
+              if (df.dbid !== cdbid)
+                sb.err("PROTOCOL", $sformatf("%s: %s txnid=%0d CompData beats carry different DBID (%0d vs %0d)", NAME, t.opcode.name(), t.txnid, cdbid, df.dbid));
+            end
             if (df.resperr != ERR_OK) rerr_seen = 1;
             cnt++;
           end
@@ -506,11 +523,18 @@ module rnf_model #(
         ldata[la] = got;
         set_st(la, nst);
       end
-      ack = coherent || sb.compack_readonce;
-      if (t.opcode == REQ_READ_ONCE && !sb.compack_readonce) ack = 0;
+      ack = t.expack;
       if (ack && ep == sb.epoch) begin
+        ack_wait[la] = ack_wait.exists(la) ? ack_wait[la] + 1 : 1;
+        if (sb.ack_lat_max > 8) sb.cov_hit("rn: CompAck delayed > 8 cycles possible");
         repeat (rng.range(0, sb.ack_lat_max)) @(posedge clk);
-        send_rsp_flit(mk_rsp(HNID, t.txnid, RSP_COMP_ACK, resp), ep);
+        if (t.opcode == REQ_READ_ONCE || t.opcode == REQ_READ_NO_SNOOP) sb.cov_hit("rn: CompAck on ReadOnce/ReadNoSnp");
+        // CompAck TxnID = the DBID of CompData (IHI0050 B2.6)
+        send_rsp_flit(mk_rsp(HNID, cdbid, RSP_COMP_ACK, resp), ep);
+        if (ep == sb.epoch && ack_wait.exists(la)) begin
+          ack_wait[la]--;
+          if (ack_wait[la] <= 0) ack_wait.delete(la);
+        end
       end
       txn_close(t, ep, 0);
       ok = 1;
@@ -538,11 +562,13 @@ module rnf_model #(
     bemask_t smask;
     dat_opcode_e dop;
     addr_t la;
+    wr_pend wp;
     ok = 0; have_dbid = 0; have_comp = 0; data_sent = 0; abort = 0; got_err = 0; dbid = '0;
     la = line_of(t.addr);
     is_cb  = (t.opcode == REQ_WRITE_BACK_FULL || t.opcode == REQ_WRITE_CLEAN_FULL);
     is_coh = (t.opcode != REQ_WRITE_NO_SNOOP_FULL && t.opcode != REQ_WRITE_NO_SNOOP_PTL);
-    if (!is_cb) sb.wr_begin(t.addr, data, mask, NAME);
+    wp = null;
+    if (!is_cb) wp = sb.wr_begin(t.addr, data, mask, NAME);
     else begin evicting[la] = 1; wb_lost[la] = 0; end
     txn_open(t);
     send_req_flit(mk_req(t), ep, sent);
@@ -563,11 +589,15 @@ module rnf_model #(
           end
           RSP_COMP: begin
             if (have_comp) sb.err("PROTOCOL", $sformatf("%s: duplicate Comp for txnid=%0d", NAME, t.txnid));
+            if (!have_dbid) sb.cov_hit("rn: Comp before DBIDResp");
             have_comp = 1;
           end
           default: sb.err("PROTOCOL", $sformatf("%s: %s txnid=%0d received unexpected RSP %s", NAME, t.opcode.name(), t.txnid, rf.opcode.name()));
         endcase
         if (have_dbid && !data_sent) begin
+          if (dbid_inuse.exists(dbid))
+            sb.err("PROTOCOL", $sformatf("%s: %s txnid=%0d got DBID %0d, which another of my writes is still using", NAME, t.opcode.name(), t.txnid, dbid));
+          dbid_inuse[dbid] = 1;
           if (is_cb) begin
             if (wb_lost[la]) begin
               resp = R_I; smask = '0; sdata = rng.rline();      // line was taken by a snoop: nothing left to write
@@ -581,6 +611,7 @@ module rnf_model #(
             resp = R_I; sdata = data; smask = mask; dop = DAT_NON_COPY_BACK_WR_DATA;
           end
           send_dat_beats(dbid, HNID, dop, resp, dbid, sdata, smask, t.addr, t.size, ep);
+          if (ep == sb.epoch) dbid_inuse.delete(dbid);
           data_sent = 1;
           if (is_cb && ep == sb.epoch) begin
             if (!wb_lost[la]) begin
@@ -594,7 +625,7 @@ module rnf_model #(
       end
     end
     if (abort) begin
-      if (ep == sb.epoch && !is_cb) sb.wr_abort(t.addr);
+      if (ep == sb.epoch && !is_cb) sb.wr_abort(t.addr, wp);
       if (ep == sb.epoch && is_cb) evicting[la] = 0;
       fail_txn(t, ep, $sformatf("%s did not complete (dbid=%0b comp=%0b data_sent=%0b)", t.opcode.name(), have_dbid, have_comp, data_sent));
     end else begin
@@ -603,10 +634,13 @@ module rnf_model #(
         if (!sb.is_err_line(t.addr)) sb.err("SPURIOUS_RESPERR", $sformatf("%s: %s txnid=%0d addr=%0h completed with RespErr but no error was injected", NAME, t.opcode.name(), t.txnid, t.addr));
       end
       if (!is_cb) begin
-        if (got_err) sb.wr_abort(t.addr); else sb.wr_end(t.addr, NAME);
+        if (got_err) sb.wr_abort(t.addr, wp); else sb.wr_end(t.addr, wp, NAME);
         if (is_coh) sb.check_invalid_except(la, IDX, NAME, {t.opcode.name(), " Comp"});
       end
-      if (sb.compack_write && ep == sb.epoch) send_rsp_flit(mk_rsp(HNID, t.txnid, RSP_COMP_ACK, R_I), ep);
+      if (t.expack && ep == sb.epoch) begin
+        sb.cov_hit("rn: CompAck on a write");
+        send_rsp_flit(mk_rsp(HNID, t.txnid, RSP_COMP_ACK, R_I), ep);
+      end
       txn_close(t, ep, 0);
       ok = 1;
     end
@@ -693,7 +727,7 @@ module rnf_model #(
     st = get_st(a);
     lk = lock_kind(k);
     al = allowed_ops(st);                   // bit-select on a function call result is not legal SV
-    if (al[k] && sb.try_begin(a, IDX, lk)) begin
+    if (al[k] && sb.try_begin(a, IDX, lk, (k == OP_NRD || k == OP_NWR) && sb.nc_multi)) begin
       ok = 1;
       sb.n_op[k]++;
       ran = 1;
@@ -702,7 +736,13 @@ module rnf_model #(
           opc = (k == OP_RS) ? REQ_READ_SHARED : (k == OP_RC) ? REQ_READ_CLEAN :
                 (k == OP_RU) ? REQ_READ_UNIQUE : (k == OP_RO) ? REQ_READ_ONCE : REQ_READ_NO_SNOOP;
           sz = WIDTH_64; wa = a;
-          if (k == OP_NRD) begin sz = width_e'(rng.range(0, 6)); nbytes = size_bytes(sz); wa = a + addr_t'(rng.range(0, 63) & ~(nbytes - 1)); end
+          if (k == OP_NRD) begin
+            sz = width_e'(rng.range(0, 6)); nbytes = size_bytes(sz); wa = a + addr_t'(rng.range(0, 63) & ~(nbytes - 1));
+            if (nbytes > 1 && sb.unaligned_pct != 0 && rng.chance(sb.unaligned_pct)) begin
+              wa = wa + addr_t'(rng.range(1, nbytes - 1));
+              sb.cov_hit("rn: unaligned ReadNoSnp");
+            end
+          end
           got_t = new_txn(opc, wa, sz, (k != OP_NRD), t);
           if (got_t) run_read(t, ep, ok); else ok = 0;
         end
@@ -713,8 +753,18 @@ module rnf_model #(
           if (k == OP_NWR) opc = partial ? REQ_WRITE_NO_SNOOP_PTL : REQ_WRITE_NO_SNOOP_FULL;
           else             opc = partial ? REQ_WRITE_UNIQUE_PTL   : REQ_WRITE_UNIQUE_FULL;
           m = '1;
-          if (partial) begin m = span_mask(wa, sz) & rng.r64(); if (m == '0) m = span_mask(wa, sz); end
+          if (partial) begin
+            m = span_mask(wa, sz) & rng.r64();
+            if (m == '0) m = span_mask(wa, sz);
+            if (sb.zero_be_pct != 0 && rng.chance(sb.zero_be_pct)) begin m = '0; sb.cov_hit("rn: partial write with BE=0"); end
+          end
           d = rng.rline();
+          // the byte enables are set for the Size-aligned window; the request
+          // address itself may point anywhere inside that window
+          if (k == OP_NWR && partial && nbytes > 1 && sb.unaligned_pct != 0 && rng.chance(sb.unaligned_pct)) begin
+            wa = wa + addr_t'(rng.range(1, nbytes - 1));
+            sb.cov_hit("rn: unaligned WriteNoSnpPtl");
+          end
           got_t = new_txn(opc, wa, sz, (k != OP_NWR), t);
           if (got_t) run_write(t, d, m, ep, ok); else ok = 0;
         end
@@ -877,7 +927,13 @@ module rnf_model #(
       SNP_UNIQUE, SNP_CLEAN_INVALID: begin
         nst = ST_I;
         case (st)
-          ST_SC, ST_UC: begin resp = R_I; send_data = rts; end
+          ST_SC, ST_UC: begin
+            resp = R_I; send_data = rts;
+            // a clean line may be returned on SnpUnique even with RetToSrc=0 (SnpRespData_I)
+            if (!rts && op == SNP_UNIQUE && sb.snp_opt_data_pct != 0 && rng.chance(sb.snp_opt_data_pct)) begin
+              send_data = 1; sb.cov_hit("rn: clean SnpRespData_I on SnpUnique RetToSrc=0");
+            end
+          end
           ST_UD, ST_SD: begin resp = R_I_PD; send_data = 1; end
           default: ;
         endcase
@@ -968,6 +1024,35 @@ module rnf_model #(
   task automatic skew(input int unsigned mx);
     repeat (rng.range(0, mx)) @(posedge clk);
   endtask
+
+  // sync() lets the last RN-F through up to one cycle before the others;
+  // one more edge puts every RN-F on the same cycle
+  task automatic sync_aligned(input int n, input int unsigned ep);
+    sync(n, ep);
+    @(posedge clk);
+  endtask
+
+  // a random coherent op that is legal from `st` and may overlap with the other RN-F
+  function automatic opkind_e pick_op(cstate_e st);
+    opkind_e c [$];
+    bit [NUM_OPS-1:0] al;
+    al = allowed_ops(st);
+    if (al[OP_RS])  c.push_back(OP_RS);
+    if (al[OP_RC])  c.push_back(OP_RC);
+    if (al[OP_RU])  c.push_back(OP_RU);
+    if (al[OP_RO])  c.push_back(OP_RO);
+    if (al[OP_WUF]) c.push_back(OP_WUF);
+    if (al[OP_WUP]) c.push_back(OP_WUP);
+    if (al[OP_WB])  c.push_back(OP_WB);
+    if (al[OP_WC])  c.push_back(OP_WC);
+    if (al[OP_ST])  c.push_back(OP_ST);
+    if (c.size() == 0) return OP_RS;
+    return c[rng.range(0, c.size() - 1)];
+  endfunction
+
+  function automatic opkind_e nc_op();
+    return rng.chance(50) ? OP_NWR : OP_NRD;
+  endfunction
 
   task automatic run_scenario(input int id, input int unsigned ep);
     int nact;
@@ -1106,6 +1191,77 @@ module rnf_model #(
               if (IDX == nact - 1) do_op_f(ko[o], a3, ep);
               sync(nact, ep);
             end
+          end
+        end
+        // both RN-Fs send a request for the same line on the same clock edge
+        SC_SAME_CYCLE: begin
+          for (int it = 0; it < 48; it++) begin
+            addr_t ax;
+            ax = (it % 3 == 2) ? a1 : a0;
+            make_invalid_local(ax, ep);
+            sync(nact, ep);
+            if (IDX == it % nact && rng.chance(60)) begin
+              do_op_f(OP_RU, ax, ep);
+              if (rng.chance(60)) do_op_f(OP_ST, ax, ep);
+            end
+            sync_aligned(nact, ep);
+            do_op(pick_op(get_st(ax)), ax, ep, ran);
+            sync(nact, ep);
+          end
+        end
+        // both RN-Fs write the same line at the same time, then one reads it
+        SC_WW_RACE: begin
+          for (int it = 0; it < 32; it++) begin
+            make_invalid_local(a1, ep);
+            sync_aligned(nact, ep);
+            skew(it % 3);
+            do_op(rng.chance(50) ? OP_WUF : OP_WUP, a1, ep, ran);
+            sync(nact, ep);
+            if (IDX == it % nact) do_op_f(rng.chance(50) ? OP_RS : OP_RU, a1, ep);
+            sync(nact, ep);
+          end
+        end
+        // three overlapping ReadNoSnp / WriteNoSnp per RN-F on ONE line: more
+        // requests than trackers, all hazard-chained behind each other
+        SC_NC_PILEUP: begin
+          for (int it = 0; it < 16; it++) begin
+            addr_t nx;
+            nx = it[0] ? n1 : n0;
+            sync_aligned(nact, ep);
+            fork
+              begin bit r0; do_op(nc_op(), nx, ep, r0); end
+              begin bit r1; skew(2); do_op(nc_op(), nx, ep, r1); end
+              begin bit r2; skew(5); do_op(nc_op(), nx, ep, r2); end
+            join
+            sync(nact, ep);
+          end
+        end
+        // dirty data moves by snoop while the other RN-F immediately follows
+        // up on the same line (HN-F dirty write-back still in flight)
+        SC_DIRTY_CHAIN: begin
+          for (int it = 0; it < 20; it++) begin
+            make_invalid_local(a2, ep);
+            sync(nact, ep);
+            if (IDX == 0) begin do_op_f(OP_RU, a2, ep); do_op_f(OP_ST, a2, ep); end
+            sync_aligned(nact, ep);
+            if (IDX == nact - 1) begin
+              case (rng.range(0, 3))
+                0: do_op(OP_RS, a2, ep, ran);
+                1: do_op(OP_RC, a2, ep, ran);
+                2: do_op(OP_RO, a2, ep, ran);
+                default: do_op(OP_RU, a2, ep, ran);
+              endcase
+              do_op(pick_op(get_st(a2)), a2, ep, ran);
+            end else begin
+              skew(6);
+              do_op(pick_op(get_st(a2)), a2, ep, ran);
+            end
+            sync(nact, ep);
+            if (IDX == it % nact) begin
+              make_invalid_local(a2, ep);
+              do_op(rng.chance(50) ? OP_CS : OP_CI, a2, ep, ran);
+            end
+            sync(nact, ep);
           end
         end
         default: random_ops(sb.scn_ops, ep);   // knob-driven scenarios (see top-level apply_profile)

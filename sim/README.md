@@ -16,6 +16,7 @@ make sim  TB=directed          # run, then open the waveform
 | `make sim` | `run`, then `wave` |
 | `make lint` | Show all Verilator `-Wall` warnings without building |
 | `make regress SEEDS='1 2 3'` | Run several seeds without waveforms and print one result line each |
+| `make stress SEEDS='1 2 3'` | `regress` once per configuration in `STRESS_CFGS` (trackers 2/8, resets, long runs, `LOCK_ALL=1`, early Comp off) |
 | `make clean` | Delete `build/` and `out/` |
 
 | Option | Default | Meaning |
@@ -87,6 +88,34 @@ show as X, so check reset and initialization in xsim if they are in doubt.
 
 Unpacked arrays and interfaces appear as flat lists of signals rather than xsim's
 expandable tree.
+
+## Random TB switches
+
+All are `G=` parameters, default in brackets. Each feature switch turns on a
+spec-legal behaviour of the RN-F / SN-F models, so a failure can be pinned to
+one feature by turning it off: `make run SEED=3 G='SNF_COMP_EARLY=0'`.
+
+| Parameter | Meaning |
+| --- | --- |
+| `NUM_TRACKERS` [4] | HN-F trackers. 1 starves (see TSHR_FIXES 11) |
+| `LOCK_ALL` [0] | 1: one op per line in the whole system, hides every same-line race |
+| `TXNID_COLLISION_STRESS` [1] | both RN-Fs use the same TxnIDs in random rounds |
+| `MID_RESETS` [4] | random rounds cut by a reset with traffic in flight |
+| `SNF_EARLY_COMP` [1] | 0 turns off both of: |
+| `SNF_COMP_FIRST` [1] | SN-F sends a separate Comp before DBIDResp |
+| `SNF_COMP_EARLY` [1] | SN-F sends a separate Comp after DBIDResp, before the write data |
+| `SNF_PCRD_EARLY` [1] | SN-F sends PCrdGrant before RetryAck, PCrdType 0..15 |
+| `COMPACK_OPT` [1] | ExpCompAck=1 on ReadOnce / ReadNoSnp / WriteUnique / WriteNoSnp |
+| `SNP_OPT_DATA` [1] | a clean line answers SnpUnique (RetToSrc=0) with data |
+| `ZERO_BE` [1] | partial writes with every byte enable 0 |
+| `NC_MULTI` [1] | one RN-F has several ReadNoSnp / WriteNoSnp to one line in flight |
+| `UNALIGNED` [1] | ReadNoSnp / WriteNoSnpPtl with an address not aligned to Size |
+| `CHECK_COVERAGE` [1] | fail the run if a stress it should reach was never reached |
+| `ISOLATE_FAILURES` [1] | reset after a command that failed, so one bug does not cascade |
+
+At the end of every run the TB also checks that every tracker is idle, the
+P-credit pool is empty, no hazard-order bit is left set, and every HN-F link
+credit counter agrees with the agent on the other end of that link.
 
 ## Things to know
 

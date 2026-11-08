@@ -18,6 +18,7 @@ Contents
   8. Results
   9. Original comments removed or now out of date
  10. Still open / not done
+ 11. Testbench expansion (no RTL change) and what it found
 
 
 1. RESTRUCTURE: ONE FUNCTION PER FSM STATE
@@ -275,6 +276,8 @@ sim/
   - rtl.f: + rx_credit_gen.sv. waves/*: the merged_req_* signals no longer
     exist; views now show each RN-F REQ port, tracker states and trk_hazard.
   - README: monitor note, TB drive-timing rule.
+  - Makefile regress: the summary line read the wrong log path when G= was
+    given (printed "SEED==1/sim.log: No such file").
 
 
 8. RESULTS
@@ -283,7 +286,10 @@ sim/
   random seeds 1-6       11/8/7/9/9/9 failures   all pass
   random seeds 1-40      -                       40/40 pass
   directed TB            8 failures              all 10 scenarios pass
-  stress runs            see the summary given with this change
+  TXNID_COLLISION_STRESS=1   seeds 1-10        all pass
+  RANDOM_RESETS=1            seeds 1-10        all pass
+  LOCK_ALL=0 (both RN-Fs on the same line at once, possible now that
+              HN-F has hazard detection)  seeds 1-10  all pass
 
 
 9. ORIGINAL COMMENTS REMOVED OR NOW OUT OF DATE
@@ -322,3 +328,81 @@ Kept but now out of date (left as you wrote them):
     at 15, which is harmless).
   - Lint: tx_chain_arbiter.sv:42 WIDTHEXPAND (rr pointer + loop index), same
     style as before.
+
+
+11. TESTBENCH EXPANSION (NO RTL CHANGE) AND WHAT IT FOUND
+---------------------------------------------------------
+Goal: a TB that, if it passes, leaves no doubt. Only TB/Randomized and sim/
+changed. The directed TB is unchanged and still passes.
+
+New stimulus (all spec-legal; each has an on/off switch, see sim/README):
+  - LOCK_ALL now defaults to 0, and both RN-Fs may WRITE the same line at the
+    same time. The scoreboard keeps every in-flight write per line and applies
+    each one when its Comp arrives. A read may return any value reachable from
+    the committed value by applying in-flight writes in any order.
+  - SN-F: a separate Comp before DBIDResp, or between DBIDResp and the write
+    data. PCrdGrant before RetryAck. PCrdType 0..15. RetryAck in random rounds.
+  - RN-F: ExpCompAck on ReadOnce / ReadNoSnp / WriteUnique / WriteNoSnp
+    (WriteBack / WriteClean never). CompAck carries the DBID of CompData. A
+    clean SnpRespData_I on SnpUnique with RetToSrc=0. Zero-BE partial writes.
+    Several ReadNoSnp / WriteNoSnp to one line from one RN-F. Unaligned
+    ReadNoSnp / WriteNoSnpPtl. TxnID overlap between RN-Fs on by default.
+  - New directed scenarios 18-25: SAME_CYCLE (both RN-Fs, same line, same
+    edge), WW_RACE, NC_PILEUP (6 requests on one line, 4 trackers),
+    EARLY_COMP, PCRD_EARLY, COMPACK_LATE (CompAck on everything, up to 25
+    cycles late), ZERO_BE, DIRTY_CHAIN (dirty data moved by snoop while the
+    other RN-F follows up on the line).
+  - Resets in the middle of traffic (MID_RESETS), then one round that must
+    pass. NUM_TRACKERS is a TB parameter.
+
+New checks:
+  - RN-F: no snoop for a line between my CompData and my CompAck
+    (SNOOP_ORDER); snoop SrcID; CompData HomeNID and the same DBID on every
+    beat; a DBID not reused while one of my writes still holds it.
+  - SN-F: an AllowRetry=0 request must spend a PCrdGrant of its PCrdType and
+    resend exactly the retried request (PCRD); WriteNoSnpFull has all BEs.
+  - DUT: Allocator drop flagged; at the end every tracker idle, P-credit pool
+    empty, no trk_older_q bit left, and all 16 link credit counters equal to
+    the partner's count (CREDIT_LEAK); right after a reset, the same.
+  - Coverage (tshr_cov.sv bound into TSHR + counters in the TB): a run fails
+    with COVERAGE if it never reached a stress it is meant to test, such as
+    hazard wait, a dirty write-back from each flow, every Comp/PCrd order, or
+    a same-cycle same-line request.
+  - After a failed command the TB resets, so one bug does not hide others.
+
+Checked that the checks catch bugs (mutations applied to a scratch copy of
+the RTL only, seed 1): no hazard detection, wrong CompData DBID, skipped dirty
+write-back after a read, no wait for CompAck, wrong PCrdType on resend, extra
+P-credit in the pool, a TX credit counter that drops a credit, and an RX
+credit counter that leaks one were each caught (READ_MISMATCH / SWMR /
+STALE_DATA / SNOOP_ORDER / PCRD / CREDIT_LEAK / TIMEOUT).
+
+RTL FAILURES FOUND (RTL not changed, open for you to decide):
+  F1. SN-F Comp before DBIDResp -> tracker deadlock (HIGH)
+      st_sn_rsp_wait only accepts CompDBIDResp / DBIDResp for writes; a Comp
+      arriving first is ignored. After the data the tracker waits in
+      ST_SN_COMP_WAIT for a Comp that already came and went. Same for the
+      dirty write-back chain (ST_DIRTY_WB_RSP_WAIT).
+      Reproduce: make run SEED=1 G='SNF_COMP_EARLY=0'   (scenario 21)
+  F2. SN-F Comp after DBIDResp but before the write data -> deadlock (HIGH)
+      During ST_SN_DATA_SEND / ST_DIRTY_WB_DATA_SEND nothing watches
+      sn_rsp, so the Comp is lost the same way.
+      Reproduce: make run SEED=1 G='SNF_COMP_FIRST=0'   (scenario 21)
+      Both F1 and F2 need my reading of the spec to be right: CHI does not
+      order Comp against DBIDResp or the write data for a write. Check it
+      against your copy of IHI0050 (write transaction responses).
+  F3. NUM_TRACKERS < NUM_RNF starves a port (MEDIUM, configuration)
+      With 1 tracker, an idle RN-F keeps the only REQ credit (CHI gives the
+      HN-F no way to take it back), and the other RN-F never gets one. HN-F
+      accepts the parameter without complaint.
+      Reproduce: make run SEED=1 G='NUM_TRACKERS=1 SNF_EARLY_COMP=0'
+
+Results with F1/F2 avoided (SNF_EARLY_COMP=0): seeds 1-24 all pass;
+NUM_TRACKERS=2 and 8, MID_RESETS=16 RANDOM_RESETS=1, NUM_ROUNDS=40 seeds 1-3
+all pass. With the default (everything on) every seed fails, all through
+F1/F2 (TIMEOUT + LINK_CREDIT, no data corruption).
+
+Not covered by this TB (RTL does not implement them either): atomics, DVMOp,
+Evict / CleanUnique / MakeUnique (not in chi_pkg), DataWidth other than 128
+(the flit structs in pgk_file.sv are fixed at 128), forwarding snoops (DCT),
+DataSepResp / RespSepData, NUM_RNF other than 2.

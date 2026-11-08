@@ -41,6 +41,7 @@ module snf_model #(
   bit              inflight  [logic [11:0]];   // HN TxnIDs being served
   bit              retried   [logic [11:0]];   // waiting for HN to resend
   bit              resent    [logic [11:0]];
+  local_req_flit_t retried_rq [logic [11:0]];  // the request that got RetryAck, to compare the resend with
 
   // write context, keyed by granted DBID
   class wr_ctx;
@@ -73,7 +74,7 @@ module snf_model #(
   endfunction
 
   function automatic void reset_state();
-    req_q.delete(); inflight.delete(); retried.delete(); resent.delete();
+    req_q.delete(); inflight.delete(); retried.delete(); resent.delete(); retried_rq.delete();
     wr_by_dbid.delete(); dbid_used.delete();
     rsp_cr_out = 0; dat_cr_out = 0;
     rsp_lock = new(); dat_lock = new();
@@ -94,12 +95,27 @@ module snf_model #(
       if (f.opcode == REQ_WRITE_NO_SNOOP_FULL && f.size != WIDTH_64)
         sb.err("PROTOCOL", $sformatf("%s: WriteNoSnpFull with size!=64B txnid=%0d", NAME, f.txnid));
     end
-    if ((f.addr & addr_t'(size_bytes(f.size) - 1)) != 0)
+    // unaligned addresses are legal for ReadNoSnp / WriteNoSnpPtl to Normal
+    // memory; the TB only sends them to the non-coherent lines
+    if ((f.addr & addr_t'(size_bytes(f.size) - 1)) != 0 && !(sb.is_nc(f.addr) && f.opcode != REQ_WRITE_NO_SNOOP_FULL))
       sb.err("PROTOCOL", $sformatf("%s: unaligned request addr=%0h size=%0dB txnid=%0d", NAME, f.addr, size_bytes(f.size), f.txnid));
     if (sb.chk_ids && f.tgtid !== NODEID)
       sb.err("PROTOCOL", $sformatf("%s: request TgtID=%0h, expected %0h txnid=%0d", NAME, f.tgtid, NODEID, f.txnid));
     if (inflight.exists(f.txnid) && inflight[f.txnid])
       sb.err("TXNID_REUSE", $sformatf("%s: HN-F reused TxnID %0d while previous request still in flight", NAME, f.txnid));
+    if (f.allowretry == N) begin
+      // a request without AllowRetry must spend a P-credit this SN-F granted
+      if (sb.pcrd_out[f.pcrdttype] <= 0)
+        sb.err("PCRD", $sformatf("%s: %s txnid=%0d sent with AllowRetry=0 and PCrdType=%0d, but no unused PCrdGrant of that type exists", NAME, f.opcode.name(), f.txnid, f.pcrdttype));
+      else
+        sb.pcrd_out[f.pcrdttype]--;
+      if (!retried_rq.exists(f.txnid))
+        sb.err("PCRD", $sformatf("%s: %s txnid=%0d sent with AllowRetry=0 but this TxnID was never retried", NAME, f.opcode.name(), f.txnid));
+      else if (retried_rq[f.txnid].opcode != f.opcode || retried_rq[f.txnid].addr != f.addr || retried_rq[f.txnid].size != f.size)
+        sb.err("PCRD", $sformatf("%s: resent txnid=%0d is %s addr=%0h size=%0d, but the retried request was %s addr=%0h size=%0d", NAME, f.txnid,
+                                 f.opcode.name(), f.addr, f.size, retried_rq[f.txnid].opcode.name(), retried_rq[f.txnid].addr, retried_rq[f.txnid].size));
+      if (retried_rq.exists(f.txnid)) retried_rq.delete(f.txnid);
+    end
     if (retried.exists(f.txnid) && f.allowretry == N) begin
       resent[f.txnid] = 1;
     end
@@ -263,7 +279,7 @@ module snf_model #(
   task automatic handle_write(local_req_flit_t rq, int unsigned ep);
     wr_ctx c;
     logic [11:0] dbid;
-    bit combined, err, ok;
+    bit combined, err, ok, comp_sent;
     int unsigned t0;
     local_rsp_flit_t f;
     err = sb.is_err_line(rq.addr) || (sb.snf_err_pct != 0 && rng.chance(sb.snf_err_pct));
@@ -276,19 +292,36 @@ module snf_model #(
       c.data = '0; c.mask = '0; c.got = 0; c.seen = '0; c.done = 0; c.dbid_sent = 0;
       wr_by_dbid[dbid] = c;
       repeat (lat()) @(posedge clk);
-      combined = rng.chance(60);
+      combined  = rng.chance(60);
+      comp_sent = 0;
+      // separate Comp may come before DBIDResp, or right after it before any
+      // write data: both are legal, Comp and DBIDResp are not ordered
+      if (!combined && sb.snf_comp_first_pct != 0 && rng.chance(sb.snf_comp_first_pct)) begin
+        f = mk_rsp(rq, RSP_COMP, 12'h0, err ? ERR_DERR : ERR_OK);
+        if (ep == sb.epoch) send_rsp_flit(f, ep);
+        comp_sent = 1;
+        sb.cov_hit("snf: Comp before DBIDResp");
+      end
       c.dbid_sent = 1;
       f = mk_rsp(rq, combined ? RSP_COMP_DBID_RESP : RSP_DBID_RESP, dbid, (combined && err) ? ERR_DERR : ERR_OK);
       if (ep == sb.epoch) send_rsp_flit(f, ep);
+      if (!combined && !comp_sent && sb.snf_early_comp_pct != 0 && rng.chance(sb.snf_early_comp_pct)) begin
+        f = mk_rsp(rq, RSP_COMP, 12'h0, err ? ERR_DERR : ERR_OK);
+        if (ep == sb.epoch) send_rsp_flit(f, ep);
+        comp_sent = 1;
+        sb.cov_hit("snf: Comp after DBIDResp, before write data");
+      end
       t0 = cyc;
       while (!c.done && ep == sb.epoch && (cyc - t0) < sb.op_timeout) @(posedge clk);
       if (ep == sb.epoch) begin
         if (!c.done) begin
           sb.report_timeout(NAME, rq.txnid, $sformatf("write data for dbid=%0d incomplete (%0d/%0d beats)", dbid, c.got, c.nbeats));
         end else begin
+          if (rq.opcode == REQ_WRITE_NO_SNOOP_FULL && c.mask != '1)
+            sb.err("PROTOCOL", $sformatf("%s: WriteNoSnpFull txnid=%0d addr=%0h arrived with byte enables %016h (must be all ones)", NAME, rq.txnid, rq.addr, c.mask));
           if (err) begin sb.n_err_inj++; sb.mark_unknown(rq.addr); end
           else     sb.snf_write(rq.addr, c.data, c.mask);
-          if (!combined) begin
+          if (!combined && !comp_sent) begin
             repeat (rng.range(0, 3)) @(posedge clk);
             f = mk_rsp(rq, RSP_COMP, 12'h0, err ? ERR_DERR : ERR_OK);
             send_rsp_flit(f, ep);
@@ -304,20 +337,36 @@ module snf_model #(
     local_rsp_flit_t f;
     logic [3:0] pc;
     int unsigned t0;
-    pc = 4'(rng.range(0, 3));
+    local_rsp_flit_t g;
+    bit early;
+    pc = 4'(rng.range(0, (sb.snf_pcrd_types > 16 ? 16 : (sb.snf_pcrd_types == 0 ? 1 : sb.snf_pcrd_types)) - 1));
+    if (pc != 0) sb.cov_hit("snf: PCrdType != 0");
     retried[rq.txnid] = 1;
+    retried_rq[rq.txnid] = rq;
     f = mk_rsp(rq, RSP_RETRY_ACK, 12'h0, ERR_OK);
     f.pcrdttype = pc;
-    send_rsp_flit(f, ep);
-    repeat (rng.range(2, 40)) @(posedge clk);
-    f = '0;
-    f.tgtid = rq.srcid; f.srcid = NODEID; f.opcode = RSP_PCR_GRANT_ACK; f.pcrdttype = pc;
-    send_rsp_flit(f, ep);
+    g = '0;
+    g.tgtid = rq.srcid; g.srcid = NODEID; g.opcode = RSP_PCR_GRANT_ACK; g.pcrdttype = pc;
+    // PCrdGrant may overtake its RetryAck (it carries no TxnID)
+    early = sb.snf_pcrd_early_pct != 0 && rng.chance(sb.snf_pcrd_early_pct);
+    sb.cov_hit("snf: RetryAck");
+    if (early) begin
+      sb.cov_hit("snf: PCrdGrant before RetryAck");
+      if (ep == sb.epoch) sb.pcrd_out[pc]++;
+      send_rsp_flit(g, ep);
+      repeat (rng.range(0, 6)) @(posedge clk);
+      send_rsp_flit(f, ep);
+    end else begin
+      send_rsp_flit(f, ep);
+      repeat (rng.range(2, 40)) @(posedge clk);
+      if (ep == sb.epoch) sb.pcrd_out[pc]++;
+      send_rsp_flit(g, ep);
+    end
     t0 = cyc;
     while (!(resent.exists(rq.txnid) && resent[rq.txnid]) && ep == sb.epoch && (cyc - t0) < sb.op_timeout) @(posedge clk);
     if (ep == sb.epoch && !(resent.exists(rq.txnid) && resent[rq.txnid]))
       sb.report_timeout(NAME, rq.txnid, "HN-F never resent the request after PCrdGrant");
-    retried.delete(rq.txnid); resent.delete(rq.txnid);
+    if (ep == sb.epoch) begin retried.delete(rq.txnid); resent.delete(rq.txnid); end
   endtask
 
   task automatic serve(local_req_flit_t rq, int unsigned ep);
