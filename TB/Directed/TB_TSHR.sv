@@ -43,66 +43,117 @@ module rnf_model #(
   assign rsp_rx.lcrdv = 1'b1;
   assign dat_rx.lcrdv = 1'b1;
 
-  // ---- REQ: send a request, waiting for HN_F's (state-gated) credit ----
-  task automatic send_req(input logic [11:0] txnid, input req_opcode_e opcode,
-                           input logic [38:0] addr, input width_e size);
-    while (req_tx.lcrdv !== 1'b1) @(posedge clk);
-    req_tx.flit            = '0;
-    req_tx.flit.qos        = 4'h0;
-    req_tx.flit.srcid      = NODEID;
-    req_tx.flit.txnid      = txnid;
-    req_tx.flit.opcode     = opcode;
-    req_tx.flit.size       = size;
-    req_tx.flit.addr       = addr;
-    req_tx.flit.allowretry = Y;
-    req_tx.flitv           = Y;
-    req_tx.flitpend        = Y;
-    $display("[%0t] %s: REQ  txnid=%0d opcode=%s addr=%0h", $time, NAME, txnid, opcode.name(), addr);
-    @(posedge clk);
-    req_tx.flitv    = N;
-    req_tx.flitpend = N;
+  // ---- link credits HN_F hands us for our TX channels (one per lcrdv cycle)
+  int req_cr_in = 0, rsp_cr_in = 0, dat_cr_in = 0;
+  int req_cr_out = 0, rsp_cr_out = 0, dat_cr_out = 0;
+  time last_snp_t = -1, last_rsp_t = -1;
+
+  always @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      req_cr_in <= 0; rsp_cr_in <= 0; dat_cr_in <= 0;
+    end else begin
+      if (req_tx.lcrdv === 1'b1) req_cr_in <= req_cr_in + 1;
+      if (rsp_tx.lcrdv === 1'b1) rsp_cr_in <= rsp_cr_in + 1;
+      if (dat_tx.lcrdv === 1'b1) dat_cr_in <= dat_cr_in + 1;
+    end
+  end
+
+  // drop every TX pin and forget spent credits (used around a DUT reset)
+  task automatic idle();
+    req_tx.flitv <= N; req_tx.flitpend <= N;
+    rsp_tx.flitv <= N; rsp_tx.flitpend <= N;
+    dat_tx.flitv <= N; dat_tx.flitpend <= N;
+    req_cr_out = 0; rsp_cr_out = 0; dat_cr_out = 0;
   endtask
 
-  // ---- RSP: send SnpResp / CompAck (no data, no credit wait needed) ----
-  task automatic send_rsp(input logic [11:0] txnid, input chi_pkg::rsp_opcode_e opcode);
-    rsp_tx.flit        = '0;
-    rsp_tx.flit.srcid  = NODEID;
-    rsp_tx.flit.txnid  = txnid;
-    rsp_tx.flit.opcode = opcode;
-    rsp_tx.flitv       = Y;
-    rsp_tx.flitpend    = Y;
+  // ---- REQ: send a request, spending one REQ credit ----
+  // pins change 1ns after the clock edge; outputs of the DUT are sampled on
+  // the falling edge (see wait_*), so the TB never races the DUT's flops
+  task automatic send_req(input logic [11:0] txnid, input req_opcode_e opcode,
+                           input logic [38:0] addr, input width_e size, input logic expcompack = 1'b0);
+    tshr_flit_pkg::local_req_flit_t f;
+    @(posedge clk);
+    while ((req_cr_in - req_cr_out) <= 0) @(posedge clk);
+    req_cr_out++;
+    f            = '0;
+    f.qos        = 4'h0;
+    f.srcid      = NODEID;
+    f.txnid      = txnid;
+    f.opcode     = opcode;
+    f.size       = size;
+    f.addr       = addr;
+    f.allowretry = Y;
+    f.expcompack = expcompack;
+    req_tx.flit     <= #1 f;
+    req_tx.flitv    <= #1 Y;
+    req_tx.flitpend <= #1 Y;
+    $display("[%0t] %s: REQ  txnid=%0d opcode=%s addr=%0h", $time, NAME, txnid, opcode.name(), addr);
+    @(posedge clk);
+    req_tx.flitv    <= #1 N;
+    req_tx.flitpend <= #1 N;
+  endtask
+
+  // ---- RSP: send SnpResp / CompAck, spending one RSP credit ----
+  task automatic send_rsp(input logic [11:0] txnid, input chi_pkg::rsp_opcode_e opcode,
+                           input logic [2:0] resp = 3'b000);
+    tshr_flit_pkg::local_rsp_flit_t f;
+    @(posedge clk);
+    while ((rsp_cr_in - rsp_cr_out) <= 0) @(posedge clk);
+    rsp_cr_out++;
+    f        = '0;
+    f.srcid  = NODEID;
+    f.txnid  = txnid;
+    f.opcode = opcode;
+    f.resp   = resp;
+    rsp_tx.flit     <= #1 f;
+    rsp_tx.flitv    <= #1 Y;
+    rsp_tx.flitpend <= #1 Y;
     $display("[%0t] %s: RSP  txnid=%0d opcode=%s", $time, NAME, txnid, opcode.name());
     @(posedge clk);
-    rsp_tx.flitv    = N;
-    rsp_tx.flitpend = N;
+    rsp_tx.flitv    <= #1 N;
+    rsp_tx.flitpend <= #1 N;
   endtask
 
   // ---- DAT: send a full NUM_BEATS-beat burst (snoop-response-data or
-  // write data). flitpend stays Y until the last beat, matching how
-  // TSHR itself signals multi-beat transfers.
+  // write data), one DAT credit per beat. flitpend stays Y until the last
+  // beat. resp carries the cache state / PassDirty of snoop data and
+  // CopyBackWrData.
   task automatic send_dat(input logic [11:0] txnid, input dat_opcode_e opcode,
-                           input logic [127:0] data_beats [NUM_BEATS], input logic [15:0] be);
+                           input logic [127:0] data_beats [NUM_BEATS], input logic [15:0] be,
+                           input logic [2:0] resp = 3'b000);
+    tshr_flit_pkg::local_dat_flit_t f;
+    @(posedge clk);
     for (int b = 0; b < NUM_BEATS; b++) begin
-      dat_tx.flit        = '0;
-      dat_tx.flit.srcid  = NODEID;
-      dat_tx.flit.txnid  = txnid;
-      dat_tx.flit.opcode = opcode;
-      dat_tx.flit.dataid = b[1:0];
-      dat_tx.flit.data   = data_beats[b];
-      dat_tx.flit.be     = be;
-      dat_tx.flitv       = Y;
-      dat_tx.flitpend    = (b == NUM_BEATS-1) ? N : Y;
+      while ((dat_cr_in - dat_cr_out) <= 0) begin
+        dat_tx.flitv    <= #1 N;
+        dat_tx.flitpend <= #1 N;
+        @(posedge clk);
+      end
+      dat_cr_out++;
+      f        = '0;
+      f.srcid  = NODEID;
+      f.txnid  = txnid;
+      f.opcode = opcode;
+      f.resp   = resp;
+      f.dataid = b[1:0];
+      f.data   = data_beats[b];
+      f.be     = be;
+      dat_tx.flit     <= #1 f;
+      dat_tx.flitv    <= #1 Y;
+      dat_tx.flitpend <= #1 (b == NUM_BEATS-1) ? N : Y;
       $display("[%0t] %s: DAT  txnid=%0d opcode=%s beat=%0d/%0d data=%0h",
                 $time, NAME, txnid, opcode.name(), b, NUM_BEATS-1, data_beats[b]);
       @(posedge clk);
-      dat_tx.flitv    = N;
-      dat_tx.flitpend = N;
     end
+    dat_tx.flitv    <= #1 N;
+    dat_tx.flitpend <= #1 N;
   endtask
 
   // ---- wait for an incoming snoop ----
   task automatic wait_snp(output logic [11:0] o_txnid, output snp_opcode_e o_opcode, output logic o_rettosrc);
-    while (!(snp_rx.flitv == Y)) @(posedge clk);
+    if (clk || $time == last_snp_t) @(negedge clk);
+    while (!(snp_rx.flitv == Y)) @(negedge clk);
+    last_snp_t = $time;
     o_txnid    = snp_rx.flit.txnid;
     o_opcode   = snp_rx.flit.opcode;
     o_rettosrc = snp_rx.flit.rettosrc;
@@ -111,25 +162,28 @@ module rnf_model #(
 
   // ---- wait for an incoming RSP (DBIDResp / CompDBIDResp / Comp) ----
   task automatic wait_rsp(output logic [11:0] o_txnid, output rsp_opcode_e o_opcode);
-    while (!(rsp_rx.flitv == Y)) @(posedge clk);
+    if (clk || $time == last_rsp_t) @(negedge clk);
+    while (!(rsp_rx.flitv == Y)) @(negedge clk);
+    last_rsp_t = $time;
     o_txnid  = rsp_rx.flit.txnid;
     o_opcode = rsp_rx.flit.opcode;
     $display("[%0t] %s: got RSP txnid=%0d opcode=%s", $time, NAME, o_txnid, o_opcode.name());
   endtask
 
   // ---- wait for an incoming DAT (CompData), collecting all NUM_BEATS
-  // beats before returning.
+  // beats before returning. Beats are placed by DataID.
   task automatic wait_dat(output logic [11:0] o_txnid, output dat_opcode_e o_opcode,
                            output logic [127:0] o_data_beats [NUM_BEATS], output logic [15:0] o_be);
+    if (clk) @(negedge clk);
     for (int b = 0; b < NUM_BEATS; b++) begin
-      while (!(dat_rx.flitv == Y)) @(posedge clk);
+      if (b != 0) @(negedge clk);
+      while (!(dat_rx.flitv == Y)) @(negedge clk);
       o_txnid         = dat_rx.flit.txnid;
       o_opcode        = dat_rx.flit.opcode;
-      o_data_beats[b] = dat_rx.flit.data;
+      o_data_beats[dat_rx.flit.dataid] = dat_rx.flit.data;
       o_be            = dat_rx.flit.be;
       $display("[%0t] %s: got DAT txnid=%0d opcode=%s beat=%0d/%0d data=%0h",
-                $time, NAME, o_txnid, o_opcode.name(), b, NUM_BEATS-1, o_data_beats[b]);
-      @(posedge clk);
+                $time, NAME, o_txnid, o_opcode.name(), dat_rx.flit.dataid, NUM_BEATS-1, dat_rx.flit.data);
     end
   endtask
 
@@ -154,9 +208,30 @@ module snf_model #(
   assign req_rx.lcrdv = 1'b1;
   assign dat_rx.lcrdv = 1'b1;
 
+  int rsp_cr_in = 0, dat_cr_in = 0;
+  int rsp_cr_out = 0, dat_cr_out = 0;
+  time last_req_t = -1;
+
+  always @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      rsp_cr_in <= 0; dat_cr_in <= 0;
+    end else begin
+      if (rsp_tx.lcrdv === 1'b1) rsp_cr_in <= rsp_cr_in + 1;
+      if (dat_tx.lcrdv === 1'b1) dat_cr_in <= dat_cr_in + 1;
+    end
+  end
+
+  task automatic idle();
+    rsp_tx.flitv <= N; rsp_tx.flitpend <= N;
+    dat_tx.flitv <= N; dat_tx.flitpend <= N;
+    rsp_cr_out = 0; dat_cr_out = 0;
+  endtask
+
   task automatic wait_req(output logic [11:0] o_txnid, output req_opcode_e o_opcode,
                            output logic [38:0] o_addr, output width_e o_size);
-    while (!(req_rx.flitv == Y)) @(posedge clk);
+    if (clk || $time == last_req_t) @(negedge clk);
+    while (!(req_rx.flitv == Y)) @(negedge clk);
+    last_req_t = $time;
     o_txnid  = req_rx.flit.txnid;
     o_opcode = req_rx.flit.opcode;
     o_addr   = req_rx.flit.addr;
@@ -165,36 +240,50 @@ module snf_model #(
   endtask
 
   task automatic send_rsp(input logic [11:0] txnid, input rsp_opcode_e opcode, input logic [11:0] dbid);
-    rsp_tx.flit        = '0;
-    rsp_tx.flit.txnid  = txnid;
-    rsp_tx.flit.opcode = opcode;
-    rsp_tx.flit.dbid   = dbid;
-    rsp_tx.flitv       = Y;
-    rsp_tx.flitpend    = Y;
+    tshr_flit_pkg::local_rsp_flit_t f;
+    @(posedge clk);
+    while ((rsp_cr_in - rsp_cr_out) <= 0) @(posedge clk);
+    rsp_cr_out++;
+    f        = '0;
+    f.txnid  = txnid;
+    f.opcode = opcode;
+    f.dbid   = dbid;
+    rsp_tx.flit     <= #1 f;
+    rsp_tx.flitv    <= #1 Y;
+    rsp_tx.flitpend <= #1 Y;
     $display("[%0t] %s: RSP  txnid=%0d opcode=%s dbid=%0d", $time, NAME, txnid, opcode.name(), dbid);
     @(posedge clk);
-    rsp_tx.flitv    = N;
-    rsp_tx.flitpend = N;
+    rsp_tx.flitv    <= #1 N;
+    rsp_tx.flitpend <= #1 N;
   endtask
 
   // ---- DAT: send a full NUM_BEATS-beat burst back to HN_F (e.g. a read
   // response). No dbid on this direction - matches sn_dat_rx's flit shape.
   task automatic send_dat(input logic [11:0] txnid, input dat_opcode_e opcode,
                            input logic [127:0] data_beats [NUM_BEATS]);
+    tshr_flit_pkg::local_dat_flit_t f;
+    @(posedge clk);
     for (int b = 0; b < NUM_BEATS; b++) begin
-      dat_tx.flit        = '0;
-      dat_tx.flit.txnid  = txnid;
-      dat_tx.flit.opcode = opcode;
-      dat_tx.flit.dataid = b[1:0];
-      dat_tx.flit.data   = data_beats[b];
-      dat_tx.flitv       = Y;
-      dat_tx.flitpend    = (b == NUM_BEATS-1) ? N : Y;
+      while ((dat_cr_in - dat_cr_out) <= 0) begin
+        dat_tx.flitv    <= #1 N;
+        dat_tx.flitpend <= #1 N;
+        @(posedge clk);
+      end
+      dat_cr_out++;
+      f        = '0;
+      f.txnid  = txnid;
+      f.opcode = opcode;
+      f.dataid = b[1:0];
+      f.data   = data_beats[b];
+      dat_tx.flit     <= #1 f;
+      dat_tx.flitv    <= #1 Y;
+      dat_tx.flitpend <= #1 (b == NUM_BEATS-1) ? N : Y;
       $display("[%0t] %s: DAT  txnid=%0d opcode=%s beat=%0d/%0d data=%0h",
                 $time, NAME, txnid, opcode.name(), b, NUM_BEATS-1, data_beats[b]);
       @(posedge clk);
-      dat_tx.flitv    = N;
-      dat_tx.flitpend = N;
     end
+    dat_tx.flitv    <= #1 N;
+    dat_tx.flitpend <= #1 N;
   endtask
 
   // ---- wait for an incoming DAT (write data), collecting all
@@ -204,16 +293,17 @@ module snf_model #(
   task automatic wait_dat(output logic [11:0] o_txnid, output dat_opcode_e o_opcode,
                            output logic [127:0] o_data_beats [NUM_BEATS], output logic [15:0] o_be,
                            output logic [11:0] o_dbid);
+    if (clk) @(negedge clk);
     for (int b = 0; b < NUM_BEATS; b++) begin
-      while (!(dat_rx.flitv == Y)) @(posedge clk);
+      if (b != 0) @(negedge clk);
+      while (!(dat_rx.flitv == Y)) @(negedge clk);
       o_txnid         = dat_rx.flit.txnid;
       o_opcode        = dat_rx.flit.opcode;
-      o_data_beats[b] = dat_rx.flit.data;
+      o_data_beats[dat_rx.flit.dataid] = dat_rx.flit.data;
       o_be            = dat_rx.flit.be;
       o_dbid          = dat_rx.flit.dbid;
       $display("[%0t] %s: got DAT txnid=%0d opcode=%s beat=%0d/%0d data=%0h dbid=%0d",
-                $time, NAME, o_txnid, o_opcode.name(), b, NUM_BEATS-1, o_data_beats[b], o_dbid);
-      @(posedge clk);
+                $time, NAME, o_txnid, o_opcode.name(), dat_rx.flit.dataid, NUM_BEATS-1, dat_rx.flit.data, o_dbid);
     end
   endtask
 
@@ -273,7 +363,7 @@ module Tb_HNF;
     .AddrWidth      (39),
     .DataWidth      (128),
     .CacheLineWidth (512),
-    .TxCreditMax    (2)
+    .TxCreditMax    (15)
   ) dut (
     .clk        (clk),
     .resetn     (resetn),
@@ -318,6 +408,7 @@ module Tb_HNF;
 
   // Force the DUT back to a known idle state between scenarios.
   task automatic reset_dut();
+    rnf0.idle(); rnf1.idle(); snf.idle();
     resetn = 0;
     repeat (3) @(posedge clk);
     resetn = 1;
@@ -355,21 +446,21 @@ module Tb_HNF;
     wdata[3] = 128'h9999_9999_AAAA_AAAA_BBBB_BBBB_CCCC_CCCC;
 
     fork
-      rnf0.send_req(txnid, REQ_WRITE_UNIQUE_PTL, 39'h1000, WIDTH_16);
+      rnf0.send_req(txnid, REQ_WRITE_UNIQUE_PTL, 39'h1000, WIDTH_64, 1'b1);
       begin
         rnf1.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_UNIQUE || rts !== 1'b0) begin
           $display("FAIL A: expected SnpUnique/rettosrc=0, got %s/%0b", snp_op.name(), rts);
           errors++;
         end
-        rnf1.send_rsp(txnid, RSP_SNP_RESP);
+        rnf1.send_rsp(snp_txnid, RSP_SNP_RESP);
       end
     join
 
     rnf0.wait_rsp(txnid, rsp_op);
     if (rsp_op !== RSP_DBID_RESP) begin $display("FAIL A: expected DBIDResp, got %s", rsp_op.name()); errors++; end
 
-    rnf0.send_dat(txnid, DAT_DATA_FLIT, wdata, 16'hFFFF);
+    rnf0.send_dat(txnid, DAT_NON_COPY_BACK_WR_DATA, wdata, 16'hFFFF);
 
     snf.wait_req(txnid, req_op, addr_dummy(), size_dummy());
     if (req_op !== REQ_WRITE_NO_SNOOP_PTL) begin $display("FAIL A: expected WriteNoSnpPtl, got %s", req_op.name()); errors++; end
@@ -415,14 +506,14 @@ module Tb_HNF;
     fill_beats(hitdata, 128'h1111_2222_3333_4444_5555_6666_7777_8888);
 
     fork
-      rnf0.send_req(txnid, REQ_READ_SHARED, 39'h2000, WIDTH_16);
+      rnf0.send_req(txnid, REQ_READ_SHARED, 39'h2000, WIDTH_64, 1'b1);
       begin
         rnf1.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_SHARED || rts !== 1'b1) begin
           $display("FAIL B: expected SnpShared/rettosrc=1, got %s/%0b", snp_op.name(), rts);
           errors++;
         end
-        rnf1.send_dat(txnid, DAT_SNP_RESP_DATA, hitdata, 16'hFFFF);
+        rnf1.send_dat(snp_txnid, DAT_SNP_RESP_DATA, hitdata, 16'hFFFF, RESP_SC);
       end
     join
 
@@ -457,14 +548,14 @@ module Tb_HNF;
     fill_beats(missdata, 128'hAAAA_BBBB_CCCC_DDDD_EEEE_FFFF_0000_1111);
 
     fork
-      rnf1.send_req(txnid, REQ_READ_SHARED, 39'h3000, WIDTH_16);
+      rnf1.send_req(txnid, REQ_READ_SHARED, 39'h3000, WIDTH_64, 1'b1);
       begin
         rnf0.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_SHARED || rts !== 1'b1) begin
           $display("FAIL C: expected SnpShared/rettosrc=1, got %s/%0b", snp_op.name(), rts);
           errors++;
         end
-        rnf0.send_rsp(txnid, RSP_SNP_RESP);
+        rnf0.send_rsp(snp_txnid, RSP_SNP_RESP);
       end
     join
 
@@ -501,19 +592,19 @@ module Tb_HNF;
     txnid = 12'h0D4;
     fill_beats(wbdata, 128'h0BAD_F00D_0BAD_F00D_0BAD_F00D_0BAD_F00D);
 
-    rnf0.send_req(txnid, REQ_WRITE_BACK_FULL, 39'h4000, WIDTH_16);
+    rnf0.send_req(txnid, REQ_WRITE_BACK_FULL, 39'h4000, WIDTH_64);
 
     rnf0.wait_rsp(txnid, rsp_op);
     if (rsp_op !== RSP_COMP_DBID_RESP) begin $display("FAIL D: expected CompDBIDResp, got %s", rsp_op.name()); errors++; end
 
-    rnf0.send_dat(txnid, DAT_DATA_FLIT, wbdata, 16'hFFFF);
+    rnf0.send_dat(txnid, DAT_COPY_BACK_WR_DATA, wbdata, 16'hFFFF, RESP_UD_PD);
 
     snf.wait_req(txnid, req_op, addr_dummy(), size_dummy());
     if (req_op !== REQ_WRITE_NO_SNOOP_FULL) begin $display("FAIL D: expected WriteNoSnpFull, got %s", req_op.name()); errors++; end
     snf.send_rsp(txnid, RSP_COMP_DBID_RESP, 12'h123);
 
     snf.wait_dat(txnid, dat_op, got_data, be, dbid);
-    if (dat_op !== DAT_COPY_BACK_WR_DATA) begin $display("FAIL D: expected CopyBackWrData, got %s", dat_op.name()); errors++; end
+    if (dat_op !== DAT_NON_COPY_BACK_WR_DATA) begin $display("FAIL D: expected NonCopyBackWrData, got %s", dat_op.name()); errors++; end
     for (int b = 0; b < NUM_BEATS; b++) begin
       if (got_data[b] !== wbdata[b]) begin $display("FAIL D: beat %0d data mismatch", b); errors++; end
     end
@@ -547,14 +638,14 @@ module Tb_HNF;
     fill_beats(overwrite_data, 128'hDEAD_DEAD_0000_0000_0000_0000_CAFE_CAFE);
 
     fork
-      rnf0.send_req(txnid, REQ_WRITE_UNIQUE_PTL, 39'h5000, WIDTH_16);
+      rnf0.send_req(txnid, REQ_WRITE_UNIQUE_PTL, 39'h5000, WIDTH_64, 1'b1);
       begin
         rnf1.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_UNIQUE) begin
           $display("FAIL E: expected SnpUnique on write-hits-modified, got %s", snp_op.name());
           errors++;
         end
-        rnf1.send_dat(txnid, DAT_SNP_RESP_DATA, dirty_data, 16'hFFFF);
+        rnf1.send_dat(snp_txnid, DAT_SNP_RESP_DATA, dirty_data, 16'hFFFF, RESP_I_PD);
       end
     join
 
@@ -567,8 +658,8 @@ module Tb_HNF;
     snf.send_rsp(txnid, RSP_COMP_DBID_RESP, 12'h700);
 
     snf.wait_dat(txnid, dat_op, got_data, be, dbid);
-    if (dat_op !== DAT_COPY_BACK_WR_DATA) begin
-      $display("FAIL E: expected CopyBackWrData for RNF1's dirty writeback, got %s", dat_op.name());
+    if (dat_op !== DAT_NON_COPY_BACK_WR_DATA) begin
+      $display("FAIL E: expected NonCopyBackWrData for RNF1's dirty writeback, got %s", dat_op.name());
       errors++;
     end
     for (int b = 0; b < NUM_BEATS; b++) begin
@@ -583,7 +674,7 @@ module Tb_HNF;
       errors++;
     end
 
-    rnf0.send_dat(txnid, DAT_DATA_FLIT, overwrite_data, 16'hFFFF);
+    rnf0.send_dat(txnid, DAT_NON_COPY_BACK_WR_DATA, overwrite_data, 16'hFFFF);
 
     snf.wait_req(txnid, req_op, addr_dummy(), size_dummy());
     if (req_op !== REQ_WRITE_NO_SNOOP_PTL) begin
@@ -631,10 +722,10 @@ module Tb_HNF;
     fill_beats(dirty_data, 128'hB16B_00B5_0000_0000_0000_0000_DEAD_10CC);
 
     fork
-      rnf0.send_req(txnid, REQ_READ_UNIQUE, 39'h6000, WIDTH_16);
+      rnf0.send_req(txnid, REQ_READ_UNIQUE, 39'h6000, WIDTH_64, 1'b1);
       begin
         rnf1.wait_snp(snp_txnid, snp_op, rts);
-        rnf1.send_dat(txnid, DAT_SNP_RESP_DATA, dirty_data, 16'hFFFF);
+        rnf1.send_dat(snp_txnid, DAT_SNP_RESP_DATA, dirty_data, 16'hFFFF, RESP_I_PD);
       end
     join
 
@@ -655,8 +746,8 @@ module Tb_HNF;
         snf.send_rsp(txnid, RSP_COMP_DBID_RESP, 12'h7F0);
 
         snf.wait_dat(txnid, dat_op, got_data, be, dbid);
-        if (dat_op !== DAT_COPY_BACK_WR_DATA) begin
-          $display("FAIL F: expected CopyBackWrData for the memory writeback, got %s", dat_op.name());
+        if (dat_op !== DAT_NON_COPY_BACK_WR_DATA) begin
+          $display("FAIL F: expected NonCopyBackWrData for the memory writeback, got %s", dat_op.name());
           errors++;
         end
         for (int b = 0; b < NUM_BEATS; b++) begin
@@ -687,14 +778,14 @@ module Tb_HNF;
     $display("\n===== Scenario G1: ReadShared -> expect SnpShared/rettosrc=1 =====");
     txnid = 12'h0071;
     fork
-      rnf0.send_req(txnid, REQ_READ_SHARED, 39'h7000, WIDTH_16);
+      rnf0.send_req(txnid, REQ_READ_SHARED, 39'h7000, WIDTH_64, 1'b1);
       begin
         rnf1.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_SHARED || rts !== 1'b1) begin
           $display("FAIL G1: expected SnpShared/rettosrc=1 for ReadShared, got %s/%0b", snp_op.name(), rts);
           errors++;
         end
-        rnf1.send_rsp(txnid, RSP_SNP_RESP);
+        rnf1.send_rsp(snp_txnid, RSP_SNP_RESP);
       end
     join
 
@@ -713,14 +804,14 @@ module Tb_HNF;
     $display("\n===== Scenario G2: ReadUnique -> expect SnpUnique/rettosrc=1 (NOT SnpShared) =====");
     txnid = 12'h0072;
     fork
-      rnf0.send_req(txnid, REQ_READ_UNIQUE, 39'h8000, WIDTH_16);
+      rnf0.send_req(txnid, REQ_READ_UNIQUE, 39'h8000, WIDTH_64, 1'b1);
       begin
         rnf1.wait_snp(snp_txnid, snp_op, rts);
         if (snp_op !== SNP_UNIQUE || rts !== 1'b1) begin
           $display("FAIL G2: expected SnpUnique/rettosrc=1 for ReadUnique, got %s/%0b", snp_op.name(), rts);
           errors++;
         end
-        rnf1.send_rsp(txnid, RSP_SNP_RESP);
+        rnf1.send_rsp(snp_txnid, RSP_SNP_RESP);
       end
     join
 
@@ -744,29 +835,36 @@ module Tb_HNF;
     txnid1 = 12'h0BB0;
 
     fork
-      rnf0.send_req(txnid0, REQ_READ_ONCE, 39'h9000, WIDTH_16);
-      rnf1.send_req(txnid1, REQ_READ_ONCE, 39'hA000, WIDTH_16);
+      rnf0.send_req(txnid0, REQ_READ_ONCE, 39'h9000, WIDTH_64);
+      rnf1.send_req(txnid1, REQ_READ_ONCE, 39'hA000, WIDTH_64);
     join
 
     fork
       begin
-        rnf1.wait_snp(snp_txnid, snp_op, rts);
-        rnf1.send_rsp(snp_txnid, RSP_SNP_RESP);
-      end
-      begin
-        rnf0.wait_snp(snp_txnid, snp_op, rts);
-        rnf0.send_rsp(snp_txnid, RSP_SNP_RESP);
+        fork
+          begin
+            rnf1.wait_snp(snp_txnid, snp_op, rts);
+            rnf1.send_rsp(snp_txnid, RSP_SNP_RESP);
+          end
+          begin
+            logic [11:0] snp_txnid0;
+            snp_opcode_e snp_op0;
+            logic        rts0;
+            rnf0.wait_snp(snp_txnid0, snp_op0, rts0);
+            rnf0.send_rsp(snp_txnid0, RSP_SNP_RESP);
+          end
+        join
       end
       begin
         repeat (30) @(posedge clk);
-        $display("FAIL H: neither RNF0 nor RNF1 ever received a snoop - both simultaneous requests appear lost");
+        $display("FAIL H: one of the simultaneous requests never produced a snoop - a request was lost");
         errors++;
       end
     join_any
     disable fork;
 
     repeat (20) @(posedge clk);
-    $display("Scenario H done - manually confirm exactly one of txnid0/txnid1 was serviced.");
+    $display("Scenario H done - both simultaneous requests were accepted.");
   endtask
 
   // ---------------------------------------------------------------------
@@ -814,7 +912,7 @@ task automatic scenario_concurrent_independent_trackers();
 
     fork
       begin
-        rnf0.send_req(txnid_rnf0, REQ_READ_SHARED, 39'hB000, WIDTH_16);
+        rnf0.send_req(txnid_rnf0, REQ_READ_SHARED, 39'hB000, WIDTH_64, 1'b1);
         $display("rnf0 send at time %0t", $time);
         
         rnf1.wait_snp(snp_txnid, snp_op, rts);
@@ -825,7 +923,7 @@ task automatic scenario_concurrent_independent_trackers();
         rnf1.send_rsp(snp_txnid, RSP_SNP_RESP); 
 
         fork
-          rnf1.send_req(txnid_rnf1, REQ_READ_SHARED, 39'hC000, WIDTH_16);
+          rnf1.send_req(txnid_rnf1, REQ_READ_SHARED, 39'hC000, WIDTH_64, 1'b1);
           begin
             rnf0.wait_snp(snp_txnid, snp_op, rts);
             if (snp_op !== SNP_SHARED || rts !== 1'b1) begin

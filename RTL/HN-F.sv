@@ -17,7 +17,7 @@ module HN_F
   parameter int AddrWidth      = 39,
   parameter int DataWidth      = 128,
   parameter int CacheLineWidth = 512,
-  parameter int TxCreditMax    = 2
+  parameter int TxCreditMax    = 15
 ) (
   input  wire clk,
   input  wire resetn,
@@ -40,6 +40,9 @@ module HN_F
     if (NUM_RNF != 2) begin
       $fatal(1, "HN_F basic baseline only derives a snoop target for NUM_RNF==2 (no real snoop filter yet)");
     end
+    if (TxCreditMax < 15) begin
+      $fatal(1, "HN_F TxCreditMax (%0d) must be at least 15, the CHI maximum a receiver may grant, or credits are lost", TxCreditMax);
+    end
   end
 
   logic        tracker_ready [NUM_TRACKERS];
@@ -47,6 +50,9 @@ module HN_F
 
   logic [11:0] trk_txnid     [NUM_TRACKERS];
   node_id_e    trk_srcid     [NUM_TRACKERS];
+  logic [AddrWidth-1:0] trk_addr [NUM_TRACKERS];
+  logic        trk_hazard    [NUM_TRACKERS];
+  logic        trk_older_q   [NUM_TRACKERS][NUM_TRACKERS];
 
   always_comb begin
     for (int t = 0; t < NUM_TRACKERS; t++) tracker_valid[t] = !tracker_ready[t];
@@ -56,73 +62,66 @@ module HN_F
   common_pkg::yn_status_e         trk_req_flitv      [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_req_flitpend   [NUM_TRACKERS];
   tshr_flit_pkg::local_req_flit_t trk_req_flit       [NUM_TRACKERS];
-  logic                           trk_req_lcrdv      [NUM_TRACKERS];
 
   // ---- SNP Channel (TX) ----
   common_pkg::yn_status_e         trk_snp_flitv      [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_snp_flitpend   [NUM_TRACKERS];
   tshr_flit_pkg::local_snp_flit_t trk_snp_flit       [NUM_TRACKERS];
-  logic                           trk_snp_lcrdv      [NUM_TRACKERS];
+  logic                           trk_snp_gnt        [NUM_TRACKERS];
 
   // ---- RSP Channel (TX) ----
   common_pkg::yn_status_e         trk_rsp_tx_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_rsp_tx_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_rsp_flit_t trk_rsp_tx_flit    [NUM_TRACKERS];
-  logic                           trk_rsp_tx_lcrdv   [NUM_TRACKERS];
+  logic                           trk_rsp_tx_gnt     [NUM_TRACKERS];
 
   // ---- RSP Channel (RX from Requester) ----
   common_pkg::yn_status_e         trk_rsp_rx_req_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_rsp_rx_req_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_rsp_flit_t trk_rsp_rx_req_flit    [NUM_TRACKERS];
-  logic                           trk_rsp_rx_req_lcrdv   [NUM_TRACKERS];
 
   // ---- RSP Channel (RX from Snoop Target) ----
   common_pkg::yn_status_e         trk_rsp_rx_snp_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_rsp_rx_snp_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_rsp_flit_t trk_rsp_rx_snp_flit    [NUM_TRACKERS];
-  logic                           trk_rsp_rx_snp_lcrdv   [NUM_TRACKERS];
 
   // ---- DAT Channel (TX) ----
   common_pkg::yn_status_e         trk_dat_tx_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_dat_tx_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_dat_tx_flit    [NUM_TRACKERS];
-  logic                           trk_dat_tx_lcrdv   [NUM_TRACKERS];
+  logic                           trk_dat_tx_gnt     [NUM_TRACKERS];
 
   // ---- DAT Channel (RX from Requester) ----
   common_pkg::yn_status_e         trk_dat_rx_req_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_dat_rx_req_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_dat_rx_req_flit    [NUM_TRACKERS];
-  logic                           trk_dat_rx_req_lcrdv   [NUM_TRACKERS];
 
   // ---- DAT Channel (RX from Snoop Target) ----
   common_pkg::yn_status_e         trk_dat_rx_snp_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_dat_rx_snp_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_dat_rx_snp_flit    [NUM_TRACKERS];
-  logic                           trk_dat_rx_snp_lcrdv   [NUM_TRACKERS];
 
   // ---- SN-F REQ Channel (TX) ----
   common_pkg::yn_status_e         trk_sn_req_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_sn_req_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_req_flit_t trk_sn_req_flit    [NUM_TRACKERS];
-  logic                           trk_sn_req_lcrdv   [NUM_TRACKERS];
+  logic                           trk_sn_req_gnt     [NUM_TRACKERS];
 
   // ---- SN-F RSP Channel (RX) ----
   common_pkg::yn_status_e         trk_sn_rsp_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_sn_rsp_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_rsp_flit_t trk_sn_rsp_flit    [NUM_TRACKERS];
-  logic                           trk_sn_rsp_lcrdv   [NUM_TRACKERS];
 
   // ---- SN-F DAT Channel (TX) ----
   common_pkg::yn_status_e         trk_sn_dat_tx_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_sn_dat_tx_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_sn_dat_tx_flit    [NUM_TRACKERS];
-  logic                           trk_sn_dat_tx_lcrdv   [NUM_TRACKERS];
+  logic                           trk_sn_dat_tx_gnt     [NUM_TRACKERS];
 
   // ---- SN-F DAT Channel (RX) ----
   common_pkg::yn_status_e         trk_sn_dat_rx_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_sn_dat_rx_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_sn_dat_rx_flit    [NUM_TRACKERS];
-  logic                           trk_sn_dat_rx_lcrdv   [NUM_TRACKERS];
 
   logic [RNF_IDX_W-1:0] req_port_idx_q [NUM_TRACKERS]; // which RN-F is the requester
   logic [RNF_IDX_W-1:0] snp_port_idx   [NUM_TRACKERS]; // which RN-F is the snoop target (
@@ -138,14 +137,8 @@ module HN_F
   tshr_flit_pkg::local_req_flit_t rnf_req_flit_flat    [NUM_RNF];
   logic                           rnf_req_lcrdv_flat   [NUM_RNF];
 
-  common_pkg::yn_status_e         merged_req_v;
-  tshr_flit_pkg::local_req_flit_t merged_req_flit;
-  logic [RNF_IDX_W-1:0]           merged_req_port_idx;
-  logic                           merged_req_taken;
-
-  common_pkg::yn_status_e         inbound_req_rdy_yn; // unused, Allocator uses plain logic rdy
-  logic                           inbound_req_rdy;
-  local_req_flit_t                broadcast_alloc_flit;
+  logic [RNF_IDX_W-1:0]           alloc_port_idx [NUM_TRACKERS];
+  logic                           alloc_drop;
 
   generate
     for (genvar r = 0; r < NUM_RNF; r++) begin : gen_req_bridge
@@ -157,34 +150,40 @@ module HN_F
   endgenerate
 
   req_rx_arbiter #(
-    .NUM_RNF (NUM_RNF)
+    .NUM_RNF      (NUM_RNF),
+    .NUM_TRACKERS (NUM_TRACKERS)
   ) u_req_rx_arb (
     .clk                  (clk),
     .resetn               (resetn),
     .rnf_req_flitv        (rnf_req_flitv_flat),
-    .rnf_req_flitpend     (rnf_req_flitpend_flat),
-    .rnf_req_flit         (rnf_req_flit_flat),
     .rnf_req_lcrdv        (rnf_req_lcrdv_flat),
-    .inbound_req_v        (merged_req_v),
-    .inbound_req_flit     (merged_req_flit),
-    .inbound_req_port_idx (merged_req_port_idx),
-    .inbound_req_taken    (merged_req_taken)
+    .tracker_ready        (tracker_ready)
   );
 
-  assign merged_req_taken = (merged_req_v == Y) && inbound_req_rdy;
-
   Allocator #(
-    .NUM_TRACKERS(NUM_TRACKERS)
+    .NUM_TRACKERS(NUM_TRACKERS),
+    .NUM_RNF     (NUM_RNF)
   ) u_allocator (
-    .inbound_req_v_i    ( merged_req_v ),
-    .inbound_req_flit_i ( merged_req_flit ),
-    .inbound_req_rdy_o  ( inbound_req_rdy ),
+    .inbound_req_v_i    ( rnf_req_flitv_flat ),
+    .inbound_req_flit_i ( rnf_req_flit_flat ),
 
     .tracker_ready_i    ( tracker_ready ),
 
     .alloc_v_o          ( trk_req_flitv ),
-    .alloc_flit_o       ( broadcast_alloc_flit )
+    .alloc_flit_o       ( trk_req_flit ),
+    .alloc_port_o       ( alloc_port_idx ),
+    .alloc_drop_o       ( alloc_drop )
   );
+
+  always_ff @(posedge clk) begin
+    if (resetn && alloc_drop) begin
+      $error("[%0t] HN_F: a request arrived with no free tracker - REQ credit accounting is broken", $time);
+    end
+  end
+
+  always_comb begin
+    for (int t = 0; t < NUM_TRACKERS; t++) trk_req_flitpend[t] = N;
+  end
 
   // latch which physical RN-F port originated the request, the instant a
   // tracker is actually granted one.
@@ -193,7 +192,73 @@ module HN_F
       for (int t = 0; t < NUM_TRACKERS; t++) req_port_idx_q[t] <= '0;
     end else begin
       for (int t = 0; t < NUM_TRACKERS; t++) begin
-        if (trk_req_flitv[t] == Y) req_port_idx_q[t] <= merged_req_port_idx;
+        if (trk_req_flitv[t] == Y) req_port_idx_q[t] <= alloc_port_idx[t];
+      end
+    end
+  end
+
+  localparam int LineOffW = $clog2(CacheLineWidth / 8);
+
+  always_ff @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      for (int a = 0; a < NUM_TRACKERS; a++)
+        for (int b = 0; b < NUM_TRACKERS; b++) trk_older_q[a][b] <= 1'b0;
+    end else begin
+      for (int a = 0; a < NUM_TRACKERS; a++) begin
+        for (int b = 0; b < NUM_TRACKERS; b++) begin
+          if (trk_req_flitv[a] == Y) begin
+            trk_older_q[a][b] <= (a != b) &&
+                                 (tracker_valid[b] ||
+                                  ((trk_req_flitv[b] == Y) && (alloc_port_idx[b] < alloc_port_idx[a])));
+          end else if (tracker_ready[b]) begin
+            trk_older_q[a][b] <= 1'b0;
+          end
+        end
+      end
+    end
+  end
+
+  always_comb begin
+    for (int a = 0; a < NUM_TRACKERS; a++) begin
+      trk_hazard[a] = 1'b0;
+      for (int b = 0; b < NUM_TRACKERS; b++) begin
+        if (trk_older_q[a][b] && tracker_valid[b] &&
+            (trk_addr[a][AddrWidth-1:LineOffW] == trk_addr[b][AddrWidth-1:LineOffW])) begin
+          trk_hazard[a] = 1'b1;
+        end
+      end
+    end
+  end
+
+  // P-credit pool for SN-F retry: PCrdGrant carries no TxnID, so it is
+  // banked here per PCrdType and handed to one waiting tracker.
+  logic                 trk_pcrd_req  [NUM_TRACKERS];
+  logic [3:0]           trk_pcrd_type [NUM_TRACKERS];
+  logic                 trk_pcrd_gnt  [NUM_TRACKERS];
+  logic [4:0]           pcrd_cnt_q    [16];
+  logic [4:0]           pcrd_avail    [16];
+  logic                 pcrd_arrive;
+  logic [3:0]           pcrd_arrive_type;
+
+  always_comb begin
+    pcrd_arrive      = (snf_rsp.flitv == Y) && (snf_rsp.flit.opcode == RSP_PCR_GRANT_ACK);
+    pcrd_arrive_type = snf_rsp.flit.pcrdttype;
+    for (int k = 0; k < 16; k++) pcrd_avail[k] = pcrd_cnt_q[k];
+    for (int t = 0; t < NUM_TRACKERS; t++) begin
+      trk_pcrd_gnt[t] = 1'b0;
+      if (trk_pcrd_req[t] && (pcrd_avail[trk_pcrd_type[t]] != '0)) begin
+        trk_pcrd_gnt[t]                = 1'b1;
+        pcrd_avail[trk_pcrd_type[t]]   = pcrd_avail[trk_pcrd_type[t]] - 1'b1;
+      end
+    end
+  end
+
+  always_ff @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      for (int k = 0; k < 16; k++) pcrd_cnt_q[k] <= '0;
+    end else begin
+      for (int k = 0; k < 16; k++) begin
+        pcrd_cnt_q[k] <= pcrd_avail[k] + 5'((pcrd_arrive && (pcrd_arrive_type == 4'(k))) ? 1 : 0);
       end
     end
   end
@@ -206,7 +271,7 @@ module HN_F
         .AddrWidth      (AddrWidth),
         .DataWidth      (DataWidth),
         .CacheLineWidth (CacheLineWidth),
-        .TxCreditMax    (TxCreditMax),
+        .TRK_ID         (i),
         .HNFID          (7'h40),
         .SNFID          (7'h00)
       ) u_tshr_inst (
@@ -217,82 +282,81 @@ module HN_F
         // Exported nametags for the crossbar routers
         .TxnID_o             (trk_txnid[i]),
         .SrcID_o             (trk_srcid[i]),
+        .Addr_o              (trk_addr[i]),
+        .hazard_i            (trk_hazard[i]),
 
         // ---- REQ from Requester (rx side) ----
         .req_flitv           (trk_req_flitv[i]),
         .req_flitpend        (trk_req_flitpend[i]),
-        .req_flit            (broadcast_alloc_flit), // driven by Allocator
-        .req_lcrdv           (trk_req_lcrdv[i]),
+        .req_flit            (trk_req_flit[i]), // driven by Allocator
 
         // ---- SNP to Target (tx side) ----
         .snp_flitv           (trk_snp_flitv[i]),
         .snp_flitpend        (trk_snp_flitpend[i]),
         .snp_flit            (trk_snp_flit[i]),
-        .snp_lcrdv           (trk_snp_lcrdv[i]),
+        .snp_gnt             (trk_snp_gnt[i]),
 
         // ---- RSP to Requester (tx side) ----
         .rsp_tx_flitv        (trk_rsp_tx_flitv[i]),
         .rsp_tx_flitpend     (trk_rsp_tx_flitpend[i]),
         .rsp_tx_flit         (trk_rsp_tx_flit[i]),
-        .rsp_tx_lcrdv        (trk_rsp_tx_lcrdv[i]),
+        .rsp_tx_gnt          (trk_rsp_tx_gnt[i]),
 
         // ---- RSP from Requester (rx side) ----
         .rsp_rx_req_flitv    (trk_rsp_rx_req_flitv[i]),
         .rsp_rx_req_flitpend (trk_rsp_rx_req_flitpend[i]),
         .rsp_rx_req_flit     (trk_rsp_rx_req_flit[i]),
-        .rsp_rx_req_lcrdv    (trk_rsp_rx_req_lcrdv[i]),
 
         // ---- RSP from Target (rx side) ----
         .rsp_rx_snp_flitv    (trk_rsp_rx_snp_flitv[i]),
         .rsp_rx_snp_flitpend (trk_rsp_rx_snp_flitpend[i]),
         .rsp_rx_snp_flit     (trk_rsp_rx_snp_flit[i]),
-        .rsp_rx_snp_lcrdv    (trk_rsp_rx_snp_lcrdv[i]),
 
         // ---- DAT to Requester (tx side) ----
         .dat_tx_flitv        (trk_dat_tx_flitv[i]),
         .dat_tx_flitpend     (trk_dat_tx_flitpend[i]),
         .dat_tx_flit         (trk_dat_tx_flit[i]),
-        .dat_tx_lcrdv        (trk_dat_tx_lcrdv[i]),
+        .dat_tx_gnt          (trk_dat_tx_gnt[i]),
 
         // ---- DAT from Requester (rx side) ----
         .dat_rx_req_flitv    (trk_dat_rx_req_flitv[i]),
         .dat_rx_req_flitpend (trk_dat_rx_req_flitpend[i]),
         .dat_rx_req_flit     (trk_dat_rx_req_flit[i]),
-        .dat_rx_req_lcrdv    (trk_dat_rx_req_lcrdv[i]),
 
         // ---- DAT from Target (rx side) ----
         .dat_rx_snp_flitv    (trk_dat_rx_snp_flitv[i]),
         .dat_rx_snp_flitpend (trk_dat_rx_snp_flitpend[i]),
         .dat_rx_snp_flit     (trk_dat_rx_snp_flit[i]),
-        .dat_rx_snp_lcrdv    (trk_dat_rx_snp_lcrdv[i]),
 
         // ---- SN-F side ----
         .sn_req_flitv        (trk_sn_req_flitv[i]),
         .sn_req_flitpend     (trk_sn_req_flitpend[i]),
         .sn_req_flit         (trk_sn_req_flit[i]),
-        .sn_req_lcrdv        (trk_sn_req_lcrdv[i]),
+        .sn_req_gnt          (trk_sn_req_gnt[i]),
 
         .sn_rsp_flitv        (trk_sn_rsp_flitv[i]),
         .sn_rsp_flitpend     (trk_sn_rsp_flitpend[i]),
         .sn_rsp_flit         (trk_sn_rsp_flit[i]),
-        .sn_rsp_lcrdv        (trk_sn_rsp_lcrdv[i]),
 
         .sn_dat_tx_flitv     (trk_sn_dat_tx_flitv[i]),
         .sn_dat_tx_flitpend  (trk_sn_dat_tx_flitpend[i]),
         .sn_dat_tx_flit      (trk_sn_dat_tx_flit[i]),
-        .sn_dat_tx_lcrdv     (trk_sn_dat_tx_lcrdv[i]),
+        .sn_dat_tx_gnt       (trk_sn_dat_tx_gnt[i]),
 
         .sn_dat_rx_flitv     (trk_sn_dat_rx_flitv[i]),
         .sn_dat_rx_flitpend  (trk_sn_dat_rx_flitpend[i]),
         .sn_dat_rx_flit      (trk_sn_dat_rx_flit[i]),
-        .sn_dat_rx_lcrdv     (trk_sn_dat_rx_lcrdv[i])
+
+        .pcrd_req_o          (trk_pcrd_req[i]),
+        .pcrd_type_o         (trk_pcrd_type[i]),
+        .pcrd_gnt_i          (trk_pcrd_gnt[i])
       );
 
     end
   endgenerate
   common_pkg::yn_status_e snp_masked_flitv [NUM_RNF][NUM_TRACKERS];
   logic                   snp_targets_me   [NUM_RNF][NUM_TRACKERS];
-  logic                   snp_port_lcrdv   [NUM_RNF][NUM_TRACKERS];
+  logic                   snp_port_gnt     [NUM_RNF][NUM_TRACKERS];
 
   common_pkg::yn_status_e rnf_snp_flitv_flat   [NUM_RNF];
   common_pkg::yn_status_e rnf_snp_flitpend_flat[NUM_RNF];
@@ -308,7 +372,8 @@ module HN_F
 
       tx_chan_arbiter #(
         .NUM_TRACKERS (NUM_TRACKERS),
-        .flit_t       (local_snp_flit_t)
+        .flit_t       (local_snp_flit_t),
+        .MaxCredits   (TxCreditMax)
       ) u_snp_arb (
         .clk            (clk),
         .resetn         (resetn),
@@ -316,7 +381,7 @@ module HN_F
         .trk_flitpend   (trk_snp_flitpend),
         .trk_flit       (trk_snp_flit),
         .trk_targets_me (snp_targets_me[p]),
-        .trk_lcrdv      (snp_port_lcrdv[p]),
+        .trk_gnt        (snp_port_gnt[p]),
         .phy_flitv      (rnf_snp_flitv_flat[p]),
         .phy_flitpend   (rnf_snp_flitpend_flat[p]),
         .phy_flit       (rnf_snp_flit_flat[p]),
@@ -332,8 +397,8 @@ module HN_F
 
   always_comb begin
     for (int t = 0; t < NUM_TRACKERS; t++) begin
-      trk_snp_lcrdv[t] = 1'b0;
-      for (int p = 0; p < NUM_RNF; p++) trk_snp_lcrdv[t] |= snp_port_lcrdv[p][t];
+      trk_snp_gnt[t] = 1'b0;
+      for (int p = 0; p < NUM_RNF; p++) trk_snp_gnt[t] |= snp_port_gnt[p][t];
     end
   end
 
@@ -343,7 +408,7 @@ module HN_F
   // =====================================================================
   common_pkg::yn_status_e rsp_tx_masked_flitv [NUM_RNF][NUM_TRACKERS];
   logic                   rsp_tx_targets_me   [NUM_RNF][NUM_TRACKERS];
-  logic                   rsp_tx_port_lcrdv   [NUM_RNF][NUM_TRACKERS];
+  logic                   rsp_tx_port_gnt     [NUM_RNF][NUM_TRACKERS];
 
   common_pkg::yn_status_e rnf_rsp_tx_flitv_flat   [NUM_RNF];
   common_pkg::yn_status_e rnf_rsp_tx_flitpend_flat[NUM_RNF];
@@ -351,7 +416,7 @@ module HN_F
 
   common_pkg::yn_status_e dat_tx_masked_flitv [NUM_RNF][NUM_TRACKERS];
   logic                   dat_tx_targets_me   [NUM_RNF][NUM_TRACKERS];
-  logic                   dat_tx_port_lcrdv   [NUM_RNF][NUM_TRACKERS];
+  logic                   dat_tx_port_gnt     [NUM_RNF][NUM_TRACKERS];
 
   common_pkg::yn_status_e rnf_dat_tx_flitv_flat   [NUM_RNF];
   common_pkg::yn_status_e rnf_dat_tx_flitpend_flat[NUM_RNF];
@@ -370,7 +435,8 @@ module HN_F
 
       tx_chan_arbiter #(
         .NUM_TRACKERS (NUM_TRACKERS),
-        .flit_t       (local_rsp_flit_t)
+        .flit_t       (local_rsp_flit_t),
+        .MaxCredits   (TxCreditMax)
       ) u_rsp_tx_arb (
         .clk            (clk),
         .resetn         (resetn),
@@ -378,7 +444,7 @@ module HN_F
         .trk_flitpend   (trk_rsp_tx_flitpend),
         .trk_flit       (trk_rsp_tx_flit),
         .trk_targets_me (rsp_tx_targets_me[p]),
-        .trk_lcrdv      (rsp_tx_port_lcrdv[p]),
+        .trk_gnt        (rsp_tx_port_gnt[p]),
         .phy_flitv      (rnf_rsp_tx_flitv_flat[p]),
         .phy_flitpend   (rnf_rsp_tx_flitpend_flat[p]),
         .phy_flit       (rnf_rsp_tx_flit_flat[p]),
@@ -391,7 +457,8 @@ module HN_F
       assign rnf_rsp_tx[p].flit     = rnf_rsp_tx_flit_flat[p];
       tx_chan_arbiter #(
         .NUM_TRACKERS (NUM_TRACKERS),
-        .flit_t       (local_dat_flit_t)
+        .flit_t       (local_dat_flit_t),
+        .MaxCredits   (TxCreditMax)
       ) u_dat_tx_arb (
         .clk            (clk),
         .resetn         (resetn),
@@ -399,7 +466,7 @@ module HN_F
         .trk_flitpend   (trk_dat_tx_flitpend),
         .trk_flit       (trk_dat_tx_flit),
         .trk_targets_me (dat_tx_targets_me[p]),
-        .trk_lcrdv      (dat_tx_port_lcrdv[p]),
+        .trk_gnt        (dat_tx_port_gnt[p]),
         .phy_flitv      (rnf_dat_tx_flitv_flat[p]),
         .phy_flitpend   (rnf_dat_tx_flitpend_flat[p]),
         .phy_flit       (rnf_dat_tx_flit_flat[p]),
@@ -415,11 +482,11 @@ module HN_F
 
   always_comb begin
     for (int t = 0; t < NUM_TRACKERS; t++) begin
-      trk_rsp_tx_lcrdv[t] = 1'b0;
-      trk_dat_tx_lcrdv[t] = 1'b0;
+      trk_rsp_tx_gnt[t] = 1'b0;
+      trk_dat_tx_gnt[t] = 1'b0;
       for (int p = 0; p < NUM_RNF; p++) begin
-        trk_rsp_tx_lcrdv[t] |= rsp_tx_port_lcrdv[p][t];
-        trk_dat_tx_lcrdv[t] |= dat_tx_port_lcrdv[p][t];
+        trk_rsp_tx_gnt[t] |= rsp_tx_port_gnt[p][t];
+        trk_dat_tx_gnt[t] |= dat_tx_port_gnt[p][t];
       end
     end
   end
@@ -438,7 +505,8 @@ module HN_F
 
   tx_chan_arbiter #(
     .NUM_TRACKERS (NUM_TRACKERS),
-    .flit_t       (local_req_flit_t)
+    .flit_t       (local_req_flit_t),
+    .MaxCredits   (TxCreditMax)
   ) u_sn_req_arb (
     .clk            (clk),
     .resetn         (resetn),
@@ -446,7 +514,7 @@ module HN_F
     .trk_flitpend   (trk_sn_req_flitpend),
     .trk_flit       (trk_sn_req_flit),
     .trk_targets_me (sn_targets_me),
-    .trk_lcrdv      (trk_sn_req_lcrdv),
+    .trk_gnt        (trk_sn_req_gnt),
     .phy_flitv      (sn_req_flitv_flat),
     .phy_flitpend   (sn_req_flitpend_flat),
     .phy_flit       (sn_req_flit_flat),
@@ -462,7 +530,8 @@ module HN_F
 
   tx_chan_arbiter #(
     .NUM_TRACKERS (NUM_TRACKERS),
-    .flit_t       (local_dat_flit_t)
+    .flit_t       (local_dat_flit_t),
+    .MaxCredits   (TxCreditMax)
   ) u_sn_dat_tx_arb (
     .clk            (clk),
     .resetn         (resetn),
@@ -470,7 +539,7 @@ module HN_F
     .trk_flitpend   (trk_sn_dat_tx_flitpend),
     .trk_flit       (trk_sn_dat_tx_flit),
     .trk_targets_me (sn_targets_me),
-    .trk_lcrdv      (trk_sn_dat_tx_lcrdv),
+    .trk_gnt        (trk_sn_dat_tx_gnt),
     .phy_flitv      (sn_dat_tx_flitv_flat),
     .phy_flitpend   (sn_dat_tx_flitpend_flat),
     .phy_flit       (sn_dat_tx_flit_flat),
@@ -485,15 +554,19 @@ module HN_F
   common_pkg::yn_status_e rnf_rsp_rx_flitv_flat   [NUM_RNF];
   common_pkg::yn_status_e rnf_rsp_rx_flitpend_flat[NUM_RNF];
   local_rsp_flit_t        rnf_rsp_rx_flit_flat    [NUM_RNF];
-  logic                   rnf_rsp_rx_lcrdv_req    [NUM_RNF];
-  logic                   rnf_rsp_rx_lcrdv_snp    [NUM_RNF];
 
   generate
     for (genvar p = 0; p < NUM_RNF; p++) begin : gen_rsp_rx_bridge
       assign rnf_rsp_rx_flitv_flat[p]    = rnf_rsp_rx[p].flitv;
       assign rnf_rsp_rx_flitpend_flat[p] = rnf_rsp_rx[p].flitpend;
       assign rnf_rsp_rx_flit_flat[p]     = local_rsp_flit_t'(rnf_rsp_rx[p].flit);
-      assign rnf_rsp_rx[p].lcrdv         = rnf_rsp_rx_lcrdv_req[p] | rnf_rsp_rx_lcrdv_snp[p];
+
+      rx_credit_gen u_rsp_rx_cred (
+        .clk    (clk),
+        .resetn (resetn),
+        .flitv  (rnf_rsp_rx[p].flitv == Y),
+        .lcrdv  (rnf_rsp_rx[p].lcrdv)
+      );
     end
   endgenerate
 
@@ -505,7 +578,6 @@ module HN_F
     .phy_flitv         (rnf_rsp_rx_flitv_flat),
     .phy_flitpend      (rnf_rsp_rx_flitpend_flat),
     .phy_flit          (rnf_rsp_rx_flit_flat),
-    .phy_lcrdv         (rnf_rsp_rx_lcrdv_req),
     .trk_target_idx    (req_port_idx_q),
     .trk_target_valid  (tracker_valid),
     .trk_flitv         (trk_rsp_rx_req_flitv),
@@ -521,7 +593,6 @@ module HN_F
     .phy_flitv         (rnf_rsp_rx_flitv_flat),
     .phy_flitpend      (rnf_rsp_rx_flitpend_flat),
     .phy_flit          (rnf_rsp_rx_flit_flat),
-    .phy_lcrdv         (rnf_rsp_rx_lcrdv_snp),
     .trk_target_idx    (snp_port_idx),
     .trk_target_valid  (tracker_valid),
     .trk_flitv         (trk_rsp_rx_snp_flitv),
@@ -532,15 +603,19 @@ module HN_F
   common_pkg::yn_status_e rnf_dat_rx_flitv_flat   [NUM_RNF];
   common_pkg::yn_status_e rnf_dat_rx_flitpend_flat[NUM_RNF];
   local_dat_flit_t        rnf_dat_rx_flit_flat    [NUM_RNF];
-  logic                   rnf_dat_rx_lcrdv_req    [NUM_RNF];
-  logic                   rnf_dat_rx_lcrdv_snp    [NUM_RNF];
 
   generate
     for (genvar p = 0; p < NUM_RNF; p++) begin : gen_dat_rx_bridge
       assign rnf_dat_rx_flitv_flat[p]    = rnf_dat_rx[p].flitv;
       assign rnf_dat_rx_flitpend_flat[p] = rnf_dat_rx[p].flitpend;
       assign rnf_dat_rx_flit_flat[p]     = local_dat_flit_t'(rnf_dat_rx[p].flit);
-      assign rnf_dat_rx[p].lcrdv         = rnf_dat_rx_lcrdv_req[p] | rnf_dat_rx_lcrdv_snp[p];
+
+      rx_credit_gen u_dat_rx_cred (
+        .clk    (clk),
+        .resetn (resetn),
+        .flitv  (rnf_dat_rx[p].flitv == Y),
+        .lcrdv  (rnf_dat_rx[p].lcrdv)
+      );
     end
   endgenerate
 
@@ -552,7 +627,6 @@ module HN_F
     .phy_flitv         (rnf_dat_rx_flitv_flat),
     .phy_flitpend      (rnf_dat_rx_flitpend_flat),
     .phy_flit          (rnf_dat_rx_flit_flat),
-    .phy_lcrdv         (rnf_dat_rx_lcrdv_req),
     .trk_target_idx    (req_port_idx_q),
     .trk_target_valid  (tracker_valid),
     .trk_flitv         (trk_dat_rx_req_flitv),
@@ -568,7 +642,6 @@ module HN_F
     .phy_flitv         (rnf_dat_rx_flitv_flat),
     .phy_flitpend      (rnf_dat_rx_flitpend_flat),
     .phy_flit          (rnf_dat_rx_flit_flat),
-    .phy_lcrdv         (rnf_dat_rx_lcrdv_snp),
     .trk_target_idx    (snp_port_idx),
     .trk_target_valid  (tracker_valid),
     .trk_flitv         (trk_dat_rx_snp_flitv),
@@ -582,14 +655,26 @@ module HN_F
   assign snf_rsp_flitv_flat    = snf_rsp.flitv;
   assign snf_rsp_flitpend_flat = snf_rsp.flitpend;
   assign snf_rsp_flit_flat     = local_rsp_flit_t'(snf_rsp.flit);
-  assign snf_rsp.lcrdv         = 1'b1;
+
+  rx_credit_gen u_snf_rsp_cred (
+    .clk    (clk),
+    .resetn (resetn),
+    .flitv  (snf_rsp.flitv == Y),
+    .lcrdv  (snf_rsp.lcrdv)
+  );
 
   common_pkg::yn_status_e snf_dat_rx_flitv_flat, snf_dat_rx_flitpend_flat;
   local_dat_flit_t        snf_dat_rx_flit_flat;
   assign snf_dat_rx_flitv_flat    = snf_dat_rx.flitv;
   assign snf_dat_rx_flitpend_flat = snf_dat_rx.flitpend;
   assign snf_dat_rx_flit_flat     = local_dat_flit_t'(snf_dat_rx.flit);
-  assign snf_dat_rx.lcrdv         = 1'b1;
+
+  rx_credit_gen u_snf_dat_rx_cred (
+    .clk    (clk),
+    .resetn (resetn),
+    .flitv  (snf_dat_rx.flitv == Y),
+    .lcrdv  (snf_dat_rx.lcrdv)
+  );
 
   always_comb begin
     for (int t = 0; t < NUM_TRACKERS; t++) begin

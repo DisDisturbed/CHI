@@ -158,6 +158,7 @@ package tshr_flit_pkg;
     common_pkg::yn_status_e      allowretry;
     logic [3:0]                  pcrdttype;
     mem_attr_e                   memattr;
+    logic                        expcompack;
   } local_req_flit_t;
 
   typedef struct packed {
@@ -230,6 +231,7 @@ interface chi_req #(
     common_pkg::yn_status_e allowretry;
     logic [3:0]             pcrdttype;
     chi_pkg::mem_attr_e     memattr;
+    logic                   expcompack;
     //chi_pkg::snp_attr_e     snp_attr_e;
   } req_flit_t;
 

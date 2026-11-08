@@ -1,0 +1,324 @@
+HN-F RTL - FIXES AND CHANGES
+============================
+
+Original version: commit 445aed1 (everything below is uncommitted on top of it).
+To see every changed line:  git diff 445aed1 -- RTL/ TB/ sim/
+No explanatory comments were added to the RTL. This file is the record.
+Where an original comment became false it was removed; that is listed in
+section 9.
+
+Contents
+  1. Restructure: one function per FSM state
+  2. Round 1 fixes (TSHR)
+  3. Round 2: credit limit
+  4. Round 3 design decisions (asked and answered)
+  5. Round 3 RTL changes, file by file
+  6. Round 3 bugs found while testing (no design choice involved)
+  7. Testbench changes
+  8. Results
+  9. Original comments removed or now out of date
+ 10. Still open / not done
+
+
+1. RESTRUCTURE: ONE FUNCTION PER FSM STATE
+------------------------------------------
+The single big always_comb case statement in TSHR.sv is split into one
+"function automatic void" per state, none of them uses "return". They are
+called from one always_comb:
+
+  always_comb begin
+    fsm_defaults();         // every *_d = *_q, every TX output idle
+    fsm_select_inputs();    // copy RX ports into rx_* variables
+    fsm_watch_compack();    // remember a CompAck that arrives in any state
+    case (state_q)
+      ST_IDLE:  st_idle();
+      ...                   // one line per state
+      default:  state_d = ST_IDLE;
+    endcase
+  end
+
+  - fsm_defaults() runs first, so a state function only writes what it changes.
+  - Jump to st_<name>() to see what a state does; grep "state_d = ST_<NAME>"
+    to see who enters it.
+  - Void functions, not tasks: the LRM guarantees always_comb is sensitive to
+    everything read inside a called function.
+  - Plain "case", not "unique case".
+  - This step alone was proven behaviour-neutral: sim logs of random seeds
+    1-6 and the directed TB were byte-identical before and after.
+
+  Helper functions (not states):
+    goto_after_dirty_wb()  where to go after the dirty writeback finished
+    goto_after_sn_write()  where to go after a forwarded write finished
+
+
+2. ROUND 1 FIXES (TSHR)
+-----------------------
+2a. st_sn_data_send: write data to SN-F carried TxnID = txnid_q. CHI needs
+    TxnID = the DBID SN-F granted. Now sn_dbid_q (the dirty-writeback state
+    already did this).
+2b. dataid used beat_cnt_q[1:0], which does not compile when NumBeats <= 2
+    (beat_cnt_q is 1 bit). Now a 2-bit cast / shift (see 5 TSHR, beats).
+2c. Newline at end of TSHR.sv (lint EOFNEWLINE).
+
+
+3. ROUND 2: CREDIT LIMIT
+------------------------
+You asked to raise TxCreditMax. 2 -> 4 made failures go UP, because every
+tracker banked credits it never gave back. That root cause is fixed in
+round 3 (per-port pool, 4.1). TxCreditMax is now 15 (4.7).
+
+
+4. ROUND 3 DESIGN DECISIONS (asked and answered)
+------------------------------------------------
+4.1 TX link credits ............ one credit counter per physical TX port in
+    HN-F (inside tx_chan_arbiter). TSHR raises *_flitv from its state only
+    (a request), the arbiter grants one tracker when the port has a credit,
+    TSHR moves on when it sees *_gnt. TSHR's 5 credit_cntr are removed.
+    No credit can be stranded in a tracker and there is no comb loop
+    (flitv never depends on gnt).
+4.2 REQ credits ................ HN-F only gives an RN-F a REQ credit when a
+    free tracker is not already promised to another outstanding credit.
+    Every accepted request therefore has a tracker. Ports take turns.
+4.3 REQ credits per RN-F ........ at most 1 unused credit per port
+    (req_rx_arbiter CreditsPerPort = 1). An idle RN-F cannot hoard trackers.
+4.4 CompAck .................... new ExpCompAck bit in the REQ flit
+    (pgk_file.sv). TSHR waits for CompAck only when it was set.
+4.5 Beats ...................... beat count from Size, beats stored at
+    data_q[DataID], burst ends when the count is reached (RX flitpend is not
+    used any more). TX DataIDs start at the addressed beat.
+4.6 HN TxnIDs .................. new TSHR parameter TRK_ID (= tracker index).
+    It is the TxnID of every snoop and every SN-F request, and responses are
+    matched on it. RSP/DAT to the requester keep the RN-F's TxnID.
+4.7 TxCreditMax ................ 15 (the CHI maximum a receiver may grant),
+    default in HN-F, both TBs pass 15, and HN-F stops elaboration with $fatal
+    if it is below 15. A full counter drops an incoming credit for good, so a
+    smaller value deadlocks once the receiver grants more than that.
+4.8 SN-F retry ................. implemented: RetryAck -> ST_SN_RETRY_WAIT ->
+    get a P-credit of that PCrdType from HN-F's pool -> resend the same
+    request with AllowRetry=N and that PCrdType.
+4.9 Dirty snoop data on reads .. your flow is kept (forward clean data,
+    wait CompAck if expected, then write back). It now writes back only if
+    the snoop data really was dirty (Resp PassDirty bit, resp[2]).
+4.10 Opcodes ................... proper CHI flows added (see 5 TSHR, flows).
+4.11 Address hazard ............ HN-F records allocation order and holds a
+    tracker in the new ST_HAZARD_WAIT while an older tracker is active on
+    the same 64B line.
+4.12 Directed TB ............... updated to CHI rules (section 7).
+
+
+5. ROUND 3 RTL CHANGES, FILE BY FILE
+------------------------------------
+pgk_file.sv
+  - local_req_flit_t and chi_req.req_flit_t: new last field "expcompack".
+    Both structs keep the same layout so the casts between them still work.
+
+credit_cntr.sv
+  - unchanged. Now used once per TX port (inside tx_chan_arbiter) instead
+    of 5 times per tracker.
+
+rx_credit_gen.sv  (NEW)
+  - RX side of a link: hands out credits while fewer than MaxCredits (15)
+    are outstanding, counts one back per received flit. lcrdv is a flop.
+  - Used for HN-F's RSP/DAT RX from each RN-F and for SN-F RSP/DAT RX.
+    Before, those lcrdv were held at 1 (one credit every cycle, unbounded).
+
+tx_chain_arbiter.sv  (module tx_chan_arbiter)
+  - Owns the port's credit counter (credit_cntr, MaxCredits parameter).
+  - Picks one requesting tracker round-robin, only when the port has a
+    credit, drives the PHY with it and pulses trk_gnt[winner].
+  - Port trk_lcrdv renamed trk_gnt. The second round-robin that used to hand
+    lcrdv to trackers is gone.
+
+req_rx_arbiter.sv
+  - Was: merged the RN-F ports into one request per cycle, gave every RN-F
+    lcrdv=1 all the time, and silently dropped a request that found no free
+    tracker.
+  - Now: the REQ credit manager only (4.2, 4.3). Inputs flitv per port and
+    tracker_ready, output lcrdv per port.
+
+Allocator.sv
+  - Takes the request of every RN-F port in the same cycle and gives each to
+    a different free tracker (port 0 first). Outputs per tracker: valid,
+    flit, which port. alloc_drop_o flags a request with no tracker, which
+    cannot happen with 4.2; HN-F prints $error if it ever does.
+
+rx_port_select.sv
+  - phy_lcrdv output removed (credits come from rx_credit_gen now).
+
+HN-F.sv
+  - REQ path: req_rx_arbiter (credits) + Allocator (placement). Each tracker
+    gets its own req_flit (was one broadcast flit). req_port_idx_q is
+    latched from the Allocator's port output.
+  - TSHR instances: TRK_ID(i), *_gnt instead of *_lcrdv, no RX lcrdv ports,
+    new Addr_o / hazard_i, new pcrd_req_o / pcrd_type_o / pcrd_gnt_i.
+  - TX arbiters get MaxCredits(TxCreditMax). Grant wires renamed *_gnt.
+  - RX credits: rx_credit_gen per RN-F RSP RX, per RN-F DAT RX, SN-F RSP RX,
+    SN-F DAT RX (were constant 1 or "any tracker targets this port").
+  - P-credit pool: PCrdGrant carries no TxnID, so HN-F banks it per PCrdType
+    (16 counters) and gives one to a tracker waiting in ST_SN_RETRY_WAIT.
+  - Address hazard: trk_older_q[a][b] is set when tracker a is allocated and
+    b is already active (or allocated in the same cycle from a lower port),
+    and cleared when b goes idle. trk_hazard[a] is set while an older active
+    tracker has the same 64B line address.
+  - TxCreditMax default 15 and the $fatal check (4.7).
+
+TSHR.sv
+  Ports
+  - removed: TxCreditMax parameter, req_lcrdv and all RX *_lcrdv outputs
+    (HN-F never used them), the 5 credit_cntr instances.
+  - TX: *_lcrdv inputs became *_gnt inputs (snp, rsp_tx, dat_tx, sn_req,
+    sn_dat_tx).
+  - added: TRK_ID parameter, Addr_o, hazard_i, pcrd_req_o, pcrd_type_o,
+    pcrd_gnt_i.
+  States
+  - added ST_SN_COMP_WAIT (SN-F answered DBIDResp and sends Comp after the
+    data), ST_SN_RETRY_WAIT (4.8), ST_HAZARD_WAIT (4.11). ST_READNO_SNOOP is
+    still unused.
+  - every *_SEND state drives its flit every cycle and leaves on *_gnt.
+  New registers
+  - expcompack_q, resperr_q (errors from SN-F, forwarded on CompData/Comp),
+    wdata_resp_q, sn_comp_seen_q, compack_seen_q, wb_chain_q (which SN write
+    chain we are in), allowretry_q, pcrdtype_q, retry_ret_q (state to resend
+    from).
+  Beats (4.5)
+  - req_beats from size_q, first_beat from addr_q, tx_beat = first_beat +
+    beat_cnt_q. RX beats go to data_q[dataid]; snoop data always counts a
+    full line (NumBeats). DataWidth < 128 stops elaboration ($fatal).
+  Flows by tx_type (tx_type_e has 3 more values)
+  - TX_READ (ReadShared/ReadClean/ReadUnique/ReadOnce): snoop -> hit: CompData
+    from snoop data / miss: ReadNoSnp to SN-F -> CompData -> CompAck if
+    expected -> dirty writeback if the snoop data was dirty.
+  - TX_READ_NOSNP (ReadNoSnp, NEW): no snoop, ReadNoSnp to SN-F, CompData I.
+  - TX_WRITE_UNIQUE: snoop -> dirty writeback if dirty data came back ->
+    DBIDResp -> data -> WriteNoSnp to SN-F -> data -> Comp -> CompAck if
+    expected.
+  - TX_WRITE_NOSNP (WriteNoSnpFull/Ptl, NEW): no snoop, DBIDResp -> data ->
+    same opcode to SN-F -> data -> Comp.
+  - TX_WRITE_BACK (WriteBack/WriteClean): CompDBIDResp -> data -> SN-F write.
+    If the CopyBackWrData has Resp=I (the line was lost to a snoop) nothing
+    is written to memory.
+  - TX_CMO (CleanShared/CleanInvalid/MakeInvalid, NEW): SnpCleanShared /
+    SnpCleanInvalid / SnpMakeInvalid -> dirty writeback if dirty (never for
+    MakeInvalid) -> Comp.
+  Snoop opcodes
+  - ReadShared SnpShared, ReadClean SnpClean (NEW), ReadUnique SnpUnique,
+    ReadOnce SnpOnce (was SnpShared), WriteUnique SnpUnique (unchanged),
+    CMOs as above.
+  Response fields
+  - CompData: homenid = HNFID, dbid = txnid_q (both were 0), resperr from
+    SN-F, Resp: ReadUnique UC, ReadOnce/ReadNoSnp I (was SC, illegal),
+    others SC.
+  - Comp: dbid = txnid_q, resperr from SN-F.
+  SN-F side
+  - TxnID = TRK_ID on every request (4.6).
+  - write data to SN-F is always NonCopyBackWrData (was CopyBackWrData for
+    writebacks; SN-F only accepts NonCopyBackWrData).
+  - dirty writeback request: Size = 64B and a line-aligned address (was the
+    original request's size/address, e.g. a 16B WriteNoSnpFull).
+  - accepts CompDBIDResp or DBIDResp + later Comp for every write.
+  CompAck (4.4)
+  - fsm_watch_compack() remembers a CompAck in any non-idle state, so one that
+    arrives while the tracker is still busy with SN-F is not lost.
+  - COMP_SEND / RDATA_SEND / WriteBack completion go to ST_COMPACK_WAIT only
+    when expcompack_q is set.
+
+
+6. ROUND 3 BUGS FOUND WHILE TESTING (no design choice involved)
+---------------------------------------------------------------
+6a. st_wdata_wait did not check the opcode. With TxnID reuse, a snoop
+    response from the requester (SnpRespData whose TxnID happened to equal
+    the RN-F's write TxnID) was taken as write data. It now accepts only
+    NonCopyBackWrData / CopyBackWrData. (seed 1, TXNID_REUSE scenario)
+6b. Dirty writeback after CompAck raced the next request to the same line,
+    which read stale memory -> decision 4.11 (address hazard).
+
+
+7. TESTBENCH CHANGES
+--------------------
+TB/Randomized/rnf_model.sv
+  - mk_req() fills expcompack, with the same rule the model later uses to decide
+    whether it sends CompAck (exp_compack()).
+  - pin drivers use "<= #1" (see sim/README "TB pins change 1 ns after the
+    clock edge"). Without it Verilator sometimes let a TB write reach the
+    DUT before the DUT sampled that edge: a last data beat went missing and
+    looked like a deadlock.
+  - do_op(): an op that never started because no TxnID was free now releases
+    its line lock. Before, the line stayed locked forever (the comment meant
+    timeouts only), every later op on that line was skipped silently, and the
+    end-of-test flush could not write it back (FINAL MEM_MISMATCH, seed 16).
+TB/Randomized/snf_model.sv
+  - pin drivers use "<= #1" (same race).
+TB/Randomized/chi_tb_pkg.sv
+  - rd_end() compares only the beats a read returned. A partial ReadNoSnp
+    (1-2 beats) was compared against the whole 64B line.
+TB/Randomized/TB_hnf_random.sv, TB/Directed/TB_TSHR.sv
+  - .TxCreditMax(15).
+TB/Directed/TB_TSHR.sv  (models rewritten, scenarios kept)
+  - models count link credits on every TX channel, drive pins 1 ns after the
+    edge, sample DUT outputs on the falling edge, place received beats by
+    DataID, and have idle(), called by reset_dut(), so a scenario killed by its
+    watchdog cannot leave flitv stuck at Y.
+  - send_req has an expcompack argument (1 for scenarios that send CompAck),
+    and send_rsp / send_dat have a resp argument.
+  - every scenario: Size WIDTH_64 (was WIDTH_16 with 4 beats, not legal);
+    snoop responses echo the snoop's TxnID (was the request TxnID).
+  - A, E: write data opcode NonCopyBackWrData (was DataFlit).
+  - B: clean snoop data Resp=SC. E, F: dirty snoop data Resp=I_PD.
+  - D: WriteBack data CopyBackWrData with Resp=UD_PD.
+  - D, E, F: SN-F now expects NonCopyBackWrData (was CopyBackWrData).
+  - H: both simultaneous requests must now be accepted (was: one is
+    expected to be dropped, check manually).
+TB/Common/tshr_deadlock_mon.sv
+  - follows the new TSHR (no credit counters inside): reports which grant or
+    P-credit a state waits for, plus the new states.
+sim/
+  - rtl.f: + rx_credit_gen.sv. waves/*: the merged_req_* signals no longer
+    exist; views now show each RN-F REQ port, tracker states and trk_hazard.
+  - README: monitor note, TB drive-timing rule.
+
+
+8. RESULTS
+----------
+                         before (445aed1)        now
+  random seeds 1-6       11/8/7/9/9/9 failures   all pass
+  random seeds 1-40      -                       40/40 pass
+  directed TB            8 failures              all 10 scenarios pass
+  stress runs            see the summary given with this change
+
+
+9. ORIGINAL COMMENTS REMOVED OR NOW OUT OF DATE
+-----------------------------------------------
+Removed because the code they described is gone:
+  - TSHR.sv: "RX credit grants ... these stay unconditional" block and the
+    "this modules exist due to the possible combinational loop" block above
+    the 5 credit_cntr instances. The comb-loop concern is now handled by the
+    request/grant split (4.1).
+  - TSHR.sv: the TxCreditMax parameter comment.
+  - req_rx_arbiter.sv: header comment incl. "KNOWN LIMITATION ... a losing
+    RN-F's request ... is not queued or retried" (no longer true).
+  - Allocator.sv: "Changed to ready", "FIXED: ..." comments.
+  - rx_port_select.sv: no comments existed.
+Kept but now out of date (left as you wrote them):
+  - HN-F.sv header: "no address-hazard detection ... no retry handling on a
+    lost request-arbitration round" - both exist now.
+  - TSHR.sv: "sending a required snoop ... depending of the credit / not
+    depends combinationally on snp_lcrdv" - it now depends on snp_gnt
+    (only for state_d, never for snp_flitv).
+  - TSHR.sv flow comment, step 7 (CompAck): now only when ExpCompAck is set.
+  - TB_hnf_random.sv LOCK_ALL comment "HN_F has no address-hazard detection
+    yet".
+
+
+10. STILL OPEN / NOT DONE
+-------------------------
+  - No snoop filter: every coherent request snoops the other RN-F
+    (NUM_RNF must be 2, as before).
+  - Atomics and DVMOp are not handled (they fall into TX_READ, as before).
+  - TX flitpend is "more beats follow", not the CHI link-layer early hint.
+  - ReadShared always grants SC, even when no other cache holds the line.
+  - A flit that matches no tracker (for example a CompAck that was not
+    expected) is dropped silently.
+  - The directed TB still grants unlimited RX credits (HN-F's counter stops
+    at 15, which is harmless).
+  - Lint: tx_chain_arbiter.sv:42 WIDTHEXPAND (rr pointer + loop index), same
+    style as before.

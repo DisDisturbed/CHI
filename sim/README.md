@@ -25,6 +25,7 @@ make sim  TB=directed          # run, then open the waveform
 | `G` | empty | Other top-level parameters, e.g. `G='NUM_ROUNDS=2 RUN_SCENARIOS=0'` |
 | `WAVES` | `1` | `WAVES=0` skips the waveform |
 | `JOBS` | `8` | Parallel Verilator and C++ compile jobs |
+| `ARGS` | empty | Extra runtime plusargs, e.g. `ARGS=+deadlock_cycles=50` |
 
 ## Where files go
 
@@ -96,6 +97,16 @@ expandable tree.
   log.
 - **Waveforms need no testbench changes.** `sim_dump.sv` is bound into the top
   module, and a new top only needs a block in the `Makefile` and a filelist.
+- **Deadlock monitor.** `TB/Common/tshr_deadlock_mon.sv` is bound into every
+  `TSHR` in both testbenches. It prints `DEADLOCK:` when a tracker stays in the
+  same non-IDLE state for 100 cycles, with what that state waits for and the
+  request header. It also prints `RELEASED` or
+  `CLEARED BY RESET` when that tracker moves on, and a `DEADLOCK AT END OF SIM`
+  line for every tracker still stuck. Use `+deadlock_cycles=N` to change the
+  threshold and `+no_deadlock_mon` to turn it off, passed through `ARGS`:
+  `make run TB=random SEED=1 ARGS=+deadlock_cycles=50`. The SNF_SLOW scenario
+  has SN-F latencies above 100 cycles, so a `DEADLOCK:` followed by `RELEASED`
+  there is only a slow memory.
 - **`TB/Randomized/chi_scoreboard.sv` is not compiled.** It is unused: the active
   scoreboard class is inside `chi_tb_pkg.sv`.
 - **Do not put "Verilator" first in a `/* */` or `//` comment line.** Verilator
@@ -116,3 +127,12 @@ it working, and both are plain SystemVerilog or comments to other simulators:
 **Keep rule 2 when editing that file.** Verilator does not schedule logic that
 depends on signals written inside a `no_inline_task` task. A direct write compiles
 without complaint, but the DUT sees stale values and you get false failures.
+
+## TB pins change 1 ns after the clock edge
+
+Every model (random and directed) drives its pins with `<= #1`, and the directed
+models sample DUT outputs on the falling edge. Without the delay, Verilator
+sometimes lets a TB write at a rising edge reach the DUT before the DUT's flops
+sample that same edge, and sometimes not. A one-cycle flit is then seen twice
+or not at all (a lost last data beat looks like a deadlock). **Keep the `#1`
+when adding a new driver.**

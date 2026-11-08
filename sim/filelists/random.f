@@ -6,3 +6,5 @@
 ../TB/Randomized/rnf_model.sv
 ../TB/Randomized/snf_model.sv
 ../TB/Randomized/TB_hnf_random.sv
+// TSHR deadlock monitor, bound into every TSHR instance.
+../TB/Common/tshr_deadlock_mon.sv

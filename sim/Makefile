@@ -16,6 +16,7 @@ SEEDS ?= 1 2 3 4
 G     ?=
 WAVES ?= 1
 JOBS  ?= 8
+ARGS  ?=
 
 ifeq ($(TB),random)
   TOP      := Tb_HNF_Random
@@ -36,7 +37,7 @@ BIN   := $(BUILD)/V$(TOP)
 FST   := $(OUT)/wave.fst
 GTKW  := waves/$(TB).gtkw
 
-SRCS  := $(wildcard ../RTL/*.sv ../TB/Randomized/*.sv ../TB/Directed/*.sv) \
+SRCS  := $(wildcard ../RTL/*.sv ../TB/Randomized/*.sv ../TB/Directed/*.sv ../TB/Common/*.sv) \
          $(wildcard filelists/*.f) support/sim_dump.sv Makefile
 
 # IMPURE: rnf_model.sv uses no_inline_task on tasks that reach sb.*, see README.
@@ -77,7 +78,7 @@ build: $(BIN)
 
 run: $(BIN)
 	@mkdir -p $(OUT)
-	@./$(BIN) $(PLUS) 2>&1 | tee $(OUT)/sim.log; test $${PIPESTATUS[0]} -eq 0
+	@./$(BIN) $(PLUS) $(ARGS) 2>&1 | tee $(OUT)/sim.log; test $${PIPESTATUS[0]} -eq 0
 	@if [ "$(WAVES)" = 1 ]; then cat $(FST).tmp > $(FST) && rm -f $(FST).tmp; fi
 	@echo "log:  $(OUT)/sim.log"
 	@if [ "$(WAVES)" = 1 ]; then echo "wave: $(FST)  (make wave TB=$(TB) $(if $(filter random,$(TB)),SEED=$(SEED)) $(if $(G),G='$(G)'))"; fi

@@ -373,18 +373,22 @@ package chi_tb_pkg;
       return r;
     endfunction
 
-    function void rd_end(rd_rec r, line_t got, bit data_err, string ctx);
+    // bmask: which 128-bit beats the read actually returned (partial ReadNoSnp)
+    function void rd_end(rd_rec r, line_t got, bit data_err, string ctx, bit [NUM_BEATS-1:0] bmask = '1);
       bit ok;
+      line_t m;
       foreach (open_rd[i]) if (open_rd[i] == r) begin open_rd.delete(i); break; end
       n_rd_chk++;
       if (data_err || r.skip || r.allowed.size() == 0) begin n_rd_unchk++; return; end
+      m = '0;
+      for (int b = 0; b < NUM_BEATS; b++) if (bmask[b]) m[b*128 +: 128] = '1;
       ok = 0;
-      foreach (r.allowed[i]) if (r.allowed[i] === got) ok = 1;
+      foreach (r.allowed[i]) if ((r.allowed[i] & m) === (got & m)) ok = 1;
       if (!ok) begin
         n_rd_mis++;
         err("READ_MISMATCH", $sformatf("%s %s addr=%0h: data matches none of %0d legal values", r.who, ctx, r.a, r.allowed.size()));
         for (int b = 0; b < NUM_BEATS; b++)
-          if (got[b*128 +: 128] !== r.allowed[0][b*128 +: 128])
+          if (bmask[b] && got[b*128 +: 128] !== r.allowed[0][b*128 +: 128])
             tb_err("READ_MISMATCH", $sformatf("   beat%0d got=%032h expected(oldest legal)=%032h", b, got[b*128 +: 128], r.allowed[0][b*128 +: 128]));
       end
     endfunction

@@ -11,7 +11,6 @@ module rx_port_select
   input  common_pkg::yn_status_e phy_flitv    [NUM_PORTS],
   input  common_pkg::yn_status_e phy_flitpend [NUM_PORTS],
   input  flit_t                  phy_flit     [NUM_PORTS],
-  output logic                   phy_lcrdv    [NUM_PORTS],
 
 
   input  logic [PORT_IDXW-1:0]   trk_target_idx   [NUM_TRACKERS],
@@ -33,15 +32,6 @@ module rx_port_select
         trk_flitv[t]    = N;
         trk_flitpend[t] = N;
         trk_flit[t]     = '0;
-      end
-    end
-  end
-
-  always_comb begin
-    for (int p = 0; p < NUM_PORTS; p++) begin
-      phy_lcrdv[p] = 1'b0;
-      for (int t = 0; t < NUM_TRACKERS; t++) begin
-        if (trk_target_valid[t] && (trk_target_idx[t] == p)) phy_lcrdv[p] = 1'b1;
       end
     end
   end

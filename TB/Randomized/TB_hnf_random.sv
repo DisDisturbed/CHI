@@ -66,7 +66,7 @@ module Tb_HNF_Random;
     .AddrWidth      (39),
     .DataWidth      (128),
     .CacheLineWidth (512),
-    .TxCreditMax    (2)
+    .TxCreditMax    (15)
   ) dut (
     .clk        (clk),
     .resetn     (resetn),

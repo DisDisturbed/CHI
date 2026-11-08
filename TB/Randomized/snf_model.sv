@@ -181,12 +181,12 @@ module snf_model #(
     while ((rsp_cr_in - rsp_cr_out) <= 0 && ep == sb.epoch && (cyc - t0) < sb.op_timeout) @(posedge clk);
     if (ep == sb.epoch && (rsp_cr_in - rsp_cr_out) > 0) begin
       rsp_cr_out++;
-      rsp_tx.flit     <= f;
-      rsp_tx.flitv    <= Y;
-      rsp_tx.flitpend <= Y;
+      rsp_tx.flit     <= #1 f;
+      rsp_tx.flitv    <= #1 Y;
+      rsp_tx.flitpend <= #1 Y;
       @(posedge clk);
-      rsp_tx.flitv    <= N;
-      rsp_tx.flitpend <= N;
+      rsp_tx.flitv    <= #1 N;
+      rsp_tx.flitpend <= #1 N;
     end else if (ep == sb.epoch) begin
       sb.err("LINK_CREDIT", $sformatf("%s: HN-F never granted an RSP credit (cannot send %s txnid=%0d)", NAME, f.opcode.name(), f.txnid));
     end
@@ -219,12 +219,12 @@ module snf_model #(
       while ((dat_cr_in - dat_cr_out) <= 0 && ep == sb.epoch && (cyc - t0) < sb.op_timeout) @(posedge clk);
       if (ep == sb.epoch && (dat_cr_in - dat_cr_out) > 0) begin
         dat_cr_out++;
-        dat_tx.flit     <= f;
-        dat_tx.flitv    <= Y;
-        dat_tx.flitpend <= (i == n - 1) ? N : Y;
+        dat_tx.flit     <= #1 f;
+        dat_tx.flitv    <= #1 Y;
+        dat_tx.flitpend <= #1 (i == n - 1) ? N : Y;
         @(posedge clk);
-        dat_tx.flitv    <= N;
-        dat_tx.flitpend <= N;
+        dat_tx.flitv    <= #1 N;
+        dat_tx.flitpend <= #1 N;
       end
       if (sb.dat_interleave) dat_lock.unlock();
       if (sb.bubble_pct != 0 && rng.chance(sb.bubble_pct)) repeat (rng.range(1, 3)) @(posedge clk);

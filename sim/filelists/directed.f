@@ -2,3 +2,5 @@
 // snf_model, so it cannot be compiled together with TB/Randomized.
 -f filelists/rtl.f
 ../TB/Directed/TB_TSHR.sv
+// TSHR deadlock monitor, bound into every TSHR instance.
+../TB/Common/tshr_deadlock_mon.sv

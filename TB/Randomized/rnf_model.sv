@@ -170,9 +170,9 @@ module rnf_model #(
   yn_status_e req_d_v, req_d_pend, rsp_d_v, rsp_d_pend, dat_d_v, dat_d_pend;
   event req_drive, rsp_drive, dat_drive;
 
-  always @(req_drive) begin req_tx.flit <= req_d_flit; req_tx.flitv <= req_d_v; req_tx.flitpend <= req_d_pend; end
-  always @(rsp_drive) begin rsp_tx.flit <= rsp_d_flit; rsp_tx.flitv <= rsp_d_v; rsp_tx.flitpend <= rsp_d_pend; end
-  always @(dat_drive) begin dat_tx.flit <= dat_d_flit; dat_tx.flitv <= dat_d_v; dat_tx.flitpend <= dat_d_pend; end
+  always @(req_drive) begin req_tx.flit <= #1 req_d_flit; req_tx.flitv <= #1 req_d_v; req_tx.flitpend <= #1 req_d_pend; end
+  always @(rsp_drive) begin rsp_tx.flit <= #1 rsp_d_flit; rsp_tx.flitv <= #1 rsp_d_v; rsp_tx.flitpend <= #1 rsp_d_pend; end
+  always @(dat_drive) begin dat_tx.flit <= #1 dat_d_flit; dat_tx.flitv <= #1 dat_d_v; dat_tx.flitpend <= #1 dat_d_pend; end
 
   // ---------------------------------------------------------------- TX primitives
   task automatic send_req_flit(input local_req_flit_t f, input int unsigned ep, output bit sent);
@@ -277,12 +277,25 @@ module rnf_model #(
     return f;
   endfunction
 
+  // ExpCompAck: same rule run_read / run_write use to decide whether a CompAck is sent
+  function automatic bit exp_compack(req_opcode_e op);
+    case (op)
+      REQ_READ_SHARED, REQ_READ_CLEAN, REQ_READ_UNIQUE:      return 1'b1;
+      REQ_READ_ONCE, REQ_READ_NO_SNOOP:                      return sb.compack_readonce;
+      REQ_WRITE_BACK_FULL, REQ_WRITE_CLEAN_FULL,
+      REQ_WRITE_UNIQUE_FULL, REQ_WRITE_UNIQUE_PTL,
+      REQ_WRITE_NO_SNOOP_FULL, REQ_WRITE_NO_SNOOP_PTL:       return sb.compack_write;
+      default:                                               return 1'b0;
+    endcase
+  endfunction
+
   function automatic local_req_flit_t mk_req(rn_txn t);
     local_req_flit_t f;
     f = '0;
     f.tgtid = HNID; f.srcid = NODEID; f.txnid = t.txnid; f.opcode = t.opcode; f.size = t.size;
     f.addr = t.addr; f.allowretry = t.allowretry ? Y : N; f.pcrdttype = t.pcrdttype;
     f.memattr = t.memattr;
+    f.expcompack = exp_compack(t.opcode);
     return f;
   endfunction
 
@@ -488,7 +501,7 @@ module rnf_model #(
       end
       legal = read_resp_ok(t.opcode, resp, nst);
       if (!legal) sb.err("PROTOCOL", $sformatf("%s: %s txnid=%0d illegal CompData Resp=%0b for this opcode", NAME, t.opcode.name(), t.txnid, resp));
-      sb.rd_end(rr, got, rerr_seen, $sformatf("%s txnid=%0d", t.opcode.name(), t.txnid));
+      sb.rd_end(rr, got, rerr_seen, $sformatf("%s txnid=%0d", t.opcode.name(), t.txnid), expect_mask);
       if (coherent && legal && !rerr_seen) begin
         ldata[la] = got;
         set_st(la, nst);
@@ -675,6 +688,7 @@ module rnf_model #(
     req_opcode_e opc;
     bit [NUM_OPS-1:0] al;
     ran = 0;
+    got_t = 1;
     a  = line_of(a_in);
     st = get_st(a);
     lk = lock_kind(k);
@@ -732,7 +746,8 @@ module rnf_model #(
         end
         default: ;
       endcase
-      if (ep == sb.epoch && ok) sb.end_op(a, IDX, lk);   // on timeout the line stays locked on purpose
+      // on timeout the line stays locked on purpose; an op that never started (no free TxnID) releases it
+      if (ep == sb.epoch && (ok || !got_t)) sb.end_op(a, IDX, lk);
     end
   endtask
 
