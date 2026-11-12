@@ -601,6 +601,7 @@ module rnf_model #(
           if (is_cb) begin
             if (wb_lost[la]) begin
               resp = R_I; smask = '0; sdata = rng.rline();      // line was taken by a snoop: nothing left to write
+              if (t.opcode == REQ_WRITE_CLEAN_FULL) sb.cov_hit("rn: WriteCleanFull lost its line to a snoop");
             end else begin
               st0 = get_st(la); resp = cb_resp(st0); smask = '1;
               sdata = ldata.exists(la) ? ldata[la] : rng.rline();
@@ -761,9 +762,9 @@ module rnf_model #(
           d = rng.rline();
           // the byte enables are set for the Size-aligned window; the request
           // address itself may point anywhere inside that window
-          if (k == OP_NWR && partial && nbytes > 1 && sb.unaligned_pct != 0 && rng.chance(sb.unaligned_pct)) begin
+          if ((k == OP_NWR || k == OP_WUP) && partial && nbytes > 1 && sb.unaligned_pct != 0 && rng.chance(sb.unaligned_pct)) begin
             wa = wa + addr_t'(rng.range(1, nbytes - 1));
-            sb.cov_hit("rn: unaligned WriteNoSnpPtl");
+            sb.cov_hit((k == OP_NWR) ? "rn: unaligned WriteNoSnpPtl" : "rn: unaligned WriteUniquePtl");
           end
           got_t = new_txn(opc, wa, sz, (k != OP_NWR), t);
           if (got_t) run_write(t, d, m, ep, ok); else ok = 0;
@@ -1261,6 +1262,32 @@ module rnf_model #(
               make_invalid_local(a2, ep);
               do_op(rng.chance(50) ? OP_CS : OP_CI, a2, ep, ran);
             end
+            sync(nact, ep);
+          end
+        end
+        // WriteCleanFull of a dirty line races a snoop from the other RN-F's
+        // request for that line. The writer alternates; the line is checked
+        // by a read from each side afterwards.
+        SC_WC_SNOOP_RACE: begin
+          ko[0] = OP_RU; ko[1] = OP_RS; ko[2] = OP_RC; ko[3] = OP_RO; ko[4] = OP_WUF; ko[5] = OP_WUP; ko[6] = OP_CI;
+          for (int it = 0; it < 24; it++) begin
+            int wr;
+            wr = it % nact;                               // this iteration's WriteClean sender
+            if (IDX == wr) begin do_op_f(OP_RU, a0, ep); do_op_f(OP_ST, a0, ep); end
+            else make_invalid_local(a0, ep);
+            sync_aligned(nact, ep);
+            if (IDX == wr) begin
+              skew(it % 4);
+              do_op(OP_WC, a0, ep, ran);                  // UD -> UC, unless the snoop got there first
+              if (rng.chance(50)) do_op(pick_op(get_st(a0)), a0, ep, ran);
+            end else begin
+              skew(6);
+              do_op(ko[rng.range(0, 6)], a0, ep, ran);
+            end
+            sync(nact, ep);
+            if (IDX != wr) do_op_f(OP_RS, a0, ep);
+            sync(nact, ep);
+            if (IDX == wr) do_op_f(OP_RS, a0, ep);
             sync(nact, ep);
           end
         end

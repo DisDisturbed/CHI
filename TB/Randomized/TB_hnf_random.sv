@@ -33,7 +33,7 @@
 //   SNP_OPT_DATA    clean line answers SnpUnique (RetToSrc=0) with data
 //   ZERO_BE         partial writes with every byte enable 0
 //   NC_MULTI        one RN-F has several ReadNoSnp / WriteNoSnp to one line in flight
-//   UNALIGNED       ReadNoSnp / WriteNoSnpPtl with an address not aligned to Size
+//   UNALIGNED       ReadNoSnp / WriteNoSnpPtl / WriteUniquePtl with an address not aligned to Size
 // =============================================================================
 module Tb_HNF_Random;
   import chi_pkg::*;
@@ -167,6 +167,8 @@ module Tb_HNF_Random;
       SC_HOT_LINES:     begin sb.hot_n = 1; sb.hot_pct = 90; sb.max_out = 4; end
       SC_WU_SHARERS:    sb.snp_opt_data_pct = SNP_OPT_DATA ? 70 : 0;       // the sharer may return its clean copy
       SC_NONCOH:        sb.unaligned_pct = UNALIGNED ? 50 : 0;
+      SC_PTL_MERGE:     sb.unaligned_pct = UNALIGNED ? 50 : 0;              // unaligned WriteUniquePtl onto a dirty line
+      SC_WC_SNOOP_RACE: sb.snp_lat_max = 3;
       SC_SAME_CYCLE, SC_WW_RACE, SC_DIRTY_CHAIN: begin
         sb.snp_lat_max = 3;
         sb.snp_opt_data_pct = SNP_OPT_DATA ? 40 : 0;
@@ -306,8 +308,28 @@ module Tb_HNF_Random;
       bool_cov();
       if (dut.alloc_drop)
         sb.err("DUT_STATE", "HN-F Allocator dropped a request: it gave out a REQ credit with no free tracker");
+      chk_flitpend();
     end
   end
+
+  // Strict CHI link layer rule on every TX interface of the HN-F: a cycle
+  // with FLITV asserted must also have FLITPEND asserted. Catches a TX path
+  // that uses FLITPEND as "more beats follow" and drops it on the last beat.
+  function automatic void chk_flitpend_one(string name, yn_status_e flitv, yn_status_e flitpend);
+    if (flitv == Y && flitpend != Y)
+      sb.err("FLITPEND", $sformatf("HN-F %s: FLITV=1 with FLITPEND=0 (strict link layer: FLITV -> FLITPEND)", name));
+  endfunction
+
+  function automatic void chk_flitpend();
+    chk_flitpend_one("SNP    -> RNF0", rnf_snp_if[0].flitv,    rnf_snp_if[0].flitpend);
+    chk_flitpend_one("SNP    -> RNF1", rnf_snp_if[1].flitv,    rnf_snp_if[1].flitpend);
+    chk_flitpend_one("RSP    -> RNF0", rnf_rsp_tx_if[0].flitv, rnf_rsp_tx_if[0].flitpend);
+    chk_flitpend_one("RSP    -> RNF1", rnf_rsp_tx_if[1].flitv, rnf_rsp_tx_if[1].flitpend);
+    chk_flitpend_one("DAT    -> RNF0", rnf_dat_tx_if[0].flitv, rnf_dat_tx_if[0].flitpend);
+    chk_flitpend_one("DAT    -> RNF1", rnf_dat_tx_if[1].flitv, rnf_dat_tx_if[1].flitpend);
+    chk_flitpend_one("REQ    -> SNF",  snf_req_if.flitv,       snf_req_if.flitpend);
+    chk_flitpend_one("WDAT   -> SNF",  snf_dat_tx_if.flitv,    snf_dat_tx_if.flitpend);
+  endfunction
 
   function automatic void bool_cov();
     bit all_busy, any_retry_wait, any_pool;
@@ -408,6 +430,8 @@ module Tb_HNF_Random;
     need(!LOCK_ALL && NUM_TRACKERS > 1, "hnf: both RN-F REQ on the same cycle, same line");
     need(UNALIGNED,         "rn: unaligned ReadNoSnp");
     need(UNALIGNED,         "rn: unaligned WriteNoSnpPtl");
+    need(UNALIGNED,         "rn: unaligned WriteUniquePtl");
+    need(!LOCK_ALL,         "rn: WriteCleanFull lost its line to a snoop");
     need(!LOCK_ALL,         "sb: writes in flight on one line >=2");
     need(COMPACK_OPT,       "rn: CompAck on ReadOnce/ReadNoSnp");
     need(COMPACK_OPT,       "rn: CompAck on a write");

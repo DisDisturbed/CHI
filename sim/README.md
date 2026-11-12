@@ -109,7 +109,7 @@ one feature by turning it off: `make run SEED=3 G='SNF_COMP_EARLY=0'`.
 | `SNP_OPT_DATA` [1] | a clean line answers SnpUnique (RetToSrc=0) with data |
 | `ZERO_BE` [1] | partial writes with every byte enable 0 |
 | `NC_MULTI` [1] | one RN-F has several ReadNoSnp / WriteNoSnp to one line in flight |
-| `UNALIGNED` [1] | ReadNoSnp / WriteNoSnpPtl with an address not aligned to Size |
+| `UNALIGNED` [1] | ReadNoSnp / WriteNoSnpPtl / WriteUniquePtl with an address not aligned to Size |
 | `CHECK_COVERAGE` [1] | fail the run if a stress it should reach was never reached |
 | `ISOLATE_FAILURES` [1] | reset after a command that failed, so one bug does not cascade |
 

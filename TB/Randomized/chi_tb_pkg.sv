@@ -38,8 +38,9 @@ package chi_tb_pkg;
                  SC_CMO_FLUSH = 13, SC_NONCOH = 14, SC_STATE_MATRIX = 15,
                  SC_DATA_INTLV = 16, SC_HOT_LINES = 17,
                  SC_SAME_CYCLE = 18, SC_WW_RACE = 19, SC_NC_PILEUP = 20, SC_EARLY_COMP = 21,
-                 SC_PCRD_EARLY = 22, SC_COMPACK_LATE = 23, SC_ZERO_BE = 24, SC_DIRTY_CHAIN = 25;
-  localparam int SC_LAST = 25;
+                 SC_PCRD_EARLY = 22, SC_COMPACK_LATE = 23, SC_ZERO_BE = 24, SC_DIRTY_CHAIN = 25,
+                 SC_WC_SNOOP_RACE = 26;
+  localparam int SC_LAST = 26;
 
   // Resp[2:0] / RespErr[1:0] encodings - short TB aliases of the RTL package
   // definitions (chi_pkg::RESP_* / RESPERR_*), so TB and RTL share one source
@@ -277,7 +278,7 @@ package chi_tb_pkg;
     int unsigned snp_opt_data_pct;     // RN-F: clean line answers SnpUnique(RetToSrc=0) with data anyway
     int unsigned zero_be_pct;          // RN-F: partial write with all byte enables 0
     bit          nc_multi;             // RN-F: several ReadNoSnp/WriteNoSnp to the same line at once
-    int unsigned unaligned_pct;        // RN-F: ReadNoSnp / WriteNoSnpPtl with an address not aligned to Size
+    int unsigned unaligned_pct;        // RN-F: ReadNoSnp / WriteNoSnpPtl / WriteUniquePtl with an address not aligned to Size
     int unsigned hot_n, hot_pct, scn_ops;
     int          txid_mode;      // 0 partitioned per RN, 1 overlap 0..15, 2 overlap 0..FFF, 3 overlap 0..1
     int unsigned w [NUM_OPS];
@@ -343,7 +344,7 @@ package chi_tb_pkg;
       else if (c == MAX_PRINT_PER_CAT) tb_err(cat, "(further messages of this category suppressed, still counted)");
       case (cat)
         "PROTOCOL", "LINK_CREDIT", "TXNID_REUSE", "ILLEGAL_OPCODE", "SPURIOUS_RESPERR",
-        "PCRD", "SNOOP_ORDER": n_proto++;
+        "PCRD", "SNOOP_ORDER", "FLITPEND": n_proto++;
         "DUT_STATE", "CREDIT_LEAK", "COVERAGE": n_dut++;
         default: ;
       endcase

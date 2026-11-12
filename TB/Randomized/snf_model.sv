@@ -96,8 +96,11 @@ module snf_model #(
         sb.err("PROTOCOL", $sformatf("%s: WriteNoSnpFull with size!=64B txnid=%0d", NAME, f.txnid));
     end
     // unaligned addresses are legal for ReadNoSnp / WriteNoSnpPtl to Normal
-    // memory; the TB only sends them to the non-coherent lines
-    if ((f.addr & addr_t'(size_bytes(f.size) - 1)) != 0 && !(sb.is_nc(f.addr) && f.opcode != REQ_WRITE_NO_SNOOP_FULL))
+    // memory. The TB sends unaligned ReadNoSnp only to the non-coherent
+    // lines; a WriteNoSnpPtl may also be an unaligned WriteUniquePtl that
+    // the HN-F forwards for a coherent line
+    if ((f.addr & addr_t'(size_bytes(f.size) - 1)) != 0 &&
+        !(f.opcode == REQ_WRITE_NO_SNOOP_PTL || (sb.is_nc(f.addr) && f.opcode == REQ_READ_NO_SNOOP)))
       sb.err("PROTOCOL", $sformatf("%s: unaligned request addr=%0h size=%0dB txnid=%0d", NAME, f.addr, size_bytes(f.size), f.txnid));
     if (sb.chk_ids && f.tgtid !== NODEID)
       sb.err("PROTOCOL", $sformatf("%s: request TgtID=%0h, expected %0h txnid=%0d", NAME, f.tgtid, NODEID, f.txnid));

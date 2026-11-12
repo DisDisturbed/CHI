@@ -316,6 +316,19 @@ module TSHR
     end
   endfunction
 
+  // CHI does not order the SN-F's separate Comp against DBIDResp or the
+  // write data: it may come before DBIDResp, between DBIDResp and the data,
+  // or after the data. So it is caught here in every state, not only in
+  // ST_SN_COMP_WAIT. HN_TXNID is ours alone, and sn_comp_seen is cleared
+  // when the SN request is (re)sent, so a Comp can only belong to the write
+  // that is outstanding now.
+  function automatic void fsm_watch_sn_comp();
+    if ((sn_rsp_flitv == Y) && (sn_rsp_flit.opcode == RSP_COMP) && (sn_rsp_flit.txnid == HN_TXNID)) begin
+      sn_comp_seen_d = 1'b1;
+      resperr_d      = resperr_q | sn_rsp_flit.resperr;
+    end
+  endfunction
+
   function automatic void goto_after_dirty_wb();
     wb_chain_d  = 1'b0;
     dirty_hit_d = 1'b0;
@@ -493,7 +506,8 @@ module TSHR
 
     sn_req_flit.opcode     = REQ_WRITE_NO_SNOOP_FULL;
 
-    wb_chain_d = 1'b1;
+    wb_chain_d     = 1'b1;
+    sn_comp_seen_d = 1'b0; // new SN write: no Comp for it can exist yet
     if (sn_req_gnt) begin
       state_d = ST_DIRTY_WB_RSP_WAIT;
     end
@@ -507,8 +521,7 @@ module TSHR
         resperr_d      = resperr_q | sn_rsp_flit.resperr;
         state_d        = ST_DIRTY_WB_DATA_SEND;
       end else if (sn_rsp_flit.opcode == RSP_DBID_RESP) begin
-        sn_dbid_d      = sn_rsp_flit.dbid;
-        sn_comp_seen_d = 1'b0;
+        sn_dbid_d      = sn_rsp_flit.dbid; // keep sn_comp_seen: Comp may have come first
         state_d        = ST_DIRTY_WB_DATA_SEND;
       end else if (sn_rsp_flit.opcode == RSP_RETRY_ACK) begin
         pcrdtype_d  = sn_rsp_flit.pcrdttype;
@@ -520,7 +533,7 @@ module TSHR
 
   function automatic void st_dirty_wb_data_send();
     sn_dat_tx_flitv        = Y;
-    sn_dat_tx_flitpend     = (beat_cnt_q != LAST_BEAT) ? Y : N;
+    sn_dat_tx_flitpend     = Y; // link layer: FLITPEND with every FLITV, last beat included
     sn_dat_tx_flit.qos     = qos_q;
     sn_dat_tx_flit.tgtid   = SNFID;
     sn_dat_tx_flit.srcid   = HNFID;
@@ -535,7 +548,7 @@ module TSHR
       if (beat_cnt_q == LAST_BEAT) begin
         beat_cnt_d   = '0;
         allowretry_d = Y;
-        if (sn_comp_seen_q) begin
+        if (sn_comp_seen_q || sn_comp_seen_d) begin
           goto_after_dirty_wb();
         end else begin
           state_d = ST_SN_COMP_WAIT;
@@ -607,6 +620,7 @@ module TSHR
     sn_req_flit.pcrdttype  = (allowretry_q == Y) ? 4'h0 : pcrdtype_q;
     sn_req_flit.memattr    = '0;
 
+    sn_comp_seen_d = 1'b0; // new SN request: no Comp for it can exist yet
     if (tx_type_q == TX_READ || tx_type_q == TX_READ_NOSNP) begin
       sn_req_flit.opcode = REQ_READ_NO_SNOOP;
     end else if (tx_type_q == TX_WRITE_BACK) begin
@@ -653,8 +667,7 @@ module TSHR
           resperr_d      = resperr_q | sn_rsp_flit.resperr;
           state_d        = ST_SN_DATA_SEND;
         end else if (sn_rsp_flit.opcode == RSP_DBID_RESP) begin
-          sn_dbid_d      = sn_rsp_flit.dbid;
-          sn_comp_seen_d = 1'b0;
+          sn_dbid_d      = sn_rsp_flit.dbid; // keep sn_comp_seen: Comp may have come first
           state_d        = ST_SN_DATA_SEND;
         end
       end
@@ -663,7 +676,7 @@ module TSHR
 
   function automatic void st_sn_data_send();
     sn_dat_tx_flitv        = Y;
-    sn_dat_tx_flitpend     = req_last_beat ? N : Y;
+    sn_dat_tx_flitpend     = Y; // link layer: FLITPEND with every FLITV, last beat included
     sn_dat_tx_flit.qos     = qos_q;
     sn_dat_tx_flit.tgtid   = SNFID;
     sn_dat_tx_flit.srcid   = HNFID;
@@ -678,7 +691,7 @@ module TSHR
       if (req_last_beat) begin
         beat_cnt_d   = '0;
         allowretry_d = Y;
-        if (sn_comp_seen_q) begin
+        if (sn_comp_seen_q || sn_comp_seen_d) begin
           goto_after_sn_write();
         end else begin
           state_d = ST_SN_COMP_WAIT;
@@ -690,9 +703,8 @@ module TSHR
   endfunction
 
   function automatic void st_sn_comp_wait();
-    if ((sn_rsp_flitv == Y) && (sn_rsp_flit.opcode == RSP_COMP) && (sn_rsp_flit.txnid == HN_TXNID)) begin
-      resperr_d      = resperr_q | sn_rsp_flit.resperr;
-      sn_comp_seen_d = 1'b1;
+    // the Comp itself is latched by fsm_watch_sn_comp()
+    if (sn_comp_seen_q || sn_comp_seen_d) begin
       if (wb_chain_q) begin
         goto_after_dirty_wb();
       end else begin
@@ -712,7 +724,7 @@ module TSHR
 
   function automatic void st_rdata_send();
     dat_tx_flitv        = Y;
-    dat_tx_flitpend     = req_last_beat ? N : Y;
+    dat_tx_flitpend     = Y; // link layer: FLITPEND with every FLITV, last beat included
     dat_tx_flit.qos     = qos_q;
     dat_tx_flit.tgtid   = srcid_q;
     dat_tx_flit.srcid   = HNFID;
@@ -784,6 +796,7 @@ module TSHR
     fsm_defaults();
     fsm_select_inputs();
     fsm_watch_compack();
+    fsm_watch_sn_comp();
 
     case (state_q)
       ST_IDLE:               st_idle();
