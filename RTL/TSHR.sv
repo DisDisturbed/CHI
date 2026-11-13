@@ -567,7 +567,7 @@ module TSHR
     sn_dat_tx_flit.txnid   = sn_dbid_q;
     sn_dat_tx_flit.dbid    = sn_dbid_q;
     sn_dat_tx_flit.dataid  = 2'(beat_cnt_q) << DidShift;
-   sn_dat_tx_flit.be       = be_q[beat_cnt_q];
+    sn_dat_tx_flit.be       = ptl_q ? be_q[beat_cnt_q] : '1;
     sn_dat_tx_flit.data    = data_q[beat_cnt_q];
     sn_dat_tx_flit.opcode  = DAT_NON_COPY_BACK_WR_DATA;
 
