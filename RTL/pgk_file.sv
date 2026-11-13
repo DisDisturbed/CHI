@@ -28,6 +28,12 @@ package chi_pkg;
 
   typedef logic [3:0] mem_attr_e;
 
+  // ---------------------------------------------------------------------------
+  // Opcode values are the CHI ones (IHI0050 Issue E, opcode tables in B13).
+  // The fields are kept 8 bits wide here; in the spec they are REQ 7, RSP 5,
+  // DAT 4 and SNP 5 bits, and every value below fits those widths.
+  // Always use these names, never the numbers.
+  // ---------------------------------------------------------------------------
   typedef enum logic [7:0] {
         REQ_READ_SHARED         = 8'h01,
         REQ_READ_CLEAN          = 8'h02,
@@ -36,78 +42,91 @@ package chi_pkg;
         REQ_READ_UNIQUE         = 8'h07,
         REQ_CLEAN_SHARED        = 8'h08,
         REQ_CLEAN_INVALID       = 8'h09,
-        REQ_MAKE_INVALID        = 8'h0D,
-        REQ_WRITE_BACK_FULL     = 8'h18,
-        REQ_WRITE_CLEAN_FULL    = 8'h19,
-        REQ_WRITE_UNIQUE_FULL   = 8'h1A,
-        REQ_WRITE_UNIQUE_PTL    = 8'h1B,
-        REQ_WRITE_NO_SNOOP_FULL = 8'h1C,
-        REQ_WRITE_NO_SNOOP_PTL  = 8'h1D,
-        REQ_ATOMIC_STORE        = 8'h20,
-        REQ_ATOMIC_LOAD         = 8'h21,
-        REQ_ATOMIC_SWAP         = 8'h22,
-        REQ_ATOMIC_COMPARE      = 8'h23,
-        REQ_DVM_OP              = 8'h24 // NO EVICTION IS INCLUDED CUZ I AM TIRED
+        REQ_MAKE_INVALID        = 8'h0A,
+        REQ_CLEAN_UNIQUE        = 8'h0B,
+        REQ_MAKE_UNIQUE         = 8'h0C,
+        REQ_EVICT               = 8'h0D,
+        REQ_DVM_OP              = 8'h14,
+        REQ_WRITE_CLEAN_FULL    = 8'h17,
+        REQ_WRITE_UNIQUE_PTL    = 8'h18,
+        REQ_WRITE_UNIQUE_FULL   = 8'h19,
+        REQ_WRITE_BACK_PTL      = 8'h1A,
+        REQ_WRITE_BACK_FULL     = 8'h1B,
+        REQ_WRITE_NO_SNOOP_PTL  = 8'h1C,
+        REQ_WRITE_NO_SNOOP_FULL = 8'h1D,
+        // Atomics: the low 3 bits of AtomicStore / AtomicLoad select the
+        // operation (ADD, CLR, EOR, SET, SMAX, SMIN, UMAX, UMIN); these are
+        // the first (ADD) code of each group
+        REQ_ATOMIC_STORE        = 8'h28,
+        REQ_ATOMIC_LOAD         = 8'h30,
+        REQ_ATOMIC_SWAP         = 8'h38,
+        REQ_ATOMIC_COMPARE      = 8'h39,
+        REQ_READ_NOT_SHARED_DIRTY = 8'h26
+        // not modelled: WriteEvictFull (0x15), WriteCleanPtl, stash, ...
     } req_opcode_e;
 
 
   typedef enum logic [7:0] {
         RSP_SNP_RESP        = 8'h01,
-        RSP_DBID_RESP       = 8'h02,
-        RSP_COMP_DBID_RESP  = 8'h03,
-        RSP_COMP_ACK        = 8'h14,
-        RSP_READ_RECEIPT    = 8'h15,
-        RSP_COMP            = 8'h16,
-        RSP_RETRY_ACK       = 8'h17, // THIS HAS NOT LOGIC BEHIND IT JUST INCLUDED IN PKG
-        RSP_PCR_GRANT_ACK   = 8'h18  // THIS HAS NOT LOGIC BEHIND IT JUST INCLUDED IN PKG
+        RSP_COMP_ACK        = 8'h02,
+        RSP_RETRY_ACK       = 8'h03,
+        RSP_COMP            = 8'h04,
+        RSP_COMP_DBID_RESP  = 8'h05,
+        RSP_DBID_RESP       = 8'h06,
+        RSP_PCR_GRANT_ACK   = 8'h07,   // PCrdGrant
+        RSP_READ_RECEIPT    = 8'h08
     } rsp_opcode_e;
 
 
   typedef enum logic [7:0] {
-        DAT_DATA_FLIT             = 8'h00,
+        DAT_LCRD_RETURN           = 8'h00,   // DataLCrdReturn
         DAT_SNP_RESP_DATA         = 8'h01,
+        DAT_COPY_BACK_WR_DATA     = 8'h02,
+        DAT_NON_COPY_BACK_WR_DATA = 8'h03,
         DAT_COMP_DATA             = 8'h04,
-        DAT_DATA_SEP_DATA         = 8'h05,
-        DAT_NON_COPY_BACK_WR_DATA = 8'h06,
-        DAT_COPY_BACK_WR_DATA     = 8'h07
+        DAT_SNP_RESP_DATA_PTL     = 8'h05,   // snoop data from a UDP (partial dirty) line
+        DAT_DATA_SEP_RESP         = 8'h0B
     } dat_opcode_e;
 
   typedef enum logic [7:0] {
-        SNP_SHARED               = 8'h20,
-        SNP_CLEAN                = 8'h21,
-        SNP_ONCE                 = 8'h22,
-        SNP_NOT_SHARED_DIRTY     = 8'h23,
-        SNP_UNIQUE               = 8'h24,
-        SNP_CLEAN_SHARED         = 8'h25,
-        SNP_CLEAN_INVALID        = 8'h26,
-        SNP_MAKE_INVALID         = 8'h27,
-        SNP_DVM_OP               = 8'h28,
-        // Forward Snoop Opcodes for DCT (Direct Cache Transfer) 
-        // NEVER TESTED
-        SNP_FWD_SHARED           = 8'h30,
-        SNP_FWD_CLEAN            = 8'h31,
-        SNP_FWD_ONCE             = 8'h32,
-        SNP_FWD_NOT_SHARED_DIRTY = 8'h33,
-        SNP_FWD_UNIQUE           = 8'h34,
-        SNP_FWD_CLEAN_SHARED     = 8'h35,
-        SNP_FWD_CLEAN_INVALID    = 8'h36,
-        SNP_FWD_MAKE_INVALID     = 8'h37
+        SNP_SHARED               = 8'h01,
+        SNP_CLEAN                = 8'h02,
+        SNP_ONCE                 = 8'h03,
+        SNP_NOT_SHARED_DIRTY     = 8'h04,
+        SNP_UNIQUE               = 8'h07,
+        SNP_CLEAN_SHARED         = 8'h08,
+        SNP_CLEAN_INVALID        = 8'h09,
+        SNP_MAKE_INVALID         = 8'h0A,
+        SNP_DVM_OP               = 8'h0D,
+        // Forwarding snoops for DCT (Direct Cache Transfer). NEVER TESTED.
+        // The spec has no forwarding form of CleanShared / CleanInvalid / MakeInvalid.
+        SNP_FWD_SHARED           = 8'h11,
+        SNP_FWD_CLEAN            = 8'h12,
+        SNP_FWD_ONCE             = 8'h13,
+        SNP_FWD_NOT_SHARED_DIRTY = 8'h14,
+        SNP_FWD_UNIQUE           = 8'h17
     } snp_opcode_e;
 
   // ---------------------------------------------------------------------------
   // Resp[2:0] field encodings (IHI0050 B4.5). The meaning of an encoding
   // depends on the message it is carried on, so several names share a value:
   //   CompData / Comp       : I, SC, UC, UD_PD, SD_PD
+  //     ReadNotSharedDirty  : SC, UC or UD_PD (never SD_PD)
+  //     Comp to CleanUnique / MakeUnique: UC
+  //     Comp to Evict       : I
   //   SnpResp               : I, SC, UC (=UD on SnpResp), SD
+  //                           a UCE line always answers I
   //   SnpRespData           : I, SC, UC, SD, I_PD, SC_PD, UD_PD, SD_PD
+  //   SnpRespDataPtl        : I_PD or UD only (sent from a UDP line)
   //   CopyBackWrData        : I, SC, UC, UD_PD, SD_PD
+  //                           WriteBackPtl from UDP sends UD_PD
   //   NonCopyBackWrData etc.: always I (3'b000)
   // The flit structs keep resp as plain logic [2:0]; assign these directly.
   // ---------------------------------------------------------------------------
   localparam logic [2:0] RESP_I     = 3'b000;
   localparam logic [2:0] RESP_SC    = 3'b001;
   localparam logic [2:0] RESP_UC    = 3'b010;
-  localparam logic [2:0] RESP_UD    = 3'b010;  // SnpResp only (same code as UC)
+  localparam logic [2:0] RESP_UD    = 3'b010;  // SnpResp / SnpRespDataPtl (same code as UC)
   localparam logic [2:0] RESP_SD    = 3'b011;
   localparam logic [2:0] RESP_I_PD  = 3'b100;
   localparam logic [2:0] RESP_SC_PD = 3'b101;
@@ -127,9 +146,13 @@ package chi_pkg;
     CS_I  = 3'd0, // Invalid
     CS_SC = 3'd1, // Shared Clean
     CS_UC = 3'd2, // Unique Clean
-    CS_UD = 3'd3, // Unique Dirty
-    CS_SD = 3'd4  // Shared Dirty
+    CS_UD  = 3'd3, // Unique Dirty
+    CS_SD  = 3'd4, // Shared Dirty
+    CS_UCE = 3'd5, // Unique Clean Empty: unique, no valid data (after CleanUnique from I)
+    CS_UDP = 3'd6  // Unique Dirty Partial: unique, only some bytes valid, all of those dirty
   } cache_state_e;
+  // For an HN-F snoop filter UCE and UDP count as unique, like UC/UD: tracking
+  // I / shared / unique per RN-F is enough to pick the right snoops.
 
   // MemAttr[3:0] bit positions: {Allocate, Cacheable, Device, EWA}
   localparam int MEMATTR_EWA_BIT       = 0;

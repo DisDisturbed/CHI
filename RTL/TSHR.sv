@@ -177,6 +177,7 @@ module TSHR
   logic                     sn_comp_seen_q, sn_comp_seen_d;
   logic                     compack_seen_q, compack_seen_d;
   logic                     wb_chain_q, wb_chain_d;
+  logic                     ptl_q, ptl_d;  // snoop data came as SnpRespDataPtl
   common_pkg::yn_status_e   allowretry_q, allowretry_d;
   logic [3:0]               pcrdtype_q, pcrdtype_d;
   state_e                   retry_ret_q, retry_ret_d;
@@ -270,6 +271,7 @@ module TSHR
     sn_comp_seen_d = sn_comp_seen_q;
     compack_seen_d = compack_seen_q;
     wb_chain_d     = wb_chain_q;
+    ptl_d          = ptl_q;
     allowretry_d   = allowretry_q;
     pcrdtype_d     = pcrdtype_q;
     retry_ret_d    = retry_ret_q;
@@ -332,7 +334,11 @@ module TSHR
   function automatic void goto_after_dirty_wb();
     wb_chain_d  = 1'b0;
     dirty_hit_d = 1'b0;
-    if (tx_type_q == TX_WRITE_UNIQUE) begin
+    ptl_d       = 1'b0;
+    if (tx_type_q == TX_READ && ptl_q) begin
+      // partial snoop data is in memory now: read the whole line from there
+      state_d = ST_SN_REQ_SEND;
+    end else if (tx_type_q == TX_WRITE_UNIQUE) begin
       state_d = ST_DBIDRESP_SEND;
     end else if (tx_type_q == TX_CMO) begin
       state_d = ST_COMP_SEND;
@@ -357,6 +363,7 @@ module TSHR
     sn_comp_seen_d = 1'b0;
     compack_seen_d = 1'b0;
     wb_chain_d     = 1'b0;
+    ptl_d          = 1'b0;
     allowretry_d   = Y;
     pcrdtype_d     = '0;
     if (req_flitv == Y) begin
@@ -380,7 +387,7 @@ module TSHR
   function automatic void st_alloc(); // allocate a place in the TSHR
     if (hazard_i) begin
       state_d = ST_HAZARD_WAIT;
-    end else if (opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_CLEAN_FULL) begin
+    end else if (opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_CLEAN_FULL || opcode_q == REQ_WRITE_BACK_PTL) begin
       tx_type_d = TX_WRITE_BACK;
       state_d   = ST_DBIDRESP_SEND; // Skip snoop
     end else if (opcode_q == REQ_WRITE_UNIQUE_PTL || opcode_q == REQ_WRITE_UNIQUE_FULL) begin
@@ -392,9 +399,12 @@ module TSHR
     end else if (opcode_q == REQ_READ_NO_SNOOP) begin
       tx_type_d = TX_READ_NOSNP;
       state_d   = ST_SN_REQ_SEND;
-    end else if (opcode_q == REQ_CLEAN_SHARED || opcode_q == REQ_CLEAN_INVALID || opcode_q == REQ_MAKE_INVALID) begin
+    end else if (opcode_q == REQ_CLEAN_SHARED || opcode_q == REQ_CLEAN_INVALID || opcode_q == REQ_MAKE_INVALID || opcode_q == REQ_CLEAN_UNIQUE || opcode_q == REQ_MAKE_UNIQUE) begin
       tx_type_d = TX_CMO;
       state_d   = ST_SNOOP_SEND;
+    end
+    else if (opcode_q == REQ_EVICT) begin
+       tx_type_d = TX_CMO; state_d = ST_COMP_SEND; 
     end else begin
       tx_type_d = TX_READ;
       state_d   = ST_SNOOP_SEND;
@@ -422,6 +432,8 @@ module TSHR
         snp_flit.opcode = SNP_CLEAN;
       end else if (opcode_q == REQ_READ_ONCE) begin
         snp_flit.opcode = SNP_ONCE;
+      end else if (opcode_q == REQ_READ_NOT_SHARED_DIRTY) begin
+        snp_flit.opcode = SNP_NOT_SHARED_DIRTY; // snoopee must not keep SD
       end else begin
         snp_flit.opcode = SNP_SHARED;
       end
@@ -430,10 +442,12 @@ module TSHR
       snp_flit.rettosrc = 1'b0;
       if (opcode_q == REQ_CLEAN_SHARED) begin
         snp_flit.opcode = SNP_CLEAN_SHARED;
-      end else if (opcode_q == REQ_CLEAN_INVALID) begin
+      end else if (opcode_q == REQ_CLEAN_INVALID || opcode_q == REQ_CLEAN_UNIQUE) begin
+        // CleanUnique: SnpCleanInvalid, not SnpMakeInvalid. The requester may be
+        // SC while the other RN-F is SD; that dirty data must reach memory.
         snp_flit.opcode = SNP_CLEAN_INVALID;
       end else begin
-        snp_flit.opcode = SNP_MAKE_INVALID;
+        snp_flit.opcode = SNP_MAKE_INVALID; // MakeInvalid / MakeUnique
       end
     end else begin
       snp_flit.opcode   = SNP_UNIQUE;
@@ -453,19 +467,29 @@ module TSHR
     logic                dirty;
     idx   = BeatCntW'(rx_dat_flit_snp.dataid >> DidShift);
     dirty = dirty_hit_q;
-    if ((rx_dat_flitv_snp == Y) && (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA) && (rx_dat_flit_snp.txnid == HN_TXNID)) begin
+    if ((rx_dat_flitv_snp == Y) && (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA ||rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA_PTL ) && (rx_dat_flit_snp.txnid == HN_TXNID)) begin
       data_d[idx] = rx_dat_flit_snp.data;
       be_d[idx]   = rx_dat_flit_snp.be;
       if (rx_dat_flit_snp.resp[2]) begin
         dirty       = 1'b1;
         dirty_hit_d = 1'b1;
       end
+      if (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA_PTL) begin
+        ptl_d = 1'b1;
+      end
       if (!line_last_beat) begin
         // more beats of this dirty line still coming
         beat_cnt_d = beat_cnt_q + 1'b1;
       end else begin
         beat_cnt_d = '0;
-        if (tx_type_q == TX_READ) begin
+        if (tx_type_q == TX_READ && (ptl_q || ptl_d)) begin
+          // SnpRespDataPtl holds only some bytes of the line, so it cannot be
+          // forwarded as CompData. Write those bytes to memory (WriteNoSnpPtl),
+          // then read the merged line back (see goto_after_dirty_wb).
+          // SnpRespDataPtl_UD (SnpOnce, owner stays UDP) has no PD bit but
+          // takes the same path: memory gets bytes the owner still holds dirty.
+          state_d = ST_DIRTY_WB_REQ_SEND;
+        end else if (tx_type_q == TX_READ) begin
           state_d = ST_RDATA_SEND;
         end else if (dirty && (opcode_q != REQ_MAKE_INVALID)) begin
           state_d = ST_DIRTY_WB_REQ_SEND;
@@ -478,12 +502,13 @@ module TSHR
         end
       end
     end
-    else if ((rx_rsp_flitv_snp == Y) && (rx_rsp_flit_snp.opcode == RSP_SNP_RESP) && (rx_rsp_flit_snp.txnid == HN_TXNID)) begin
+    else if ((rx_rsp_flitv_snp == Y) && (rx_rsp_flit_snp.opcode == RSP_SNP_RESP) && (rx_rsp_flit_snp.txnid == HN_TXNID)) begin // also correct for snpresp_i
       if (tx_type_q == TX_READ) begin
         // read miss: target doesn't have the line
         state_d = ST_SN_REQ_SEND;
       end else if (tx_type_q == TX_CMO) begin
         state_d = ST_COMP_SEND;
+      
       end else begin
         // wait for invalidate ack
         state_d = ST_DBIDRESP_SEND;
@@ -504,7 +529,9 @@ module TSHR
     sn_req_flit.pcrdttype  = (allowretry_q == Y) ? 4'h0 : pcrdtype_q;
     sn_req_flit.memattr    = '0;
 
-    sn_req_flit.opcode     = REQ_WRITE_NO_SNOOP_FULL;
+    // SnpRespDataPtl: only the bytes with BE set are valid, so a Full write
+    // (all BE must be 1) is not allowed
+    sn_req_flit.opcode     = ptl_q ? REQ_WRITE_NO_SNOOP_PTL : REQ_WRITE_NO_SNOOP_FULL;
 
     wb_chain_d     = 1'b1;
     sn_comp_seen_d = 1'b0; // new SN write: no Comp for it can exist yet
@@ -540,7 +567,7 @@ module TSHR
     sn_dat_tx_flit.txnid   = sn_dbid_q;
     sn_dat_tx_flit.dbid    = sn_dbid_q;
     sn_dat_tx_flit.dataid  = 2'(beat_cnt_q) << DidShift;
-    sn_dat_tx_flit.be      = {(DataWidth/8){1'b1}};
+   sn_dat_tx_flit.be       = be_q[beat_cnt_q];
     sn_dat_tx_flit.data    = data_q[beat_cnt_q];
     sn_dat_tx_flit.opcode  = DAT_NON_COPY_BACK_WR_DATA;
 
@@ -624,7 +651,11 @@ module TSHR
     if (tx_type_q == TX_READ || tx_type_q == TX_READ_NOSNP) begin
       sn_req_flit.opcode = REQ_READ_NO_SNOOP;
     end else if (tx_type_q == TX_WRITE_BACK) begin
+      if(opcode_q == REQ_WRITE_BACK_PTL) begin //priority might be wrong i am not sure
+        sn_req_flit.opcode = REQ_WRITE_NO_SNOOP_PTL;
+      end else begin 
       sn_req_flit.opcode = REQ_WRITE_NO_SNOOP_FULL;
+      end
     end else if (tx_type_q == TX_WRITE_NOSNP) begin
       sn_req_flit.opcode = opcode_q;
     end else begin
@@ -769,6 +800,7 @@ module TSHR
     rsp_tx_flit.dbid    = txnid_q;
     rsp_tx_flit.resperr = resperr_q;
     rsp_tx_flit.opcode  = RSP_COMP;
+    rsp_tx_flit.resp = (opcode_q == REQ_CLEAN_UNIQUE || opcode_q == REQ_MAKE_UNIQUE) ? chi_pkg::RESP_UC : chi_pkg::RESP_I;
     if (rsp_tx_gnt) begin
       state_d = expcompack_q ? ST_COMPACK_WAIT : ST_DONE;
     end
@@ -846,6 +878,7 @@ module TSHR
       sn_comp_seen_q <= 1'b0;
       compack_seen_q <= 1'b0;
       wb_chain_q     <= 1'b0;
+      ptl_q          <= 1'b0;
       allowretry_q   <= Y;
       pcrdtype_q     <= '0;
       retry_ret_q    <= ST_IDLE;
@@ -877,6 +910,7 @@ module TSHR
       sn_comp_seen_q <= sn_comp_seen_d;
       compack_seen_q <= compack_seen_d;
       wb_chain_q     <= wb_chain_d;
+      ptl_q          <= ptl_d;
       allowretry_q   <= allowretry_d;
       pcrdtype_q     <= pcrdtype_d;
       retry_ret_q    <= retry_ret_d;

@@ -19,13 +19,18 @@ package chi_tb_pkg;
   typedef logic [511:0]      line_t;
   typedef logic [63:0]       bemask_t;
 
-  typedef enum int { ST_I, ST_SC, ST_UC, ST_UD, ST_SD } cstate_e;
+  // UCE: Unique Clean Empty (unique, no valid data), UDP: Unique Dirty Partial
+  // (unique, only the bytes in the RN-F's byte mask are valid, and they are dirty)
+  typedef enum int { ST_I, ST_SC, ST_UC, ST_UD, ST_SD, ST_UCE, ST_UDP } cstate_e;
   typedef enum int { K_READ, K_WRITE, K_EXCL }          lockkind_e;
 
   // operation kinds (index also selects the weight in sb.w[])
+  //   CU CleanUnique, MU MakeUnique (+ full-line store), EV Evict,
+  //   RNSD ReadNotSharedDirty, WBP WriteBackPtl (from UDP)
   typedef enum int { OP_RS, OP_RC, OP_RU, OP_RO, OP_WUF, OP_WUP, OP_WB, OP_WC,
-                     OP_CS, OP_CI, OP_MI, OP_ST, OP_SE, OP_NRD, OP_NWR } opkind_e;
-  localparam int NUM_OPS = 15;
+                     OP_CS, OP_CI, OP_MI, OP_ST, OP_SE, OP_NRD, OP_NWR,
+                     OP_CU, OP_MU, OP_EV, OP_RNSD, OP_WBP } opkind_e;
+  localparam int NUM_OPS = 20;
 
   // top -> agent commands
   localparam int CMD_NONE = 0, CMD_SCEN = 1, CMD_RANDOM = 2, CMD_FLUSH = 3;
@@ -44,8 +49,9 @@ package chi_tb_pkg;
 
   // Resp[2:0] / RespErr[1:0] encodings - short TB aliases of the RTL package
   // definitions (chi_pkg::RESP_* / RESPERR_*), so TB and RTL share one source
-  localparam logic [2:0] R_I = RESP_I, R_SC = RESP_SC, R_UC = RESP_UC, R_SD = RESP_SD,
-                         R_I_PD = RESP_I_PD, R_SC_PD = RESP_SC_PD, R_UD_PD = RESP_UD_PD, R_SD_PD = RESP_SD_PD;
+  localparam logic [2:0] R_I = RESP_I, R_SC = RESP_SC, R_UC = RESP_UC, R_UD = RESP_UD, R_SD = RESP_SD,
+                         R_I_PD = RESP_I_PD, R_SC_PD = RESP_SC_PD, R_UC_PD = RESP_UC_PD,
+                         R_UD_PD = RESP_UD_PD, R_SD_PD = RESP_SD_PD;
   localparam logic [1:0] ERR_OK = RESPERR_OK, ERR_EXOK = RESPERR_EXOK, ERR_DERR = RESPERR_DERR, ERR_NDERR = RESPERR_NDERR;
 
   // ---------------------------------------------------------------------------
@@ -279,6 +285,7 @@ package chi_tb_pkg;
     int unsigned zero_be_pct;          // RN-F: partial write with all byte enables 0
     bit          nc_multi;             // RN-F: several ReadNoSnp/WriteNoSnp to the same line at once
     int unsigned unaligned_pct;        // RN-F: ReadNoSnp / WriteNoSnpPtl / WriteUniquePtl with an address not aligned to Size
+    bit          partial_states;       // RN-F: UCE / UDP states (CleanUnique from I, partial stores, WriteBackPtl, SnpRespDataPtl)
     int unsigned hot_n, hot_pct, scn_ops;
     int          txid_mode;      // 0 partitioned per RN, 1 overlap 0..15, 2 overlap 0..FFF, 3 overlap 0..1
     int unsigned w [NUM_OPS];
@@ -317,7 +324,7 @@ package chi_tb_pkg;
       dat_interleave = 0; dat_shuffle = 0; compack_readonce = 0; compack_write = 0; wb_race = 1;
       snf_lat_max = 4; snf_slow_pct = 0; snf_err_pct = 0; snf_retry_pct = 0;
       snf_comp_first_pct = 0; snf_early_comp_pct = 0; snf_pcrd_early_pct = 0; snf_pcrd_types = 4;
-      snp_opt_data_pct = 0; zero_be_pct = 0; nc_multi = 0; unaligned_pct = 0;
+      snp_opt_data_pct = 0; zero_be_pct = 0; nc_multi = 0; unaligned_pct = 0; partial_states = 0;
       hot_n = 4; hot_pct = 50; scn_ops = 40; txid_mode = 0;
       n_dut = 0; n_rd_closure_skip = 0;
       foreach (pcrd_out[i]) pcrd_out[i] = 0;
@@ -333,6 +340,7 @@ package chi_tb_pkg;
       w[OP_RS]=14; w[OP_RC]=6; w[OP_RU]=14; w[OP_RO]=6; w[OP_WUF]=7; w[OP_WUP]=8;
       w[OP_WB]=8;  w[OP_WC]=3; w[OP_CS]=2;  w[OP_CI]=2; w[OP_MI]=1; w[OP_ST]=14;
       w[OP_SE]=5;  w[OP_NRD]=4; w[OP_NWR]=4;
+      w[OP_CU]=6;  w[OP_MU]=4;  w[OP_EV]=5;  w[OP_RNSD]=6; w[OP_WBP]=8;
     endfunction
 
     // ---- central error funnel (limits print flood, keeps counters) ----
@@ -550,6 +558,29 @@ package chi_tb_pkg;
       end
     endfunction
 
+    // same check for a partial (UDP) line: only the bytes in `m` are held
+    function void check_cached_ptl(addr_t a, line_t d, bemask_t m, string who, string ctx);
+      line_info L;
+      line_t    bm;
+      bit ok;
+      L = get_line(a);
+      if (!L.known) return;
+      if (L.pend.size() > MAX_PEND_CLOSURE) return;
+      bm = '0;
+      for (int i = 0; i < 64; i++) if (m[i]) bm[i*8 +: 8] = 8'hFF;
+      ok = 0;
+      begin
+        line_q_t c;
+        c = closure(L, L.cur);
+        foreach (c[k]) if ((d & bm) === (c[k] & bm)) ok = 1;
+      end
+      if (!ok) begin
+        n_stale++;
+        err("STALE_DATA", $sformatf("%s %s addr=%0h: partial (UDP) bytes match neither committed nor in-flight value (mask=%016h)",
+                                    who, ctx, L.a, m));
+      end
+    endfunction
+
     // ---- coherence-state mirror / SWMR ----
     function void set_state(int rn, addr_t a, cstate_e s);
       line_info L;
@@ -571,7 +602,7 @@ package chi_tb_pkg;
       nuniq = 0; nvalid = 0; nsd = 0;
       foreach (L.st[i]) begin
         if (L.st[i] != ST_I) nvalid++;
-        if (L.st[i] == ST_UC || L.st[i] == ST_UD) nuniq++;
+        if (L.st[i] inside {ST_UC, ST_UD, ST_UCE, ST_UDP}) nuniq++;
         if (L.st[i] == ST_SD) nsd++;
       end
       if (nuniq > 0 && nvalid > 1) begin
@@ -595,7 +626,7 @@ package chi_tb_pkg;
     function void check_no_dirty(addr_t a, string who, string ctx);
       line_info L;
       L = get_line(a);
-      foreach (L.st[i]) if (L.st[i] == ST_UD || L.st[i] == ST_SD) begin
+      foreach (L.st[i]) if (L.st[i] inside {ST_UD, ST_SD, ST_UDP}) begin
         n_swmr++;
         err("SWMR", $sformatf("%s (%s) addr=%0h: RN%0d still dirty (%s) after clean operation completed", who, ctx, L.a, i, L.st[i].name()));
       end
@@ -687,6 +718,8 @@ package chi_tb_pkg;
       $display("  requests issued     : %0d (retries %0d, PCrdGrants %0d)", n_req, n_retry, n_pcrd);
       $display("  ops by kind         : RS=%0d RC=%0d RU=%0d RO=%0d WUF=%0d WUP=%0d WB=%0d WC=%0d CS=%0d CI=%0d MI=%0d ST=%0d SE=%0d NRD=%0d NWR=%0d",
                n_op[0], n_op[1], n_op[2], n_op[3], n_op[4], n_op[5], n_op[6], n_op[7], n_op[8], n_op[9], n_op[10], n_op[11], n_op[12], n_op[13], n_op[14]);
+      $display("                        CU=%0d MU=%0d EV=%0d RNSD=%0d WBP=%0d",
+               n_op[OP_CU], n_op[OP_MU], n_op[OP_EV], n_op[OP_RNSD], n_op[OP_WBP]);
       $display("  reads checked       : %0d (%0d unchecked: unknown value / RespErr; %0d of those: too many writes in flight)", n_rd_chk, n_rd_unchk, n_rd_closure_skip);
       $display("  writes committed    : %0d, silent stores %0d", n_wr, n_store);
       $display("  snoops answered     : %0d", n_snp);

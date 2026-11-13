@@ -34,6 +34,11 @@
 //   ZERO_BE         partial writes with every byte enable 0
 //   NC_MULTI        one RN-F has several ReadNoSnp / WriteNoSnp to one line in flight
 //   UNALIGNED       ReadNoSnp / WriteNoSnpPtl / WriteUniquePtl with an address not aligned to Size
+//   CLEAN_UNIQUE    CleanUnique requests
+//   MAKE_UNIQUE     MakeUnique requests
+//   EVICT           Evict requests
+//   READ_NSD        ReadNotSharedDirty requests
+//   PARTIAL_STATES  UCE / UDP cache states (WriteBackPtl, SnpRespDataPtl)
 // =============================================================================
 module Tb_HNF_Random;
   import chi_pkg::*;
@@ -67,6 +72,11 @@ module Tb_HNF_Random;
   parameter bit ZERO_BE                = 1;
   parameter bit NC_MULTI               = 1;
   parameter bit UNALIGNED              = 1;
+  parameter bit CLEAN_UNIQUE           = 1;        // RN-F sends CleanUnique (SC/SD -> UC/UD, I -> UCE)
+  parameter bit MAKE_UNIQUE            = 1;        // RN-F sends MakeUnique (+ full-line store)
+  parameter bit EVICT                  = 1;        // RN-F sends Evict for clean lines (besides silent eviction)
+  parameter bit READ_NSD               = 1;        // RN-F sends ReadNotSharedDirty
+  parameter bit PARTIAL_STATES         = 1;        // RN-F uses UCE / UDP: partial stores, WriteBackPtl, SnpRespDataPtl
   parameter bit CHECK_COVERAGE         = 1;
   parameter bit ISOLATE_FAILURES       = 1;        // reset after a command that failed, so failures do not cascade
   parameter int CMD_TIMEOUT_CYCLES     = 200000;   // one command (scenario / round / flush)
@@ -149,6 +159,16 @@ module Tb_HNF_Random;
     sb.hot_n = 4; sb.hot_pct = 50; sb.scn_ops = 40; sb.txid_mode = 0;
     sb.err_line.delete();
     sb.default_weights();
+    apply_feature_switches();
+  endfunction
+
+  // request types switched off never get picked (weight 0)
+  function automatic void apply_feature_switches();
+    sb.partial_states = PARTIAL_STATES;
+    if (!CLEAN_UNIQUE) sb.w[OP_CU]   = 0;
+    if (!MAKE_UNIQUE)  sb.w[OP_MU]   = 0;
+    if (!EVICT)        sb.w[OP_EV]   = 0;
+    if (!READ_NSD)     sb.w[OP_RNSD] = 0;
   endfunction
 
   // knobs for the directed scenarios; the "knob-driven" ones (TXNID_REUSE,
@@ -443,6 +463,15 @@ module Tb_HNF_Random;
     need(SNP_OPT_DATA,      "rn: clean SnpRespData_I on SnpUnique RetToSrc=0");
     need(ZERO_BE,           "rn: partial write with BE=0");
     need(MID_RESETS > 0,    "top: reset with traffic in flight");
+    need(CLEAN_UNIQUE,      "rn: CleanUnique SC->UC");
+    need(CLEAN_UNIQUE,      "rn: CleanUnique SD->UD");
+    need(MAKE_UNIQUE,       "rn: MakeUnique");
+    need(EVICT,             "rn: Evict");
+    need(READ_NSD,          "rn: ReadNotSharedDirty");
+    need(CLEAN_UNIQUE && PARTIAL_STATES, "rn: CleanUnique ->UCE");
+    need(CLEAN_UNIQUE && PARTIAL_STATES, "rn: store UCE->UDP");
+    need(CLEAN_UNIQUE && PARTIAL_STATES, "rn: WriteBackPtl");
+    need(CLEAN_UNIQUE && PARTIAL_STATES, "rn: SnpRespDataPtl");
   endfunction
 
   function automatic void print_categories();
@@ -472,6 +501,8 @@ module Tb_HNF_Random;
              SEED, NUM_TRACKERS, LOCK_ALL, RUN_SCENARIOS, FIRST_SCENARIO, LAST_SCENARIO, NUM_ROUNDS, OPS_PER_ROUND, MID_RESETS);
     $display("=== features: comp_first=%0b comp_early=%0b pcrd_early=%0b compack_opt=%0b snp_opt_data=%0b zero_be=%0b nc_multi=%0b unaligned=%0b txid_collide=%0b ===",
              COMP_FIRST, COMP_EARLY, SNF_PCRD_EARLY, COMPACK_OPT, SNP_OPT_DATA, ZERO_BE, NC_MULTI, UNALIGNED, TXNID_COLLISION_STRESS);
+    $display("=== requests: clean_unique=%0b make_unique=%0b evict=%0b read_nsd=%0b partial_states=%0b ===",
+             CLEAN_UNIQUE, MAKE_UNIQUE, EVICT, READ_NSD, PARTIAL_STATES);
 
     resetn = 0;
     repeat (10) @(posedge clk);
