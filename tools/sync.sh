@@ -14,7 +14,12 @@ cd "$(git rev-parse --show-toplevel)"
 git config merge.keeplocal.name "keep this PC's simulation log"
 git config merge.keeplocal.driver 'cp -f %B %A'
 
-branch=$(git rev-parse --abbrev-ref HEAD)
+# Both PCs work on main and every sync pushes to main.
+branch=main
+if [ "$(git rev-parse --abbrev-ref HEAD)" != "$branch" ]; then
+  echo "You are on '$(git rev-parse --abbrev-ref HEAD)', not $branch. Run 'git switch $branch' first."
+  exit 1
+fi
 case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) pc=windows ;; *) pc=linux ;; esac
 
 pull() {

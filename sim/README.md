@@ -29,6 +29,7 @@ make sync M='fix TSHR retry'   # same, with your own commit message
 make pull                      # only bring in the other PC's changes
 ```
 
+Both PCs work on `main`; `make sync` always pushes to `main`.
 Run `make pull` when you sit down at a PC and `make sync` before you leave it.
 If both PCs changed the same lines, `make sync` stops and lists the files to fix.
 Simulation logs in `out/` never stop a sync: this PC's log is kept. Build
