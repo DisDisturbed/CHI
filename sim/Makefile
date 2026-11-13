@@ -3,9 +3,49 @@ SHELL := /bin/bash
 #   make run  TB=random SEED=3     build + simulate
 #   make wave TB=random SEED=3     open that run in GTKWave
 
-VERILATOR_ROOT ?= /home/yusuf/verilator
+# ---- per-PC tool setup ------------------------------------------------------
+# The same commands work on the Linux home PC and on the Windows work PC. Tool
+# locations are found here; anything machine-specific that is not found goes in
+# local.mk (not in git, copy local.mk.example). `make doctor` shows what is used.
+-include local.mk
+
+# MSYS2 make reports MAKE_HOST x86_64-pc-msys; native Windows make reports Windows32.
+MSYS_MAKE := $(findstring msys,$(MAKE_HOST))$(findstring cygwin,$(MAKE_HOST))
+
+ifneq ($(filter Windows_NT,$(OS))$(MSYS_MAKE),)
+  # Windows: PowerShell, cmd, Git Bash or an MSYS2 terminal; tools from MSYS2 UCRT64.
+  HOST       := windows
+  EXE        := .exe
+  MSYS2_ENV  ?= ucrt64
+  # First of: this MSYS2 terminal's own root, %LOCALAPPDATA%/msys64, C:/msys64, D:/msys64
+  # that has Verilator. (Git Bash's root has no Verilator, so it is skipped.)
+  MSYS2_ROOT ?= $(patsubst %/$(MSYS2_ENV)/bin/verilator_bin.exe,%,$(firstword $(wildcard \
+                  $(addsuffix /$(MSYS2_ENV)/bin/verilator_bin.exe, \
+                    $(if $(MSYS_MAKE),$(patsubst %/,%,$(shell cygpath -m /))) \
+                    $(subst \,/,$(LOCALAPPDATA))/msys64 C:/msys64 D:/msys64))))
+  ifeq ($(wildcard $(MSYS2_ROOT)/$(MSYS2_ENV)/bin/verilator_bin.exe),)
+    $(error Verilator not found under MSYS2_ROOT='$(MSYS2_ROOT)'. Install it with 'pacman -S mingw-w64-ucrt-x86_64-verilator' or set MSYS2_ROOT in sim/local.mk)
+  endif
+  # g++, make and the wave viewers come from the same place as Verilator.
+  ifneq ($(MSYS_MAKE),)
+    # make from an MSYS2 terminal: POSIX paths, /bin/bash exists.
+    export PATH := $(shell cygpath -u '$(MSYS2_ROOT)/$(MSYS2_ENV)/bin'):$(PATH)
+  else
+    # Native Windows make (PowerShell, cmd, Scoop, Git Bash): run every recipe
+    # in MSYS2's bash, with MSYS2's tools first on the Windows-style PATH.
+    SHELL := $(MSYS2_ROOT)/usr/bin/bash.exe
+    .SHELLFLAGS := -c
+    export PATH := $(subst /,\,$(MSYS2_ROOT)/$(MSYS2_ENV)/bin;$(MSYS2_ROOT)/usr/bin);$(PATH)
+  endif
+  VERILATOR_ROOT ?= $(MSYS2_ROOT)/$(MSYS2_ENV)/share/verilator
+  VERILATOR      ?= verilator_bin
+else
+  HOST           := linux
+  EXE            :=
+  VERILATOR_ROOT ?= /home/yusuf/verilator
+  VERILATOR      ?= $(VERILATOR_ROOT)/bin/verilator
+endif
 export VERILATOR_ROOT
-VERILATOR ?= $(VERILATOR_ROOT)/bin/verilator
 GTKWAVE   ?= gtkwave
 SURFER    ?= surfer
 VIEWER    ?= surfer
@@ -33,7 +73,7 @@ endif
 TAG   := $(if $(strip $(ALL_G)),$(subst $(eval) ,_,$(strip $(ALL_G))),default)
 BUILD := build/$(TB)/$(TAG)
 OUT   := out/$(TB)/$(TAG)
-BIN   := $(BUILD)/V$(TOP)
+BIN   := $(BUILD)/V$(TOP)$(EXE)
 FST   := $(OUT)/wave.fst
 GTKW  := waves/$(TB).gtkw
 
@@ -54,10 +94,13 @@ VFLAGS := --binary --timing -sv --top-module $(TOP) \
 # because Surfer stops noticing changes if the file is replaced by a rename.
 PLUS := $(if $(filter 1,$(WAVES)),+wave=$(FST).tmp,+no_wave)
 
-.PHONY: help build run wave sim lint regress stress clean
+.PHONY: help build run wave sim lint regress stress clean doctor sync pull
 .DEFAULT_GOAL := help
 
 help:
+	@echo "make sync    [M='message']  pull the other PC's changes, commit and push this PC's"
+	@echo "make pull    only pull the other PC's changes"
+	@echo "make doctor  show which tools this PC uses"
 	@echo "make build   TB=random|directed [SEED=n] [G='NAME=val ...']"
 	@echo "make run     same options, plus WAVES=0 to skip the waveform"
 	@echo "make wave    open the run with the same options, VIEWER=gtkwave|surfer"
@@ -118,3 +161,22 @@ stress:
 
 clean:
 	rm -rf build out
+
+# ---- two-PC workflow ----------------------------------------------------------
+sync:
+	@bash ../tools/sync.sh $(if $(M),"$(M)")
+
+pull:
+	@bash ../tools/sync.sh --pull-only
+
+doctor:
+	@echo "host:           $(HOST)"
+	@echo "VERILATOR_ROOT: $(VERILATOR_ROOT)"
+	@echo "verilator:      $$(command -v $(VERILATOR) || echo MISSING: $(VERILATOR))"
+	@$(VERILATOR) --version 2>/dev/null || true
+	@echo "g++:            $$(command -v g++ || echo MISSING)"
+	@echo "surfer:         $$(command -v $(SURFER) || echo 'not found (set SURFER in local.mk)')"
+	@echo "gtkwave:        $$(command -v $(GTKWAVE) || echo 'not found (set GTKWAVE in local.mk)')"
+	@echo "viewer:         $(VIEWER)"
+	@echo "local.mk:       $(if $(wildcard local.mk),used,none)"
+	@echo "git branch:     $$(git rev-parse --abbrev-ref HEAD) ($$(git status --porcelain -- ../RTL ../TB . | wc -l) changed files)"

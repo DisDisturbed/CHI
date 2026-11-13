@@ -533,7 +533,7 @@ module TSHR
 
   function automatic void st_dirty_wb_data_send();
     sn_dat_tx_flitv        = Y;
-    sn_dat_tx_flitpend     = Y; // link layer: FLITPEND with every FLITV, last beat included
+    sn_dat_tx_flitpend     = Y;
     sn_dat_tx_flit.qos     = qos_q;
     sn_dat_tx_flit.tgtid   = SNFID;
     sn_dat_tx_flit.srcid   = HNFID;

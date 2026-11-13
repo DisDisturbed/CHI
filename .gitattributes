@@ -1,0 +1,9 @@
+# Same line endings on the Linux and the Windows PC (LF), so Makefile and
+# shell scripts work on both and a sync never shows whole-file changes.
+* text=auto eol=lf
+*.exe binary
+*.fst binary
+
+# Simulation logs: when both PCs ran the same configuration, `make sync` keeps
+# this PC's log instead of stopping on a conflict (driver set by tools/sync.sh).
+sim/out/** merge=keeplocal

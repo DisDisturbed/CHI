@@ -185,7 +185,6 @@ module rnf_model #(
   always @(rsp_drive) begin rsp_tx.flit <= #1 rsp_d_flit; rsp_tx.flitv <= #1 rsp_d_v; rsp_tx.flitpend <= #1 rsp_d_pend; end
   always @(dat_drive) begin dat_tx.flit <= #1 dat_d_flit; dat_tx.flitv <= #1 dat_d_v; dat_tx.flitpend <= #1 dat_d_pend; end
 
-  // ---------------------------------------------------------------- TX primitives
   task automatic send_req_flit(input local_req_flit_t f, input int unsigned ep, output bit sent);
     int unsigned t0;
     tx_lock lk;

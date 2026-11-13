@@ -8,6 +8,34 @@ make wave TB=random SEED=3     # open that run in GTKWave
 make sim  TB=directed          # run, then open the waveform
 ```
 
+## Two PCs: Linux at home, Windows at work
+
+The same `make` commands work on both. The Makefile picks the tools per PC:
+
+| | Linux (home) | Windows (work) |
+| --- | --- | --- |
+| Shell | any terminal | PowerShell, cmd, Git Bash or an MSYS2 terminal (recipes always run in MSYS2's bash) |
+| Verilator, g++ | `VERILATOR_ROOT` (default `/home/yusuf/verilator`) | MSYS2 UCRT64 packages, found in `%LOCALAPPDATA%\msys64` or `C:\msys64` |
+| Binary | `build/.../VTb_HNF_Random` | `build/.../VTb_HNF_Random.exe` |
+
+Anything that is not in the usual place goes in `sim/local.mk` (not in git, start
+from `local.mk.example`). `make doctor` prints what this PC uses.
+
+RTL and TB changes move between the PCs through GitHub:
+
+```bash
+make sync                      # commit this PC's changes, pull the other PC's, push
+make sync M='fix TSHR retry'   # same, with your own commit message
+make pull                      # only bring in the other PC's changes
+```
+
+Run `make pull` when you sit down at a PC and `make sync` before you leave it.
+If both PCs changed the same lines, `make sync` stops and lists the files to fix.
+Simulation logs in `out/` never stop a sync: this PC's log is kept. Build
+directories and waveforms stay on each PC.
+
+Files are stored with LF line endings on both PCs (`.gitattributes`).
+
 | Command | What it does |
 | --- | --- |
 | `make build` | Compile only |
