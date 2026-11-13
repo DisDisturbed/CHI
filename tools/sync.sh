@@ -45,7 +45,7 @@ if [ "${1:-}" = "--pull-only" ]; then
   exit 0
 fi
 
-msg=${1:-"sync from $pc PC $(date '+%Y-%m-%d %H:%M')"}
+msg=${1:-"sync $pc "}
 git add -A
 if git diff --cached --quiet; then
   echo "nothing new to commit on this PC"
