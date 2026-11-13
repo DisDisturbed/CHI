@@ -494,8 +494,10 @@ module rnf_model #(
           else begin
             seen[df.dataid] = 1;
             got[df.dataid*128 +: 128] = df.data;
-            if (!resp_set) begin resp = df.resp; cdbid = df.dbid; resp_set = 1; end
-            else begin
+            if (!resp_set) begin
+              resp = df.resp; cdbid = df.dbid; resp_set = 1;
+              if (t.expack) ack_wait[la] = ack_wait.exists(la) ? ack_wait[la] + 1 : 1;
+            end else begin
               if (df.resp !== resp)
                 sb.err("PROTOCOL", $sformatf("%s: %s txnid=%0d CompData beats carry different Resp (%0b vs %0b)", NAME, t.opcode.name(), t.txnid, resp, df.resp));
               if (df.dbid !== cdbid)
@@ -508,6 +510,11 @@ module rnf_model #(
       end
     end
     if (abort) begin
+      // no CompAck will follow: undo the count taken at the first CompData beat
+      if (resp_set && t.expack && ep == sb.epoch && ack_wait.exists(la)) begin
+        ack_wait[la]--;
+        if (ack_wait[la] <= 0) ack_wait.delete(la);
+      end
       sb.rd_end(rr, got, 1, "aborted");
       fail_txn(t, ep, $sformatf("%s did not complete (%0d/%0d beats received)", t.opcode.name(), cnt, nb));
     end else begin
@@ -524,7 +531,6 @@ module rnf_model #(
       end
       ack = t.expack;
       if (ack && ep == sb.epoch) begin
-        ack_wait[la] = ack_wait.exists(la) ? ack_wait[la] + 1 : 1;
         if (sb.ack_lat_max > 8) sb.cov_hit("rn: CompAck delayed > 8 cycles possible");
         repeat (rng.range(0, sb.ack_lat_max)) @(posedge clk);
         if (t.opcode == REQ_READ_ONCE || t.opcode == REQ_READ_NO_SNOOP) sb.cov_hit("rn: CompAck on ReadOnce/ReadNoSnp");
@@ -685,7 +691,7 @@ module rnf_model #(
     a = '0;
     a[OP_RS]  = (st == ST_I);  a[OP_RC] = (st == ST_I);  a[OP_RO] = (st == ST_I);
     a[OP_RU]  = (st == ST_I || st == ST_SC);
-    a[OP_WUF] = (st == ST_I);  a[OP_WUP] = (st == ST_I);
+    a[OP_WUF] = (st == ST_I );  a[OP_WUP] = (st == ST_I ) ;
     a[OP_WB]  = (st != ST_I);  a[OP_WC] = (st == ST_UD || st == ST_SD);
     a[OP_CS]  = (st == ST_I);  a[OP_CI] = (st == ST_I);  a[OP_MI] = (st == ST_I);
     a[OP_ST]  = (st == ST_UC || st == ST_UD);
