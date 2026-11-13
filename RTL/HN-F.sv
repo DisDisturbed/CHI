@@ -1,7 +1,5 @@
 
 // HN_F - basic functional baseline
-//
-// NOT a full HN-F: no address-hazard detection, no real snoop filter
 // for exactly NUM_RNF==2 - see the elaboration check below), no retry
 // handling on a lost request-arbitration round. This is enough plumbing
 // to run the existing scenario-style tests against multiple concurrent
@@ -42,6 +40,9 @@ module HN_F
     end
     if (TxCreditMax < 15) begin
       $fatal(1, "HN_F TxCreditMax (%0d) must be at least 15, the CHI maximum a receiver may grant, or credits are lost", TxCreditMax);
+    end
+    if (NUM_RNF > NUM_TRACKERS) begin
+      $fatal(1, "HN_F NUM_RNF (%0d) must be < NUM_TRACKERS (%0d) or some requests will starve", NUM_RNF, NUM_TRACKERS);
     end
   end
 

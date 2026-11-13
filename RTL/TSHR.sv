@@ -408,6 +408,9 @@ module TSHR
     end else begin
       tx_type_d = TX_READ;
       state_d   = ST_SNOOP_SEND;
+      if (opcode_q !=  REQ_READ_SHARED && opcode_q != REQ_READ_CLEAN && opcode_q != REQ_READ_ONCE && opcode_q != REQ_READ_NOT_SHARED_DIRTY && opcode_q != REQ_READ_UNIQUE) begin
+      $display("might be a problem: opcode %0d is not handled in TSHR", opcode_q);
+      end
     end
   endfunction
 
