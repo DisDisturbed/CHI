@@ -441,12 +441,19 @@ Drowning the soul of the UD.
 
 
 In the end UD just waved at the dots on the shore.
+
 A failed attempt of challenging the specs.
+
 Drunk engineer watched without understanding anything.
+
 Sober one cried.
+
 Bleeding-Eyes said it was a necessary sacrifice.
+
 But the real ones just saw a line feed with poems and politics.
+
 Innocent  line losing its life for a python dev. 
+
 Maybe this is the real tragedy after all.
 
 
