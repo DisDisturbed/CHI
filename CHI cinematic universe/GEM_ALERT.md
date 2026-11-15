@@ -20,6 +20,7 @@
 - [Additional Members of the Disaster](#10-additional-members-of-the-disaster)
 - [The Imposter Syndrome Arc](#11-the-imposter-syndrome-arc)
 - [Official Character Hierarchy](#12-official-character-hierarchy)
+- [The Final Transformation  The States Have Changed](#13-the-final-transformation--the-states-have-changed)
 - [Final Words](#final-words)
 
 ---
