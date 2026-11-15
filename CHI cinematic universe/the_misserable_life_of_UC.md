@@ -1,5 +1,5 @@
 # The CHI Cinematic Universe
-
+![alt text](image.png)
 *Unofficial documentation of cache-state drama, workplace exploitation, and cosmic horror.*
 
 > A Home Node was built. Thousands of transactions were processed. And somewhere along the way, its creator became emotionally attached to the cache states.
