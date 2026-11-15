@@ -4,8 +4,8 @@
 > A Home Node was built. Thousands of transactions were processed. And somewhere along the way, its creator became emotionally attached to the cache states.
 
 Welcome to the unofficial lore of our CHI HN-F implementation.
-
-This document has no technical purpose. It exists because apparently implementing a coherent interconnect wasn't complicated enough. We also needed a cinematic universe.
+(Who am i to call it unofficial)
+This document has increadible technical purpose and it is the most important file here. It exists because apparently implementing a coherent interconnect wasn't complicated enough. We also needed a cinematic universe. 
 
 ---
 
@@ -190,7 +190,7 @@ The development process is a carefully coordinated partnership between three eng
 **Drunk Engineer**
 - Unlimited architectural confidence.
 - No fear of rewriting an FSM.
-- Believes every design decision is genius.
+- Believes every design decision is genius. (you gotta see his confidence)
 
 **Sober Engineer**
 - Opens the RTL.
@@ -203,9 +203,10 @@ The development process is a carefully coordinated partnership between three eng
 - Cannot remember what `valid` means anymore.
 - Suddenly invents a hazard matrix.
 
-The hazard matrix was not invented by drunk-you or sober-you.
+The hazard matrix was not invented by drunk engineer or sober one.
 
 It was invented by the third engineering state.
+(Please dont call him unless you must to.)
 
 ### The Git history
 
@@ -234,30 +235,31 @@ The development process is folklore.
 
 At some point, the designer realized something important.
 
-They actually knew what they were doing.
+They actually never knew what they were doing.
 
 The implementation involved:
 - An HN-F architecture designed from scratch.
-- Multiple TSHRs.
+- Multiple TSHRs. (all of them hate each other)
 - Snoop filtering and address hazard management.
-- A concurrent RN-F behavioural model.
+- A concurrent RN-F  model.
 - Transaction ID management.
 - Retry and credit handling.
 - Directed race scenarios.
 - Randomized verification.
 - Thousands of simulated transactions.
 
-Does that mean the implementation is perfect?
+Does that mean the implementation is works?
 
-Of course not.
+Of course not. (shame on you to even think that)
 
 Does it mean the designer has legitimate engineering ability?
 
-Absolutely.
+I guess so i gotta ask an AI first.
 
 The specification still needs to be consulted. Nobody memorizes every CHI transaction and edge case.
+(Including you jim keller)
 
-**An engineer isn't a walking specification. An engineer knows how to use one.**
+**An engineer isn't a walking specification. An engineer who makes reasonable bad choices at 2am .**
 
 ---
 
@@ -297,4 +299,5 @@ Long live the coherence hierarchy.
 
 ---
 
-*Disclaimer: No cache states were emotionally harmed during the development of this interconnect. The TSHRs may disagree.*
+*Disclaimer: No cache states were emotionally harmed during the development of this interconnect. The TSHRs may disagree. 
+only the bleeding-eye engineer (I told you to not call him)*
