@@ -34,7 +34,7 @@ pull() {
     fi
     if [ "$before" != "$(git rev-parse HEAD)" ]; then
       echo "pulled from the other PC:"
-      git --no-pager diff --stat "$before" HEAD -- RTL TB sim | tail -20
+      git --no-pager diff --stat "$before" HEAD -- common HN-F RN-F sim | tail -20
     fi
   fi
 }

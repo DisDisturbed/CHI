@@ -287,6 +287,7 @@ package chi_tb_pkg;
     int unsigned unaligned_pct;        // RN-F: ReadNoSnp / WriteNoSnpPtl / WriteUniquePtl with an address not aligned to Size
     bit          partial_states;       // RN-F: UCE / UDP states (CleanUnique from I, partial stores, WriteBackPtl, SnpRespDataPtl)
     int unsigned hot_n, hot_pct, scn_ops;
+    int          flush_ci_rn;    // index of the RN-F that sends CleanInvalid on every line in the end-of-test flush
     int          txid_mode;      // 0 partitioned per RN, 1 overlap 0..15, 2 overlap 0..FFF, 3 overlap 0..1
     int unsigned w [NUM_OPS];
     addr_t       pool [$];
@@ -325,7 +326,7 @@ package chi_tb_pkg;
       snf_lat_max = 4; snf_slow_pct = 0; snf_err_pct = 0; snf_retry_pct = 0;
       snf_comp_first_pct = 0; snf_early_comp_pct = 0; snf_pcrd_early_pct = 0; snf_pcrd_types = 4;
       snp_opt_data_pct = 0; zero_be_pct = 0; nc_multi = 0; unaligned_pct = 0; partial_states = 0;
-      hot_n = 4; hot_pct = 50; scn_ops = 40; txid_mode = 0;
+      hot_n = 4; hot_pct = 50; scn_ops = 40; txid_mode = 0; flush_ci_rn = 0;
       n_dut = 0; n_rd_closure_skip = 0;
       foreach (pcrd_out[i]) pcrd_out[i] = 0;
       epoch = 0; cmd = 0; cmd_arg = 0; cmd_seq = 0; agents_done = 0; bar_cnt = 0; bar_gen = 0;

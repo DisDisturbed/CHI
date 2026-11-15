@@ -1,0 +1,81 @@
+=== Tb_RNF: SEED=7 NUM_TRACKERS=4 SETS=16 WAYS=4 rounds=8 x 50 ops (core x4) mid_resets=0 ===
+[145000] TOP: round 0 knobs: cr_cap=3 cr_pct=24 snp_lat=9 bubble=26 max_out=1 ack_lat=0 intlv=0 shuffle=1 snf_lat=8 snf_slow=0 hot=3/74% retry=0%
+[145000] TOP: start random round 0
+[33525000] TOP: done  random round 0 (3338 cycles, failures so far 0)
+[33525000] TOP: round 1 knobs: cr_cap=15 cr_pct=100 snp_lat=5 bubble=0 max_out=3 ack_lat=5 intlv=1 shuffle=1 snf_lat=7 snf_slow=11 hot=4/34% retry=0%
+[33525000] TOP: start random round 1
+[79965000] TOP: done  random round 1 (4644 cycles, failures so far 0)
+[79965000] TOP: round 2 knobs: cr_cap=12 cr_pct=100 snp_lat=3 bubble=0 max_out=1 ack_lat=6 intlv=0 shuffle=1 snf_lat=3 snf_slow=0 hot=4/49% retry=10%
+[79965000] TOP: start random round 2
+[114355000] TOP: done  random round 2 (3439 cycles, failures so far 0)
+[114355000] TOP: round 3 knobs: cr_cap=14 cr_pct=100 snp_lat=8 bubble=19 max_out=1 ack_lat=4 intlv=0 shuffle=0 snf_lat=2 snf_slow=20 hot=4/83% retry=0%
+[114355000] TOP: start random round 3
+[144805000] TOP: done  random round 3 (3045 cycles, failures so far 0)
+[144805000] TOP: round 4 knobs: cr_cap=2 cr_pct=100 snp_lat=2 bubble=7 max_out=4 ack_lat=1 intlv=1 shuffle=1 snf_lat=5 snf_slow=0 hot=1/62% retry=0%
+[144805000] TOP: start random round 4
+[169685000] TOP: done  random round 4 (2488 cycles, failures so far 0)
+[169685000] TOP: round 5 knobs: cr_cap=13 cr_pct=100 snp_lat=5 bubble=0 max_out=3 ack_lat=1 intlv=0 shuffle=0 snf_lat=7 snf_slow=0 hot=4/85% retry=19%
+[169685000] TOP: start random round 5
+[197315000] TOP: done  random round 5 (2763 cycles, failures so far 0)
+[197315000] TOP: round 6 knobs: cr_cap=6 cr_pct=27 snp_lat=0 bubble=0 max_out=4 ack_lat=0 intlv=0 shuffle=0 snf_lat=1 snf_slow=22 hot=2/52% retry=0%
+[197315000] TOP: start random round 6
+[223255000] TOP: done  random round 6 (2594 cycles, failures so far 0)
+[223255000] TOP: round 7 knobs: cr_cap=7 cr_pct=100 snp_lat=6 bubble=7 max_out=4 ack_lat=4 intlv=0 shuffle=1 snf_lat=2 snf_slow=7 hot=3/78% retry=16%
+[223255000] TOP: start random round 7
+[247395000] TOP: done  random round 7 (2414 cycles, failures so far 0)
+[247395000] TOP: start end-of-test flush
+[250425000] TOP: done  end-of-test flush (303 cycles, failures so far 0)
+
+================= SCOREBOARD SUMMARY (seed=7) =================
+  requests issued     : 861 (retries 0, PCrdGrants 0)
+  ops by kind         : RS=26 RC=17 RU=51 RO=15 WUF=17 WUP=12 WB=11 WC=5 CS=2 CI=18 MI=0 ST=44 SE=11 NRD=26 NWR=27
+                        CU=21 MU=14 EV=10 RNSD=10 WBP=1
+  reads checked       : 963 (0 unchecked: unknown value / RespErr; 0 of those: too many writes in flight)
+  writes committed    : 838, silent stores 58
+  snoops answered     : 307
+  SN-F errors injected: 0 (seen at RN 0)
+  resets applied      : 0
+  ---- failures ----
+  read mismatches     : 0
+  stale cached data   : 0
+  SWMR violations     : 0
+  protocol errors     : 0
+  unexpected responses: 0
+  SN-F misroutes      : 0
+  memory mismatches   : 0
+  timeouts            : 0
+  DUT state/credit/cov: 0
+  ---- coverage ----
+  rn: CleanUnique ->UCE                            14
+  rn: CleanUnique SC->UC                           6
+  rn: CleanUnique SD->UD                           1
+  rn: CleanUnique lost its copy to a snoop         1
+  rn: CompAck on ReadOnce/ReadNoSnp                22
+  rn: CompAck on a write                           18
+  rn: Evict                                        10
+  rn: MakeUnique                                   14
+  rn: ReadNotSharedDirty                           10
+  rn: SnpRespDataPtl                               1
+  rn: WriteBackPtl                                 1
+  rn: snoop on UCE                                 8
+  rn: store UCE->UDP                               3
+  rn: store UDP->UDP                               5
+  sb: writes in flight on one line >=2             6
+  snf: Comp after DBIDResp, before write data      28
+  snf: Comp before DBIDResp                        10
+  snf: PCrdGrant before RetryAck                   6
+  snf: PCrdType != 0                               38
+  snf: RetryAck                                    42
+========================================================
+
+  ---- dcache (RNF0) ----
+  core accesses       : 818 loads, 782 stores (146 non-cacheable), 0 picks of a busy line
+  hits / misses       : 1147 / 307
+  Evict / WriteBack   : 18 / 107
+  snoops              : 203 (143 hit a line, 112 answered with data)
+  RetryAck            : 0
+*** RN-F REGRESSION: ALL CHECKS PASSED (seed=7) ***
+- ../RN-F/TB/TB_rnf.sv:374: Verilog $finish
+- S i m u l a t i o n   R e p o r t: Verilator 5.048 2026-04-26
+- Verilator: $finish at 255us; walltime 0.107 s; speed 2.387 ms/s
+- Verilator: cpu 0.107 s on 1 threads; allocated 9 MB

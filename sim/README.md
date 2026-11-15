@@ -6,6 +6,7 @@ Run everything from this `sim/` directory.
 make run  TB=random SEED=3     # build if needed, simulate, write an FST
 make wave TB=random SEED=3     # open that run in GTKWave
 make sim  TB=directed          # run, then open the waveform
+make run  TB=rnf SEED=3        # RN-F dcache testbench
 ```
 
 ## Two PCs: Linux at home, Windows at work
@@ -50,17 +51,62 @@ Files are stored with LF line endings on both PCs (`.gitattributes`).
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `TB` | `random` | `random` (top `Tb_HNF_Random`) or `directed` (top `Tb_HNF`) |
-| `SEED` | `1` | Seed for `TB=random` |
+| `TB` | `random` | `random` (top `Tb_HNF_Random`), `directed` (top `Tb_HNF`) or `rnf` (top `Tb_RNF`, the RN-F dcache) |
+| `SEED` | `1` | Seed for `TB=random` and `TB=rnf` |
 | `G` | empty | Other top-level parameters, e.g. `G='NUM_ROUNDS=2 RUN_SCENARIOS=0'` |
 | `WAVES` | `1` | `WAVES=0` skips the waveform |
 | `JOBS` | `8` | Parallel Verilator and C++ compile jobs |
 | `ARGS` | empty | Extra runtime plusargs, e.g. `ARGS=+deadlock_cycles=50` |
 
+## Source folders
+
+```
+common/RTL/    pgk_file.sv: CHI packages and channel interfaces, used by both nodes
+common/TB/      chi_tb_pkg.sv (scoreboard), rnf_model.sv, snf_model.sv, tshr_deadlock_mon.sv
+HN-F/RTL/       the HN-F
+HN-F/TB/        Randomized/ (Tb_HNF_Random) and Directed/ (Tb_HNF)
+RN-F/RTL/       the RN-F dcache: rnf_pkg.sv (core-side package + interface), rnf_dcache.sv,
+                rnf_tag_ram.sv, rnf_data_ram.sv, rnf_link.sv (RX FIFO, TX port)
+RN-F/TB/        TB_rnf.sv (Tb_RNF), rnf_core_driver.sv
+```
+
+## RN-F dcache testbench (`TB=rnf`)
+
+`Tb_RNF` puts the RTL dcache (RN-F 0, core side driven by `rnf_core_driver`) and one
+behavioural `rnf_model` (RN-F 1) on the HN-F RTL, with the behavioural SN-F. Both RN-Fs
+work on the same lines, so they snoop each other through the HN-F. The scoreboard checks
+every load the core driver does, SWMR on the dcache's line states (mirrored from its tag
+writes) and the memory image after the end-of-test flush. The dcache has no flush of its
+own: the behavioural RN-F sends CleanInvalid for every line, which pulls the dcache's
+dirty lines out through snoops.
+
+```bash
+make run     TB=rnf SEED=3
+make regress TB=rnf SEEDS='1 2 3 4' G='SETS=4 WAYS=2'
+```
+
+| `G` parameter | Default | Meaning |
+| --- | --- | --- |
+| `NUM_ROUNDS` / `OPS_PER_ROUND` | `8` / `50` | Random rounds, behavioural RN-F ops per round |
+| `CORE_OPS_MULT` | `4` | Core accesses per behavioural RN-F op |
+| `NC_PCT` | `10` | Percent of core accesses that are non-cacheable |
+| `SETS` / `WAYS` | `16` / `4` | dcache geometry (powers of two, at least 2) |
+| `RX_FIFO_DEPTH` | `4` | dcache RX FIFO depth per channel (2..15) |
+| `MID_RESETS` | `0` | Rounds that are reset in the middle of traffic |
+| `NUM_TRACKERS` | `4` | HN-F trackers |
+
+The run fails with `COVERAGE` if the dcache never did a hit, a miss, an Evict, a
+WriteBackFull, or never answered a snoop with data. A cache big enough to hold all 16
+pool lines (for example `SETS=64 WAYS=8`) never replaces a line and is reported that way.
+The HN-F in this repo never sends RetryAck to an RN-F, so the dcache's retry path is
+not exercised by this testbench.
+
+Only a Surfer signal list exists for this testbench (`waves/rnf.sucl`).
+
 ## Where files go
 
 ```
-filelists/     source lists: rtl.f, random.f, directed.f
+filelists/     source lists: rtl.f (HN-F RTL), random.f, directed.f, rnf.f
 support/       sim_dump.sv, which enables FST dumping
 waves/         GTKWave views, one per testbench (File > Write Save File updates them)
 build/<tb>/<params>/   compiled model and verilator.log (not in git)
@@ -160,7 +206,7 @@ credit counter agrees with the agent on the other end of that link.
   log.
 - **Waveforms need no testbench changes.** `sim_dump.sv` is bound into the top
   module, and a new top only needs a block in the `Makefile` and a filelist.
-- **Deadlock monitor.** `TB/Common/tshr_deadlock_mon.sv` is bound into every
+- **Deadlock monitor.** `common/TB/tshr_deadlock_mon.sv` is bound into every
   `TSHR` in both testbenches. It prints `DEADLOCK:` when a tracker stays in the
   same non-IDLE state for 100 cycles, with what that state waits for and the
   request header. It also prints `RELEASED` or
@@ -170,12 +216,12 @@ credit counter agrees with the agent on the other end of that link.
   `make run TB=random SEED=1 ARGS=+deadlock_cycles=50`. The SNF_SLOW scenario
   has SN-F latencies above 100 cycles, so a `DEADLOCK:` followed by `RELEASED`
   there is only a slow memory.
-- **`TB/Randomized/chi_scoreboard.sv` is not compiled.** It is unused: the active
+- **`HN-F/TB/Randomized/chi_scoreboard.sv` is not compiled.** It is unused: the active
   scoreboard class is inside `chi_tb_pkg.sv`.
 - **Do not put "Verilator" first in a `/* */` or `//` comment line.** Verilator
   reads it as a pragma and fails with `BADVLTPRAGMA`.
 
-## Changes `TB/Randomized/rnf_model.sv` needs for Verilator
+## Changes `common/TB/rnf_model.sv` needs for Verilator
 
 Verilator inlines every task call. The many calls to `do_op` and `run_*` grow the
 design tree from 2 MB to 1.5 GB, and elaboration never finishes. Two changes keep

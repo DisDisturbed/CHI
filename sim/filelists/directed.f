@@ -1,6 +1,6 @@
 // Directed HN-F scenarios (top: Tb_HNF). TB_TSHR.sv has its own rnf_model and
-// snf_model, so it cannot be compiled together with TB/Randomized.
+// snf_model, so it cannot be compiled together with common/TB.
 -f filelists/rtl.f
-../TB/Directed/TB_TSHR.sv
+../HN-F/TB/Directed/TB_TSHR.sv
 // TSHR deadlock monitor, bound into every TSHR instance.
-../TB/Common/tshr_deadlock_mon.sv
+../common/TB/tshr_deadlock_mon.sv

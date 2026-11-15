@@ -64,8 +64,11 @@ ifeq ($(TB),random)
 else ifeq ($(TB),directed)
   TOP      := Tb_HNF
   ALL_G    := $(G)
+else ifeq ($(TB),rnf)
+  TOP      := Tb_RNF
+  ALL_G    := SEED=$(SEED) $(G)
 else
-  $(error Unknown TB '$(TB)'. Use TB=random or TB=directed)
+  $(error Unknown TB '$(TB)'. Use TB=random, TB=directed or TB=rnf)
 endif
 
 # Parameters are fixed at compile time, so every distinct set gets its own
@@ -77,7 +80,8 @@ BIN   := $(BUILD)/V$(TOP)$(EXE)
 FST   := $(OUT)/wave.fst
 GTKW  := waves/$(TB).gtkw
 
-SRCS  := $(wildcard ../RTL/*.sv ../TB/Randomized/*.sv ../TB/Directed/*.sv ../TB/Common/*.sv) \
+SRCS  := $(wildcard ../common/RTL/*.sv ../common/TB/*.sv ../HN-F/RTL/*.sv ../HN-F/TB/*/*.sv \
+                   ../RN-F/RTL/*.sv ../RN-F/TB/*.sv) \
          $(wildcard filelists/*.f) support/sim_dump.sv Makefile
 
 # IMPURE: rnf_model.sv uses no_inline_task on tasks that reach sb.*, see README.
@@ -101,7 +105,7 @@ help:
 	@echo "make sync    [M='message']  pull the other PC's changes, commit and push this PC's"
 	@echo "make pull    only pull the other PC's changes"
 	@echo "make doctor  show which tools this PC uses"
-	@echo "make build   TB=random|directed [SEED=n] [G='NAME=val ...']"
+	@echo "make build   TB=random|directed|rnf [SEED=n] [G='NAME=val ...']"
 	@echo "make run     same options, plus WAVES=0 to skip the waveform"
 	@echo "make wave    open the run with the same options, VIEWER=gtkwave|surfer"
 	@echo "make sim     run, then wave"
@@ -143,10 +147,10 @@ lint:
 	  --Mdir build/lint -f filelists/$(TB).f
 
 regress:
-	@test $(TB) = random || { echo 'regress needs TB=random: only that testbench has a SEED'; exit 1; }
+	@test $(TB) != directed || { echo 'regress needs TB=random or TB=rnf: the directed testbench has no SEED'; exit 1; }
 	@for s in $(SEEDS); do \
 	  $(MAKE) --no-print-directory run TB=$(TB) SEED=$$s WAVES=0 G='$(G)' > /dev/null 2>&1; \
-	  echo "SEED=$$s: rc=$$? $$(grep -a 'HN-F REGRESSION' out/$(TB)/$$(echo SEED=$$s $(G) | xargs | tr ' ' '_')/sim.log | tail -1)"; \
+	  echo "SEED=$$s: rc=$$? $$(grep -a 'REGRESSION' out/$(TB)/$$(echo SEED=$$s $(G) | xargs | tr ' ' '_')/sim.log | tail -1)"; \
 	done
 
 # One regress per configuration. "" is the default build (every feature on).
@@ -179,4 +183,4 @@ doctor:
 	@echo "gtkwave:        $$(command -v $(GTKWAVE) || echo 'not found (set GTKWAVE in local.mk)')"
 	@echo "viewer:         $(VIEWER)"
 	@echo "local.mk:       $(if $(wildcard local.mk),used,none)"
-	@echo "git branch:     $$(git rev-parse --abbrev-ref HEAD) ($$(git status --porcelain -- ../RTL ../TB . | wc -l) changed files)"
+	@echo "git branch:     $$(git rev-parse --abbrev-ref HEAD) ($$(git status --porcelain -- ../common ../HN-F ../RN-F . | wc -l) changed files)"

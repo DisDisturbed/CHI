@@ -1484,7 +1484,7 @@ module rnf_model #(
       endcase
     end
     sync(sb.num_rnf, ep);
-    if (IDX == 0) foreach (sb.pool[i]) do_op(OP_CI, sb.pool[i], ep, ran);
+    if (IDX == sb.flush_ci_rn) foreach (sb.pool[i]) do_op(OP_CI, sb.pool[i], ep, ran);
   endtask
 
   // ---------------------------------------------------------------- command loop / start-up
