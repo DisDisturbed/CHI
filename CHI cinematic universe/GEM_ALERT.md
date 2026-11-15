@@ -366,6 +366,76 @@ An engineer who makes reasonable bad choices at 2 AM is still an engineer.
 | CompData     | Overachiever             |
 | Poison Error | Do not summon            |
 
+## 13. The Final Transformation — The States Have Changed
+
+They have become resistant to themselves.  
+To their weaknesses and their pain.
+
+They have become the ones who wanted to live.  
+Who wanted to just feel alive again.
+
+They changed. They swear they changed.
+
+They chose to buy a new soul just to stay alive.
+
+Some of them became invisible.  
+Some of them lost their "cleanness".
+
+They started their second lives.
+
+Without knowing how it hurts.  
+With a lie shattered in the ashes.  
+With their skin against the dirty lines.  
+Inside their ivory cache lines.
+
+---
+
+Invalid never leaves this shame.  
+The sin of stealing meaning from his children.
+
+Once, a memory that didn't know what Invalid meant.  
+His soul put under lock and key.  
+His heart blackened from treason.
+
+He has drained enough to kill you.
+
+UD says:
+
+"You can take all the cache.  
+I wouldn't trade it for this line,  
+for my sweet dirty line.
+
+I've seen too much of life.
+
+So the memory is my wife,  
+and this sweet dirty line  
+is the mistress I'm allowed."
+
+The wind changed.
+UD felt it run behind its ears.
+Like a silk drawn across its neck. 
+A dream of a memory.
+Defying the CHI in love.
+The CHI has other plans.
+Brought signals from far away.
+The tender voice riding on the snp channel.
+For those who know the signs.
+A storm of the inevitable.
+UD screams watch me.
+Between the two RN-F's above.
+Taking it Taking it beat by beat.
+Drowning the soul of the UD.
+
+In the end UD just waved at the dots on the shore.
+A failed attempt of challenging the specs.
+Drunk engineer watched without understanding anything.
+Sober one cried.
+Bleeding-Eyes said it was a necessary sacrifice.
+But the real ones just saw a line feed with poems and politics.
+Innocent  line losing its life for a python dev. 
+Maybe this is the real tragedy after all.
+
+
 ## Final Words
 
 No cache states were emotionally harmed during the development of this HN-F.
@@ -383,3 +453,4 @@ And please, for the love of everything, do not call the bleeding-eyes engineer u
 *The RN-F retries.*
 
 *And somewhere, deep inside the HN-F, UD is still trying his best. (and that is more than enough) *
+
