@@ -455,7 +455,7 @@ But the real ones just saw a line feed with poems and politics.
 Innocent  line losing its life for a python dev. 
 
 Maybe this is the real tragedy after all.
-
+![alt text](image-1.png)
 
 ## Final Words
 
