@@ -412,19 +412,33 @@ and this sweet dirty line
 is the mistress I'm allowed."
 
 The wind changed.
+
 UD felt it run behind its ears.
+
 Like a silk drawn across its neck. 
+
 A dream of a memory.
+
 Defying the CHI in love.
+
 The CHI has other plans.
+
 Brought signals from far away.
+
 The tender voice riding on the snp channel.
+
 For those who know the signs.
+
 A storm of the inevitable.
+
 UD screams watch me.
+
 Between the two RN-F's above.
+
 Taking it Taking it beat by beat.
+
 Drowning the soul of the UD.
+
 
 In the end UD just waved at the dots on the shore.
 A failed attempt of challenging the specs.
