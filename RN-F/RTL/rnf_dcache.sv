@@ -1,5 +1,42 @@
 `timescale 1ns/1ps
 `default_nettype none
+// FSM encodings of rnf_dcache (in a package so a testbench can name them)
+package rnf_dcache_pkg;
+
+  typedef enum logic [4:0] {
+    R_IDLE,
+    R_LOOKUP,     // tags of the set are valid: hit / miss / victim
+    R_LOAD,       // load data is valid
+    R_TAG_RD,     // read the tags again (after a wait the set may have changed)
+    R_REQ,        // send the request flit
+    R_WAIT,       // wait for the first response
+    R_RETRY,      // RetryAck seen: wait for the PCrdGrant, then resend
+    R_FILL_TAG,   // CompData is there: read the tags to pick the way to fill
+    R_FILL_SEL,
+    R_FILL,       // take the four CompData beats
+    R_FILL_DONE,  // write tag + state
+    R_WB_TAG,     // DBID is there: snapshot the line being written back
+    R_WB_CMP,
+    R_WB_RD,
+    R_WDAT,       // send write data
+    R_WCOMP,      // wait for Comp of a write
+    R_ACK,        // send CompAck
+    R_RESP        // answer the core
+  } rstate_e;
+
+  typedef enum logic [2:0] { T_READ, T_EVICT, T_WB, T_NCRD, T_NCWR } txn_e;
+
+  typedef enum logic [2:0] {
+    S_IDLE,
+    S_WANT,       // wants the RAM port
+    S_CMP,        // tags valid: decide, update the state
+    S_DATA,       // copy the line into s_q.buf
+    S_SEND_DAT,   // SnpRespData
+    S_SEND_RSP    // SnpResp
+  } sstate_e;
+
+endpackage : rnf_dcache_pkg
+
 // =============================================================================
 // rnf_dcache - CHI RN-F data cache (functional baseline)
 //
@@ -30,6 +67,7 @@ module rnf_dcache
   import common_pkg::*;
   import tshr_flit_pkg::*;
   import rnf_pkg::*;
+  import rnf_dcache_pkg::*;
 #(
   parameter node_id_e NODEID         = 7'h01,
   parameter node_id_e HNID           = 7'h40,
@@ -176,29 +214,6 @@ module rnf_dcache
     .wdata_i(r_dat_wdata), .rdata_o(ram_rdata));
 
   // ------------------------------------------------------------------ request FSM state
-  typedef enum logic [4:0] {
-    R_IDLE,
-    R_LOOKUP,     // tags of the set are valid: hit / miss / victim
-    R_LOAD,       // load data is valid
-    R_TAG_RD,     // read the tags again (after a wait the set may have changed)
-    R_REQ,        // send the request flit
-    R_WAIT,       // wait for the first response
-    R_RETRY,      // RetryAck seen: wait for the PCrdGrant, then resend
-    R_FILL_TAG,   // CompData is there: read the tags to pick the way to fill
-    R_FILL_SEL,
-    R_FILL,       // take the four CompData beats
-    R_FILL_DONE,  // write tag + state
-    R_WB_TAG,     // DBID is there: snapshot the line being written back
-    R_WB_CMP,
-    R_WB_RD,
-    R_WDAT,       // send write data
-    R_WCOMP,      // wait for Comp of a write
-    R_ACK,        // send CompAck
-    R_RESP        // answer the core
-  } rstate_e;
-
-  typedef enum logic [2:0] { T_READ, T_EVICT, T_WB, T_NCRD, T_NCWR } txn_e;
-
   typedef struct packed {
     rstate_e                    state;
     txn_e                       txn;
@@ -249,15 +264,6 @@ module rnf_dcache
   logic             pcrd_inc, pcrd_dec;
 
   // ------------------------------------------------------------------ snoop FSM state
-  typedef enum logic [2:0] {
-    S_IDLE,
-    S_WANT,       // wants the RAM port
-    S_CMP,        // tags valid: decide, update the state
-    S_DATA,       // copy the line into s_q.buf
-    S_SEND_DAT,   // SnpRespData
-    S_SEND_RSP    // SnpResp
-  } sstate_e;
-
   typedef struct packed {
     sstate_e              state;
     logic [11:0]          txnid;

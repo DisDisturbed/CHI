@@ -1,0 +1,534 @@
+=== Tb_RNF: SEED=4 NUM_TRACKERS=4 SETS=16 WAYS=4 scenarios=1(1..9) rounds=8 x 50 ops (core x4) mid_resets=0 ===
+[145000] TOP: start scenario 1 PINGPONG
+[19005000] TOP: done  scenario 1 PINGPONG (1886 cycles, failures so far 0)
+[19005000] TOP: start scenario 2 SNOOP_MATRIX
+[49835000] TOP: done  scenario 2 SNOOP_MATRIX (3083 cycles, failures so far 0)
+[49835000] TOP: start scenario 3 WB_SNOOP_RACE
+[128705000] TOP: done  scenario 3 WB_SNOOP_RACE (7887 cycles, failures so far 0)
+[128705000] TOP: start scenario 4 EVICT_SNOOP_RACE
+[190785000] TOP: done  scenario 4 EVICT_SNOOP_RACE (6208 cycles, failures so far 0)
+[190785000] TOP: start scenario 5 UPGRADE_RACE
+[232885000] TOP: done  scenario 5 UPGRADE_RACE (4210 cycles, failures so far 0)
+[232885000] TOP: start scenario 6 SET_THRASH
+[293605000] TOP: done  scenario 6 SET_THRASH (6072 cycles, failures so far 0)
+[293605000] TOP: start scenario 7 SNOOP_IN_WAIT
+[295155000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2967 srcid=2 opcode=REQ_READ_ONCE addr=f0000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[295345000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 118 cycles (only slow, not deadlocked)
+[295355000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=793 srcid=1 opcode=REQ_READ_SHARED addr=a0040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[295625000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 126 cycles (only slow, not deadlocked)
+[297395000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=796 srcid=1 opcode=REQ_READ_SHARED addr=100040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[297685000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[298995000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=797 srcid=1 opcode=REQ_READ_UNIQUE addr=a0040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[299175000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 117 cycles (only slow, not deadlocked)
+[300765000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=4010 srcid=2 opcode=REQ_READ_SHARED addr=90000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[301025000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[301095000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=801 srcid=1 opcode=REQ_READ_SHARED addr=40040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[301395000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[303195000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=804 srcid=1 opcode=REQ_READ_SHARED addr=80080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[303465000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 126 cycles (only slow, not deadlocked)
+[305855000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=3274 srcid=2 opcode=REQ_READ_NOT_SHARED_DIRTY addr=20080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[305985000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=809 srcid=1 opcode=REQ_READ_SHARED addr=10040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[306035000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 117 cycles (only slow, not deadlocked)
+[306205000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 121 cycles (only slow, not deadlocked)
+[307625000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=4024 srcid=2 opcode=REQ_READ_UNIQUE addr=50080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[307875000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[307895000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=3013 srcid=2 opcode=REQ_EVICT addr=50080 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[307935000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 103 cycles (only slow, not deadlocked)
+[308025000] DEADLOCK: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2134 srcid=2 opcode=REQ_READ_CLEAN addr=20080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[308035000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=812 srcid=1 opcode=REQ_READ_UNIQUE addr=490000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[308215000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 117 cycles (only slow, not deadlocked)
+[308315000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[309055000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=3966 srcid=2 opcode=REQ_READ_NOT_SHARED_DIRTY addr=50080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[309295000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[309535000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=4014 srcid=2 opcode=REQ_READ_NOT_SHARED_DIRTY addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[309555000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=814 srcid=1 opcode=REQ_READ_SHARED addr=a0040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[309795000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[309835000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[312755000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2132 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=90000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[312995000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[313055000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=3057 srcid=2 opcode=REQ_READ_UNIQUE addr=a0040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[313285000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 122 cycles (only slow, not deadlocked)
+[313845000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=825 srcid=1 opcode=REQ_READ_SHARED addr=4b0080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[314125000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 127 cycles (only slow, not deadlocked)
+[317235000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=833 srcid=1 opcode=REQ_READ_UNIQUE addr=470040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[317485000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[318875000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=3854 srcid=2 opcode=REQ_READ_ONCE addr=40040 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[319135000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[320195000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2704 srcid=2 opcode=REQ_READ_SHARED addr=c0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[320395000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 119 cycles (only slow, not deadlocked)
+[320455000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=840 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=410040 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[320695000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[321205000] DEADLOCK: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=844 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=30000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[321385000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=3356 srcid=2 opcode=REQ_READ_UNIQUE addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[321615000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 122 cycles (only slow, not deadlocked)
+[321675000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 146 cycles (only slow, not deadlocked)
+[321845000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2319 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=80080 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[322025000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 117 cycles (only slow, not deadlocked)
+[324615000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=851 srcid=1 opcode=REQ_READ_SHARED addr=c0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[324745000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2463 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=f0000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[324905000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[325015000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 126 cycles (only slow, not deadlocked)
+[327045000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2736 srcid=2 opcode=REQ_READ_ONCE addr=f0000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[327255000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 120 cycles (only slow, not deadlocked)
+[328735000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=861 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=480080 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[329015000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 127 cycles (only slow, not deadlocked)
+[330215000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=867 srcid=1 opcode=REQ_READ_SHARED addr=a0040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[330415000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 119 cycles (only slow, not deadlocked)
+[332015000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2790 srcid=2 opcode=REQ_READ_CLEAN addr=50080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[332305000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[334345000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=877 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=c0000 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[334625000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 127 cycles (only slow, not deadlocked)
+[335715000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2910 srcid=2 opcode=REQ_READ_ONCE addr=20080 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[335725000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=884 srcid=1 opcode=REQ_READ_SHARED addr=470040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[335925000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 120 cycles (only slow, not deadlocked)
+[335965000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[337845000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=887 srcid=1 opcode=REQ_READ_UNIQUE addr=b0080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[338135000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[339995000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=890 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=450080 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[340265000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 126 cycles (only slow, not deadlocked)
+[340555000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=892 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=d0040 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[340685000] DEADLOCK: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=893 srcid=1 opcode=REQ_READ_SHARED addr=70040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[340845000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[340915000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 122 cycles (only slow, not deadlocked)
+[342305000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=894 srcid=1 opcode=REQ_READ_UNIQUE addr=460000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[342335000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=3300 srcid=2 opcode=REQ_READ_ONCE addr=e0080 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[342565000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[342605000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 126 cycles (only slow, not deadlocked)
+[343835000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=895 srcid=1 opcode=REQ_READ_UNIQUE addr=470040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[344015000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 117 cycles (only slow, not deadlocked)
+[345435000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=897 srcid=1 opcode=REQ_READ_UNIQUE addr=80080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[345675000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[348955000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2309 srcid=2 opcode=REQ_READ_UNIQUE addr=80080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[349205000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[349615000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=4070 srcid=2 opcode=REQ_READ_UNIQUE addr=a0040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[349885000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 126 cycles (only slow, not deadlocked)
+[350675000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=4004 srcid=2 opcode=REQ_READ_CLEAN addr=20080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[350685000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=911 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=4b0080 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[350765000] DEADLOCK: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=912 srcid=1 opcode=REQ_READ_UNIQUE addr=450080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[350905000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 121 cycles (only slow, not deadlocked)
+[350935000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[350975000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 120 cycles (only slow, not deadlocked)
+[352325000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2229 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=e0080 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[352385000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=913 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=60000 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[352545000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 121 cycles (only slow, not deadlocked)
+[352685000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[353605000] DEADLOCK: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2388 srcid=2 opcode=REQ_READ_NOT_SHARED_DIRTY addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[353655000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2229 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=e0080 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[353885000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 127 cycles (only slow, not deadlocked)
+[353915000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[355255000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=922 srcid=1 opcode=REQ_READ_UNIQUE addr=400000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[355465000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 120 cycles (only slow, not deadlocked)
+[357465000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=925 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=f0000 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[357675000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 120 cycles (only slow, not deadlocked)
+[358445000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=930 srcid=1 opcode=REQ_READ_SHARED addr=e0080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[358655000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 120 cycles (only slow, not deadlocked)
+[360285000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=3118 srcid=2 opcode=REQ_READ_CLEAN addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[360535000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[360885000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=935 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=450080 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[360985000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=936 srcid=1 opcode=REQ_READ_UNIQUE addr=420080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[361175000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 118 cycles (only slow, not deadlocked)
+[361175000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[362515000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=938 srcid=1 opcode=REQ_READ_SHARED addr=490000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[362755000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[365165000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2342 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=20080 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[365365000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 119 cycles (only slow, not deadlocked)
+[365395000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2476 srcid=2 opcode=REQ_READ_CLEAN addr=100040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[365415000] DEADLOCK: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=944 srcid=1 opcode=REQ_READ_UNIQUE addr=100040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[365645000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[365775000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 135 cycles (only slow, not deadlocked)
+[367245000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=946 srcid=1 opcode=REQ_READ_UNIQUE addr=450080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[367425000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 117 cycles (only slow, not deadlocked)
+[368795000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=947 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=400000 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[369035000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[369255000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=950 srcid=1 opcode=REQ_READ_UNIQUE addr=50080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[369485000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 122 cycles (only slow, not deadlocked)
+[370935000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=3019 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=30000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[371235000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[371245000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=4031 srcid=2 opcode=REQ_READ_SHARED addr=10040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[371505000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[372915000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=957 srcid=1 opcode=REQ_READ_SHARED addr=70040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[373205000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[374535000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=3192 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=f0000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[374815000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 127 cycles (only slow, not deadlocked)
+[374995000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=960 srcid=1 opcode=REQ_READ_UNIQUE addr=440040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[375255000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[377665000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=965 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=b0080 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[377925000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[378655000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=3709 srcid=2 opcode=REQ_READ_CLEAN addr=40040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[378895000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[378965000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=969 srcid=1 opcode=REQ_READ_UNIQUE addr=e0080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[379175000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 120 cycles (only slow, not deadlocked)
+[380545000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2275 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=20080 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[380605000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=970 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=450080 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[380725000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=971 srcid=1 opcode=REQ_READ_SHARED addr=420080 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[380815000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 120 cycles (only slow, not deadlocked)
+[380835000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[380915000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 118 cycles (only slow, not deadlocked)
+[382625000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2940 srcid=2 opcode=REQ_READ_CLEAN addr=100040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[382875000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[384455000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=4048 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=30000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[384565000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=3405 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=100040 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[384665000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 120 cycles (only slow, not deadlocked)
+[384765000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 119 cycles (only slow, not deadlocked)
+[385595000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=983 srcid=1 opcode=REQ_READ_UNIQUE addr=440040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[385895000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[387265000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=984 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=50080 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[387535000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 126 cycles (only slow, not deadlocked)
+[387735000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=3497 srcid=2 opcode=REQ_READ_SHARED addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[387905000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=3317 srcid=2 opcode=REQ_READ_UNIQUE addr=10040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[387975000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[388135000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 122 cycles (only slow, not deadlocked)
+[390015000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2968 srcid=2 opcode=REQ_READ_ONCE addr=100040 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[390315000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[390665000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2604 srcid=2 opcode=REQ_READ_NOT_SHARED_DIRTY addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[390885000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 121 cycles (only slow, not deadlocked)
+[391045000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=997 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=d0040 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[391335000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[392085000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1000 srcid=1 opcode=REQ_READ_SHARED addr=100040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[392365000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 127 cycles (only slow, not deadlocked)
+[393895000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1001 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=10040 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[394185000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[394455000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1003 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=440040 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[394695000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[394865000] DEADLOCK: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2197 srcid=2 opcode=REQ_READ_NOT_SHARED_DIRTY addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[395155000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[396415000] DEADLOCK: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1009 srcid=1 opcode=REQ_WRITE_BACK_FULL addr=60000 tx_type=TX_WRITE_BACK beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[396675000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[397475000] DEADLOCK: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=3455 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=70040 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[397775000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[398455000] DEADLOCK: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1017 srcid=1 opcode=REQ_READ_SHARED addr=440040 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[398655000] DEADLOCK RELEASED: Tb_RNF.hnf.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 119 cycles (only slow, not deadlocked)
+[399135000] TOP: done  scenario 7 SNOOP_IN_WAIT (10553 cycles, failures so far 0)
+[399135000] TOP: start scenario 8 NC_MIX
+[416445000] TOP: done  scenario 8 NC_MIX (1731 cycles, failures so far 0)
+[416445000] TOP: start scenario 9 PRIV_BURST
+[435055000] TOP: done  scenario 9 PRIV_BURST (1861 cycles, failures so far 0)
+[435055000] TOP: round 0 knobs: cr_cap=2 cr_pct=100 snp_lat=5 bubble=0 max_out=2 ack_lat=0 intlv=0 shuffle=0 snf_lat=1 snf_slow=0 hot=3/43% retry=0%
+[435055000] TOP: start random round 0
+[471345000] TOP: done  random round 0 (3629 cycles, failures so far 0)
+[471345000] TOP: round 1 knobs: cr_cap=12 cr_pct=100 snp_lat=5 bubble=16 max_out=1 ack_lat=21 intlv=0 shuffle=1 snf_lat=5 snf_slow=0 hot=2/77% retry=36%
+[471345000] TOP: start random round 1
+[525655000] TOP: done  random round 1 (5431 cycles, failures so far 0)
+[525655000] TOP: round 2 knobs: cr_cap=5 cr_pct=100 snp_lat=6 bubble=0 max_out=4 ack_lat=11 intlv=0 shuffle=0 snf_lat=0 snf_slow=7 hot=1/79% retry=0%
+[525655000] TOP: start random round 2
+[563845000] TOP: done  random round 2 (3819 cycles, failures so far 0)
+[563845000] TOP: round 3 knobs: cr_cap=9 cr_pct=100 snp_lat=10 bubble=0 max_out=3 ack_lat=5 intlv=0 shuffle=1 snf_lat=4 snf_slow=0 hot=3/76% retry=0%
+[563845000] TOP: start random round 3
+[601825000] TOP: done  random round 3 (3798 cycles, failures so far 0)
+[601825000] TOP: round 4 knobs: cr_cap=11 cr_pct=65 snp_lat=4 bubble=0 max_out=3 ack_lat=13 intlv=0 shuffle=0 snf_lat=3 snf_slow=0 hot=1/60% retry=0%
+[601825000] TOP: start random round 4
+[646335000] TOP: done  random round 4 (4451 cycles, failures so far 0)
+[646335000] TOP: round 5 knobs: cr_cap=8 cr_pct=27 snp_lat=6 bubble=20 max_out=2 ack_lat=5 intlv=1 shuffle=0 snf_lat=7 snf_slow=19 hot=1/55% retry=0%
+[646335000] TOP: start random round 5
+[742695000] TOP: done  random round 5 (9636 cycles, failures so far 0)
+[742695000] TOP: round 6 knobs: cr_cap=8 cr_pct=100 snp_lat=1 bubble=28 max_out=4 ack_lat=5 intlv=1 shuffle=1 snf_lat=3 snf_slow=0 hot=4/65% retry=0%
+[742695000] TOP: start random round 6
+[776975000] TOP: done  random round 6 (3428 cycles, failures so far 0)
+[776975000] TOP: round 7 knobs: cr_cap=14 cr_pct=100 snp_lat=7 bubble=0 max_out=1 ack_lat=0 intlv=0 shuffle=0 snf_lat=0 snf_slow=0 hot=4/90% retry=7%
+[776975000] TOP: start random round 7
+[826135000] TOP: done  random round 7 (4916 cycles, failures so far 0)
+[826135000] TOP: start CleanInvalid on the private lines
+[827145000] TOP: done  CleanInvalid on the private lines (101 cycles, failures so far 0)
+[827145000] TOP: start end-of-test flush
+[829255000] TOP: done  end-of-test flush (211 cycles, failures so far 0)
+
+================= SCOREBOARD SUMMARY (seed=4) =================
+  requests issued     : 3576 (retries 0, PCrdGrants 0)
+  ops by kind         : RS=119 RC=61 RU=192 RO=69 WUF=160 WUP=23 WB=22 WC=2 CS=13 CI=91 MI=5 ST=57 SE=62 NRD=71 NWR=47
+                        CU=26 MU=17 EV=78 RNSD=69 WBP=1
+  reads checked       : 3372 (419 unchecked: unknown value / RespErr; 0 of those: too many writes in flight)
+  writes committed    : 1754, silent stores 74
+  snoops answered     : 1383
+  SN-F errors injected: 0 (seen at RN 0)
+  resets applied      : 0
+  ---- failures ----
+  read mismatches     : 0
+  stale cached data   : 0
+  SWMR violations     : 0
+  protocol errors     : 0
+  unexpected responses: 0
+  SN-F misroutes      : 0
+  memory mismatches   : 0
+  timeouts            : 0
+  DUT state/credit/cov: 0
+  ---- coverage ----
+  chk: snoop answered for the line of the outstanding request 30
+  chk: snoop answered while a request is outstanding 469
+  dc core: load hit on CS_SC                       134
+  dc core: load hit on CS_UD                       567
+  dc core: load miss, free way                     186
+  dc core: miss replaces a CS_SC line              399
+  dc core: miss replaces a CS_UD line              496
+  dc core: request accepted the cycle after a response 2617
+  dc core: store hit on CS_SC                      168
+  dc core: store hit on CS_UD                      653
+  dc core: store miss, free way                    134
+  dc fill: data taken from CompData                1227
+  dc fill: line still here, own data kept          156
+  dc snoop while the request FSM is in R_ACK       4
+  dc snoop while the request FSM is in R_FILL      43
+  dc snoop while the request FSM is in R_FILL_DONE 7
+  dc snoop while the request FSM is in R_FILL_TAG  19
+  dc snoop while the request FSM is in R_REQ T_EVICT 1
+  dc snoop while the request FSM is in R_REQ T_READ 2
+  dc snoop while the request FSM is in R_RESP      8
+  dc snoop while the request FSM is in R_TAG_RD    26
+  dc snoop while the request FSM is in R_WAIT T_EVICT 46
+  dc snoop while the request FSM is in R_WAIT T_NCRD 1
+  dc snoop while the request FSM is in R_WAIT T_READ 240
+  dc snoop while the request FSM is in R_WAIT T_WB 47
+  dc snoop while the request FSM is in R_WB_TAG    16
+  dc snoop while the request FSM is in R_WDAT T_NCWR 1
+  dc snoop while the request FSM is in R_WDAT T_WB 54
+  dc snoop: SNP_CLEAN on CS_I                      31
+  dc snoop: SNP_CLEAN on CS_SC                     11
+  dc snoop: SNP_CLEAN on CS_UD                     19
+  dc snoop: SNP_CLEAN_INVALID on CS_I              61
+  dc snoop: SNP_CLEAN_INVALID on CS_SC             28
+  dc snoop: SNP_CLEAN_INVALID on CS_UD             28
+  dc snoop: SNP_CLEAN_SHARED on CS_I               7
+  dc snoop: SNP_CLEAN_SHARED on CS_SC              2
+  dc snoop: SNP_CLEAN_SHARED on CS_UD              4
+  dc snoop: SNP_MAKE_INVALID on CS_I               4
+  dc snoop: SNP_MAKE_INVALID on CS_SC              7
+  dc snoop: SNP_MAKE_INVALID on CS_UD              11
+  dc snoop: SNP_NOT_SHARED_DIRTY on CS_I           32
+  dc snoop: SNP_NOT_SHARED_DIRTY on CS_SC          20
+  dc snoop: SNP_NOT_SHARED_DIRTY on CS_UD          17
+  dc snoop: SNP_ONCE on CS_I                       24
+  dc snoop: SNP_ONCE on CS_SC                      13
+  dc snoop: SNP_ONCE on CS_UD                      32
+  dc snoop: SNP_SHARED on CS_I                     27
+  dc snoop: SNP_SHARED on CS_SC                    63
+  dc snoop: SNP_SHARED on CS_UD                    29
+  dc snoop: SNP_UNIQUE on CS_I                     121
+  dc snoop: SNP_UNIQUE on CS_SC                    117
+  dc snoop: SNP_UNIQUE on CS_UD                    142
+  dc snoop: on the line of the Evict in flight     5
+  dc snoop: on the line of the WriteBackFull in flight 4
+  dc snoop: on the line of the read in flight      15
+  dc snoop: two or more snoops queued              70
+  dc upgrade: Shared copy kept until CompData      156
+  dc upgrade: Shared copy lost to a snoop before CompData 12
+  dc write-back: line lost to a snoop              1
+  dc write-back: line sent as CS_SC                2
+  dc write-back: line sent as CS_UD                493
+  rn: CleanUnique ->UCE                            19
+  rn: CleanUnique SC->UC                           7
+  rn: CleanUnique lost its copy to a snoop         3
+  rn: CompAck delayed > 8 cycles possible          41
+  rn: CompAck on ReadOnce/ReadNoSnp                28
+  rn: CompAck on a write                           20
+  rn: Evict                                        78
+  rn: MakeUnique                                   17
+  rn: ReadNotSharedDirty                           69
+  rn: SnpRespDataPtl                               2
+  rn: WriteBackPtl                                 1
+  rn: snoop on UCE                                 7
+  rn: store UCE->UDP                               3
+  sb: writes in flight on one line >=2             28
+  snf: Comp after DBIDResp, before write data      5
+  snf: Comp before DBIDResp                        39
+  snf: PCrdGrant before RetryAck                   15
+  snf: PCrdType != 0                               45
+  snf: RetryAck                                    76
+========================================================
+
+  ---- dcache (RNF0) ----
+  core accesses       : 1445 loads, 1519 stores (227 non-cacheable, 919 private), 6 picks of a busy line
+  private exact checks: 468
+  hits / misses       : 1354 / 1383
+  Evict / WriteBack   : 399 / 496
+  snoops              : 850 (543 hit a line, 432 answered with data)
+  RetryAck            : 0
+*** RN-F REGRESSION: ALL CHECKS PASSED (seed=4) ***
+- ../RN-F/TB/TB_rnf.sv:518: Verilog $finish
+- S i m u l a t i o n   R e p o r t: Verilator 5.048 2026-04-26
+- Verilator: $finish at 834us; walltime 0.392 s; speed 2.131 ms/s
+- Verilator: cpu 0.392 s on 1 threads; allocated 10 MB

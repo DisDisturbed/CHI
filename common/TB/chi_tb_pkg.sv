@@ -33,7 +33,9 @@ package chi_tb_pkg;
   localparam int NUM_OPS = 20;
 
   // top -> agent commands
-  localparam int CMD_NONE = 0, CMD_SCEN = 1, CMD_RANDOM = 2, CMD_FLUSH = 3;
+  //   CMD_REMOTE: the RN-F with IDX == sb.rop_rn runs the ops another agent
+  //   puts into sb.rop_q until sb.rop_stop is set; the other RN-Fs do nothing
+  localparam int CMD_NONE = 0, CMD_SCEN = 1, CMD_RANDOM = 2, CMD_FLUSH = 3, CMD_REMOTE = 4;
 
   // directed scenarios
   localparam int SC_PRODCONS = 1,  SC_UNIQUE_RACE = 2, SC_WB_SNOOP_RACE = 3,
@@ -256,6 +258,14 @@ package chi_tb_pkg;
     endfunction
   endclass
 
+  // one op ordered from an rnf_model through sb.rop_q (CMD_REMOTE)
+  class rop_t;
+    opkind_e     k;
+    addr_t       a;
+    bit          prep;    // 1: do_op_f (bring the line into a legal state first), 0: do_op
+    int unsigned dly;     // cycles to wait before starting it
+  endclass
+
   class rd_rec;
     addr_t a;
     string who;
@@ -287,7 +297,12 @@ package chi_tb_pkg;
     int unsigned unaligned_pct;        // RN-F: ReadNoSnp / WriteNoSnpPtl / WriteUniquePtl with an address not aligned to Size
     bit          partial_states;       // RN-F: UCE / UDP states (CleanUnique from I, partial stores, WriteBackPtl, SnpRespDataPtl)
     int unsigned hot_n, hot_pct, scn_ops;
-    int          flush_ci_rn;    // index of the RN-F that sends CleanInvalid on every line in the end-of-test flush
+    int          flush_ci_rn;
+    // ---- remote ops (CMD_REMOTE) ----
+    rop_t        rop_q [$];
+    int unsigned rop_issued, rop_done;
+    bit          rop_stop;
+    int          rop_rn;    // index of the RN-F that sends CleanInvalid on every line in the end-of-test flush
     int          txid_mode;      // 0 partitioned per RN, 1 overlap 0..15, 2 overlap 0..FFF, 3 overlap 0..1
     int unsigned w [NUM_OPS];
     addr_t       pool [$];
@@ -327,6 +342,7 @@ package chi_tb_pkg;
       snf_comp_first_pct = 0; snf_early_comp_pct = 0; snf_pcrd_early_pct = 0; snf_pcrd_types = 4;
       snp_opt_data_pct = 0; zero_be_pct = 0; nc_multi = 0; unaligned_pct = 0; partial_states = 0;
       hot_n = 4; hot_pct = 50; scn_ops = 40; txid_mode = 0; flush_ci_rn = 0;
+      rop_issued = 0; rop_done = 0; rop_stop = 0; rop_rn = 1;
       n_dut = 0; n_rd_closure_skip = 0;
       foreach (pcrd_out[i]) pcrd_out[i] = 0;
       epoch = 0; cmd = 0; cmd_arg = 0; cmd_seq = 0; agents_done = 0; bar_cnt = 0; bar_gen = 0;
@@ -697,8 +713,17 @@ package chi_tb_pkg;
         L.pend.delete();
       end
       bar_cnt = 0; bar_gen++;
+      rop_q.delete(); rop_done = rop_issued;
       infl.delete();
       foreach (pcrd_out[i]) pcrd_out[i] = 0;
+    endfunction
+
+    function void rop_push(opkind_e k, addr_t a, bit prep, int unsigned dly);
+      rop_t r;
+      r = new();
+      r.k = k; r.a = a; r.prep = prep; r.dly = dly;
+      rop_q.push_back(r);
+      rop_issued++;
     endfunction
 
     function void cov_hit(string k);

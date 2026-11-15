@@ -67,39 +67,83 @@ HN-F/RTL/       the HN-F
 HN-F/TB/        Randomized/ (Tb_HNF_Random) and Directed/ (Tb_HNF)
 RN-F/RTL/       the RN-F dcache: rnf_pkg.sv (core-side package + interface), rnf_dcache.sv,
                 rnf_tag_ram.sv, rnf_data_ram.sv, rnf_link.sv (RX FIFO, TX port)
-RN-F/TB/        TB_rnf.sv (Tb_RNF), rnf_core_driver.sv
+RN-F/TB/        TB_rnf.sv (Tb_RNF), rnf_core_driver.sv, rnf_chi_checker.sv, rnf_tb_pkg.sv (scenarios)
 ```
 
 ## RN-F dcache testbench (`TB=rnf`)
 
 `Tb_RNF` puts the RTL dcache (RN-F 0, core side driven by `rnf_core_driver`) and one
 behavioural `rnf_model` (RN-F 1) on the HN-F RTL, with the behavioural SN-F. Both RN-Fs
-work on the same lines, so they snoop each other through the HN-F. The scoreboard checks
-every load the core driver does, SWMR on the dcache's line states (mirrored from its tag
-writes) and the memory image after the end-of-test flush. The dcache has no flush of its
-own: the behavioural RN-F sends CleanInvalid for every line, which pulls the dcache's
-dirty lines out through snoops.
+work on the same lines, so they snoop each other through the HN-F.
 
 ```bash
 make run     TB=rnf SEED=3
 make regress TB=rnf SEEDS='1 2 3 4' G='SETS=4 WAYS=2'
 ```
 
+### What runs
+
+1. **Directed scenarios** (`RN-F/TB/rnf_tb_pkg.sv`, `RS_*`). The core driver runs them and
+   orders the other RN-F's ops one by one through `sb.rop_q` (`CMD_REMOTE` in `rnf_model`),
+   so the two sides can be lined up against each other.
+
+   | Scenario | What it does |
+   | --- | --- |
+   | `PINGPONG` | One line moves back and forth between the two RN-Fs |
+   | `SNOOP_MATRIX` | Every snoop type onto a Shared Clean and onto a Unique Dirty dcache line |
+   | `WB_SNOOP_RACE` | A dirty line is replaced while the other RN-F asks for every line of that set |
+   | `EVICT_SNOOP_RACE` | Same with clean lines (Evict) |
+   | `UPGRADE_RACE` | Store on a Shared line while the other RN-F goes for the same line |
+   | `SET_THRASH` | Back-to-back walk over more lines than ways of one set |
+   | `SNOOP_IN_WAIT` | Slow memory: snoops arrive while the dcache waits for its own request |
+   | `NC_MIX` | Non-cacheable accesses of both RN-Fs on the same lines |
+   | `PRIV_BURST` | Store / load bursts on the private lines |
+
+2. **Random rounds.** The behavioural RN-F runs its random ops; the core driver mixes single
+   accesses with idle gaps, back-to-back runs, runs on one line, store-then-load of the same
+   bytes and walks over one set.
+3. **Flush.** The dcache has no flush of its own: the behavioural RN-F sends CleanInvalid for
+   every line, which pulls the dcache's dirty lines out through snoops.
+
+### What is checked
+
+- **Scoreboard** (`chi_tb_pkg`): every load, SWMR on the dcache's line states (mirrored from
+  its tag writes), the memory image after the flush.
+- **Private lines.** 12 lines only the dcache touches, in the same sets as the shared ones.
+  The driver keeps its own byte-exact copy: a load must return exactly the bytes stored last.
+- **`rnf_chi_checker`**: looks only at the dcache's pins and keeps its own view of each line.
+  Request fields and legal start state, CompAck exactly once with the right TxnID, write data
+  format and its Resp against the line's state, every snoop answered once, in time, legally for
+  its type and for the state the line had, dirty data never dropped, a store only completing
+  on a Unique line, link credits.
+- **Coverage** (keys `dc ...` and `chk ...` in the summary): snoop type x line state, core op x
+  lookup result, which state the request FSM was in when a snoop was served, write-back lost
+  to a snoop, store upgrade that lost its copy, and so on. With the full scenario range every
+  cell listed in `check_coverage()` must have been reached or the run fails with `COVERAGE`.
+  Only cells this HN-F can produce are required: it grants SC to ReadShared and UC to
+  ReadUnique, so the dcache never holds a line as SD, and UC only between fill and store.
+- At the end the dcache must be idle and empty, with nothing open on the bus.
+
 | `G` parameter | Default | Meaning |
 | --- | --- | --- |
+| `RUN_SCENARIOS` | `1` | Run the directed scenarios |
+| `FIRST_SCENARIO` / `LAST_SCENARIO` | `1` / `9` | Scenario range (the coverage matrix needs the full range) |
+| `CHECK_COVERAGE` | `1` | Fail on unreached coverage cells |
 | `NUM_ROUNDS` / `OPS_PER_ROUND` | `8` / `50` | Random rounds, behavioural RN-F ops per round |
 | `CORE_OPS_MULT` | `4` | Core accesses per behavioural RN-F op |
-| `NC_PCT` | `10` | Percent of core accesses that are non-cacheable |
+| `NC_PCT` / `PRIV_PCT` | `10` / `25` | Percent of core accesses that are non-cacheable / to private lines |
 | `SETS` / `WAYS` | `16` / `4` | dcache geometry (powers of two, at least 2) |
 | `RX_FIFO_DEPTH` | `4` | dcache RX FIFO depth per channel (2..15) |
 | `MID_RESETS` | `0` | Rounds that are reset in the middle of traffic |
 | `NUM_TRACKERS` | `4` | HN-F trackers |
 
-The run fails with `COVERAGE` if the dcache never did a hit, a miss, an Evict, a
-WriteBackFull, or never answered a snoop with data. A cache big enough to hold all 16
-pool lines (for example `SETS=64 WAYS=8`) never replaces a line and is reported that way.
-The HN-F in this repo never sends RetryAck to an RN-F, so the dcache's retry path is
-not exercised by this testbench.
+The replacement scenarios need more lines in a set than the dcache has ways (9 or 10 lines
+per set here). With `SETS=64 WAYS=8` the cell "write-back: line lost to a snoop" is not
+reached on every seed, and bigger caches never replace a line at all; both show up as
+`COVERAGE` failures.
+
+Not tested here: the dcache's retry path. The HN-F in this repo never sends RetryAck to an
+RN-F.
 
 Only a Surfer signal list exists for this testbench (`waves/rnf.sucl`).
 

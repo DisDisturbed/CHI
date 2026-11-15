@@ -9,7 +9,9 @@
 ../common/TB/chi_tb_pkg.sv
 ../common/TB/rnf_model.sv
 ../common/TB/snf_model.sv
+../RN-F/TB/rnf_tb_pkg.sv
 ../RN-F/TB/rnf_core_driver.sv
+../RN-F/TB/rnf_chi_checker.sv
 ../RN-F/TB/TB_rnf.sv
 // TSHR deadlock monitor, bound into every TSHR instance.
 ../common/TB/tshr_deadlock_mon.sv

@@ -1487,6 +1487,32 @@ module rnf_model #(
     if (IDX == sb.flush_ci_rn) foreach (sb.pool[i]) do_op(OP_CI, sb.pool[i], ep, ran);
   endtask
 
+  // ---------------------------------------------------------------- remote ops
+  // ops ordered by another agent through sb.rop_q, each in its own thread
+  task automatic remote_loop(input int unsigned ep);
+    rop_t r;
+    outstanding = 0;
+    while (!(sb.rop_stop && sb.rop_q.size() == 0) && ep == sb.epoch) begin
+      if (sb.rop_q.size() != 0) begin
+        r = sb.rop_q.pop_front();
+        outstanding++;
+        fork
+          begin
+            automatic rop_t        rr    = r;
+            automatic int unsigned my_ep = ep;
+            bit ran;
+            repeat (rr.dly) @(posedge clk);
+            if (rr.prep)  do_op_f(rr.k, rr.a, my_ep);
+            else          do_op(rr.k, rr.a, my_ep, ran);
+            if (my_ep == sb.epoch) begin outstanding--; sb.rop_done++; end
+          end
+        join_none
+      end
+      @(posedge clk);
+    end
+    while (outstanding > 0 && ep == sb.epoch) @(posedge clk);
+  endtask
+
   // ---------------------------------------------------------------- command loop / start-up
   task automatic cmd_loop();
     int unsigned last, ep;
@@ -1499,6 +1525,7 @@ module rnf_model #(
         CMD_SCEN:   run_scenario(sb.cmd_arg, ep);
         CMD_RANDOM: random_ops(sb.cmd_arg, ep);
         CMD_FLUSH:  flush_all(ep);
+        CMD_REMOTE: if (IDX == sb.rop_rn) remote_loop(ep);
         default: ;
       endcase
       sb.agents_done++;

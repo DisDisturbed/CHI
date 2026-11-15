@@ -6,31 +6,48 @@
 //   RN-F 1 : rnf_model  (behavioural), random CHI traffic on the same lines
 //   HN-F   : RTL,  SN-F : snf_model
 //
-//  The two RN-Fs snoop each other through the HN-F. Checking is done by the
-//  chi_tb_pkg scoreboard (load data, SWMR on the mirrored line states, memory
-//  image at the end); the dcache's line states are mirrored from its tag
-//  writes.
+//  The two RN-Fs snoop each other through the HN-F.
 //
-//  Sequence: NUM_ROUNDS random rounds (knobs re-rolled per round), optional
-//  MID_RESETS rounds that are reset in the middle of traffic, then the flush:
-//  the behavioural RN-F writes its lines back and sends CleanInvalid for every
-//  line, which pulls the dcache's dirty lines out through snoops. After that
-//  the memory image must hold every value and the dcache must be empty.
+//  Checking:
+//   * chi_tb_pkg scoreboard: load data, SWMR on the mirrored line states (the
+//     dcache's are mirrored from its tag writes), memory image at the end
+//   * rnf_core_driver: byte-exact copy of the lines only the dcache touches
+//   * rnf_chi_checker: protocol checker on the dcache's CHI ports
+//   * coverage of what the dcache went through (cov_dcache); with the full
+//     scenario range every cell in check_coverage() must have been reached
+//
+//  Sequence:
+//   1. directed scenarios rnf_tb_pkg::RS_* (the core driver runs them and
+//      orders the behavioural RN-F's ops)
+//   2. NUM_ROUNDS random rounds, knobs re-rolled per round
+//   3. optional MID_RESETS rounds that are reset in the middle of traffic
+//   4. flush: the behavioural RN-F sends CleanInvalid for every private line,
+//      writes its own lines back and sends CleanInvalid for every shared
+//      line, which pulls the dcache's dirty lines out through snoops. After
+//      that the memory image must hold every value and the dcache must be
+//      empty and idle.
 // =============================================================================
 module Tb_RNF;
   import chi_pkg::*;
   import common_pkg::*;
   import tshr_flit_pkg::*;
   import chi_tb_pkg::*;
+  import rnf_dcache_pkg::*;
+  import rnf_tb_pkg::*;
 
   parameter int SEED                   = 1;
   parameter int LOG_MODE               = 3;
   parameter int VERBOSE                = 1;
   parameter int NUM_TRACKERS           = 4;
+  parameter bit RUN_SCENARIOS          = 1;
+  parameter int FIRST_SCENARIO         = 1;        // rnf_tb_pkg::RS_PINGPONG
+  parameter int LAST_SCENARIO          = RS_LAST;
+  parameter bit CHECK_COVERAGE         = 1;
   parameter int NUM_ROUNDS             = 8;
   parameter int OPS_PER_ROUND          = 50;       // behavioural RN-F ops; the core does CORE_OPS_MULT times as many accesses
   parameter int CORE_OPS_MULT          = 4;
   parameter int NC_PCT                 = 10;       // core accesses that are non-cacheable
+  parameter int PRIV_PCT               = 25;       // core accesses to lines only the dcache touches
   parameter bit RANDOMIZE_KNOBS        = 1;
   parameter int MID_RESETS             = 0;
   parameter bit ISOLATE_FAILURES       = 1;
@@ -102,9 +119,16 @@ module Tb_RNF;
 
   rnf_core_driver #(
     .NAME("RNF0"), .IDX(0), .SEED(SEED * 7 + 1), .AddrSize(AW), .MaxAccessWidth(DW), .ReqIdxWidth(IW),
-    .OPS_MULT(CORE_OPS_MULT), .NC_PCT(NC_PCT)
+    .OPS_MULT(CORE_OPS_MULT), .NC_PCT(NC_PCT), .PRIV_PCT(PRIV_PCT)
   ) drv (
     .clk(clk), .resetn(resetn), .core(core_if)
+  );
+
+  rnf_chi_checker #(.NODEID(7'h01), .HNID(HN_ID), .NAME("RNF0")) chk (
+    .clk(clk), .resetn(resetn), .core(core_if),
+    .req(rnf_req_if[0]), .snp(rnf_snp_if[0]),
+    .rsp_rx(rnf_rsp_tx_if[0]), .rsp_tx(rnf_rsp_rx_if[0]),
+    .dat_rx(rnf_dat_tx_if[0]), .dat_tx(rnf_dat_rx_if[0])
   );
 
   // ---------------------------------------------------------------- RN-F 1: behavioural, SN-F
@@ -135,6 +159,16 @@ module Tb_RNF;
     sb.partial_states = 1;
     sb.err_line.delete();
     sb.default_weights();
+  endfunction
+
+  // knobs for the directed scenarios
+  function automatic void apply_profile(int id);
+    base_knobs();
+    case (id)
+      RS_SNOOP_IN_WAIT: begin sb.snf_slow_pct = 40; sb.snf_lat_max = 12; end   // the dcache waits long for its own requests
+      RS_WB_SNOOP_RACE, RS_EVICT_SNOOP_RACE, RS_UPGRADE_RACE: sb.snf_lat_max = 8;
+      default: ;
+    endcase
   endfunction
 
   function automatic void randomize_knobs();
@@ -187,6 +221,7 @@ module Tb_RNF;
   task automatic start_cmd(input int c, input int arg, input string what);
     tb_info($sformatf("TOP: start %s", what));
     sb.agents_done = 0;
+    sb.rop_stop    = 0;
     sb.cmd         = c;
     sb.cmd_arg     = arg;
     sb.cmd_seq++;
@@ -233,15 +268,11 @@ module Tb_RNF;
     endcase
   endfunction
 
-  // link credits of the dcache's three TX channels: granted by the HN-F / used by the dcache
-  int req_cr = 0, rsp_cr = 0, dat_cr = 0;
   // what the dcache was seen doing, kept across resets
   int unsigned c_hit = 0, c_miss = 0, c_evict = 0, c_wb = 0, c_snp_hit = 0, c_snp_data = 0;
 
   always @(posedge clk) begin
-    if (!resetn) begin
-      req_cr = 0; rsp_cr = 0; dat_cr = 0;
-    end else if (sb != null) begin
+    if (resetn && sb != null) begin
       // mirror of the dcache line states, from its tag writes
       if (dut.tag_we) begin
         addr_t a;
@@ -254,29 +285,83 @@ module Tb_RNF;
       c_snp_hit  += dut.perf_snp_hit;  c_snp_data += dut.perf_snp_data;
       if (dut.s_port && (dut.r_tag_re || dut.r_tag_we || dut.r_dat_re || dut.r_dat_we))
         sb.err("DUT_STATE", "dcache: request FSM and snoop FSM use the RAM port in the same cycle");
-
-      if (rnf_req_if[0].flitv == Y) begin
-        if (req_cr <= 0) sb.err("LINK_CREDIT", "RNF0: dcache sent a REQ flit without a credit");
-        req_cr--;
-        sb.n_req++;
-      end
-      if (rnf_rsp_rx_if[0].flitv == Y) begin
-        if (rsp_cr <= 0) sb.err("LINK_CREDIT", "RNF0: dcache sent an RSP flit without a credit");
-        rsp_cr--;
-      end
-      if (rnf_dat_rx_if[0].flitv == Y) begin
-        if (dat_cr <= 0) sb.err("LINK_CREDIT", "RNF0: dcache sent a DAT flit without a credit");
-        dat_cr--;
-      end
-      if (rnf_req_if[0].lcrdv    === 1'b1) req_cr++;
-      if (rnf_rsp_rx_if[0].lcrdv === 1'b1) rsp_cr++;
-      if (rnf_dat_rx_if[0].lcrdv === 1'b1) dat_cr++;
-
-      if (rnf_req_if[0].flitv    == Y && rnf_req_if[0].flitpend    != Y) sb.err("FLITPEND", "RNF0 REQ: FLITV=1 with FLITPEND=0");
-      if (rnf_rsp_rx_if[0].flitv == Y && rnf_rsp_rx_if[0].flitpend != Y) sb.err("FLITPEND", "RNF0 RSP: FLITV=1 with FLITPEND=0");
-      if (rnf_dat_rx_if[0].flitv == Y && rnf_dat_rx_if[0].flitpend != Y) sb.err("FLITPEND", "RNF0 DAT: FLITV=1 with FLITPEND=0");
+      if (rnf_req_if[0].flitv == Y) sb.n_req++;
+      cov_dcache();
     end
   end
+
+  // ---------------------------------------------------------------- dcache coverage
+  // keys "dc ...": what the dcache went through, sampled inside it
+  rstate_e cv_rs;
+  sstate_e cv_ss;
+  txn_e    cv_rt;
+  bit      cv_upg      = 0;     // the request in flight is a store on a Shared line
+  bit      cv_rsp_prev = 0;
+
+  function automatic string req_state_str();
+    case (cv_rs)
+      R_REQ, R_WAIT, R_WDAT, R_WCOMP: return $sformatf("%s %s", cv_rs.name(), cv_rt.name());
+      default:                        return cv_rs.name();
+    endcase
+  endfunction
+
+  function automatic void cov_dcache();
+    cache_state_e st;
+    snp_opcode_e  so;
+    bit           store;
+    string        opn;
+    cv_rs = rstate_e'(dut.r_q.state);
+    cv_ss = sstate_e'(dut.s_q.state);
+    cv_rt = txn_e'(dut.r_q.txn);
+    store = (dut.r_q.op == rnf_pkg::MEM_OP_STORE);
+    if (store) opn = "store"; else opn = "load";
+
+    // every snoop: type x state of the line, and what the request FSM was doing
+    if (cv_ss == S_CMP) begin
+      st = dut.s_hit ? dut.s_hit_st : CS_I;
+      so = dut.s_q.opcode;
+      sb.cov_hit($sformatf("dc snoop: %s on %s", so.name(), st.name()));
+      if (cv_rs != R_IDLE) begin
+        sb.cov_hit($sformatf("dc snoop while the request FSM is in %s", req_state_str()));
+        if (dut.sn_set == dut.q_set) begin
+          if (cv_rt == T_READ && dut.sn_tag == dut.q_tag)
+            sb.cov_hit("dc snoop: on the line of the read in flight");
+          if (cv_rt == T_WB && dut.sn_tag == dut.r_q.vtag)    sb.cov_hit("dc snoop: on the line of the WriteBackFull in flight");
+          if (cv_rt == T_EVICT && dut.sn_tag == dut.r_q.vtag) sb.cov_hit("dc snoop: on the line of the Evict in flight");
+        end
+      end
+    end
+    if (dut.u_snp_rx.cnt_q >= 2) sb.cov_hit("dc snoop: two or more snoops queued");
+
+    // every core request: op x what the lookup found
+    if (cv_rs == R_LOOKUP && dut.r_q.first) begin
+      if (dut.r_hit) begin
+        st = dut.r_hit_st;
+        sb.cov_hit($sformatf("dc core: %s hit on %s", opn, st.name()));
+      end else if (dut.r_inv) begin
+        sb.cov_hit($sformatf("dc core: %s miss, free way", opn));
+      end else begin
+        st = dut.rd_st[dut.rr_way];
+        sb.cov_hit($sformatf("dc core: miss replaces a %s line", st.name()));
+      end
+      cv_upg = dut.r_hit && store && (dut.r_hit_st == CS_SC || dut.r_hit_st == CS_SD);
+    end
+
+    if (cv_rs == R_FILL_SEL) begin
+      sb.cov_hit(dut.r_hit ? "dc fill: line still here, own data kept" : "dc fill: data taken from CompData");
+      if (cv_upg) sb.cov_hit(dut.r_hit ? "dc upgrade: Shared copy kept until CompData" : "dc upgrade: Shared copy lost to a snoop before CompData");
+      cv_upg = 0;
+    end
+
+    if (cv_rs == R_WB_CMP) begin
+      st = dut.rd_st[dut.r_q.way];
+      if (st != CS_I && dut.rd_tag[dut.r_q.way] == dut.r_q.vtag) sb.cov_hit($sformatf("dc write-back: line sent as %s", st.name()));
+      else                                                       sb.cov_hit("dc write-back: line lost to a snoop");
+    end
+
+    if (core_if.req.valid == Y && core_if.ready == Y && cv_rsp_prev) sb.cov_hit("dc core: request accepted the cycle after a response");
+    cv_rsp_prev = (core_if.rsp.valid == Y);
+  endfunction
 
   // after the flush the dcache must be idle and hold no line
   function automatic void check_dcache_empty();
@@ -291,14 +376,65 @@ module Tb_RNF;
       sb.err("DUT_STATE", $sformatf("end of test: dcache is not idle (request FSM state %0d, snoop FSM state %0d)", dut.r_q.state, dut.s_q.state));
   endfunction
 
-  function automatic void need(string what, int unsigned n);
+  function automatic void need(string k);
+    if (sb.cov_get(k) == 0)
+      sb.err("COVERAGE", $sformatf("never reached: \"%s\" - the run did not test this, so a pass proves nothing about it", k));
+  endfunction
+
+  function automatic void need_n(string what, int unsigned n);
     if (n == 0)
       sb.err("COVERAGE", $sformatf("never reached: \"%s\" - the run did not test this, so a pass proves nothing about it", what));
   endfunction
 
+  // Only what this environment can reach is required: the HN-F here grants
+  // SC to ReadShared and UC to ReadUnique, so the dcache's lines are SC or UD
+  // when a snoop finds them (UC only between fill and store, SD never).
+  function automatic void check_coverage();
+    string sn_ops [8] = '{"SNP_SHARED", "SNP_CLEAN", "SNP_ONCE", "SNP_NOT_SHARED_DIRTY", "SNP_UNIQUE",
+                          "SNP_CLEAN_SHARED", "SNP_CLEAN_INVALID", "SNP_MAKE_INVALID"};
+    need_n("dcache: load / store hit",          c_hit);
+    need_n("dcache: miss",                      c_miss);
+    need_n("dcache: Evict",                     c_evict);
+    need_n("dcache: WriteBackFull",             c_wb);
+    need_n("dcache: snoop hit",                 c_snp_hit);
+    need_n("dcache: snoop answered with data",  c_snp_data);
+    if (!CHECK_COVERAGE || !(RUN_SCENARIOS && FIRST_SCENARIO <= 1 && LAST_SCENARIO >= RS_LAST)) begin
+      tb_info("TOP: coverage matrix not checked (needs RUN_SCENARIOS=1 and the full scenario range)");
+      return;
+    end
+    foreach (sn_ops[i]) begin
+      need($sformatf("dc snoop: %s on CS_SC", sn_ops[i]));
+      need($sformatf("dc snoop: %s on CS_UD", sn_ops[i]));
+    end
+    need("dc snoop: SNP_SHARED on CS_I");
+    need("dc snoop: SNP_UNIQUE on CS_I");
+    need("dc core: load hit on CS_SC");
+    need("dc core: load hit on CS_UD");
+    need("dc core: store hit on CS_SC");
+    need("dc core: store hit on CS_UD");
+    need("dc core: load miss, free way");
+    need("dc core: store miss, free way");
+    need("dc core: miss replaces a CS_SC line");
+    need("dc core: miss replaces a CS_UD line");
+    need("dc core: request accepted the cycle after a response");
+    need("dc fill: data taken from CompData");
+    need("dc fill: line still here, own data kept");
+    need("dc upgrade: Shared copy kept until CompData");
+    need("dc upgrade: Shared copy lost to a snoop before CompData");
+    need("dc write-back: line sent as CS_UD");
+    need("dc write-back: line lost to a snoop");
+    need("dc snoop while the request FSM is in R_WAIT T_READ");
+    need("dc snoop while the request FSM is in R_WAIT T_WB");
+    need("dc snoop: on the line of the read in flight");
+    need("dc snoop: on the line of the WriteBackFull in flight");
+    need("chk: snoop answered while a request is outstanding");
+    need("chk: snoop answered for the line of the outstanding request");
+  endfunction
+
   function automatic void report_dcache();
     $display("  ---- dcache (RNF0) ----");
-    $display("  core accesses       : %0d loads, %0d stores (%0d non-cacheable), %0d picks of a busy line", drv.n_load, drv.n_store, drv.n_nc, drv.n_busy);
+    $display("  core accesses       : %0d loads, %0d stores (%0d non-cacheable, %0d private), %0d picks of a busy line", drv.n_load, drv.n_store, drv.n_nc, drv.n_priv, drv.n_busy);
+    $display("  private exact checks: %0d", drv.n_priv_chk);
     $display("  hits / misses       : %0d / %0d", dut.perf_hits_r, dut.perf_misses_r);
     $display("  Evict / WriteBack   : %0d / %0d", dut.perf_evictions_r, dut.perf_writebacks_r);
     $display("  snoops              : %0d (%0d hit a line, %0d answered with data)", dut.perf_snoops_r, dut.perf_snoop_hits_r, dut.perf_snoop_data_r);
@@ -328,14 +464,24 @@ module Tb_RNF;
     sb = s;
     base_knobs();
 
-    $display("=== Tb_RNF: SEED=%0d NUM_TRACKERS=%0d SETS=%0d WAYS=%0d rounds=%0d x %0d ops (core x%0d) mid_resets=%0d ===",
-             SEED, NUM_TRACKERS, SETS, WAYS, NUM_ROUNDS, OPS_PER_ROUND, CORE_OPS_MULT, MID_RESETS);
+    $display("=== Tb_RNF: SEED=%0d NUM_TRACKERS=%0d SETS=%0d WAYS=%0d scenarios=%0b(%0d..%0d) rounds=%0d x %0d ops (core x%0d) mid_resets=%0d ===",
+             SEED, NUM_TRACKERS, SETS, WAYS, RUN_SCENARIOS, FIRST_SCENARIO, LAST_SCENARIO, NUM_ROUNDS, OPS_PER_ROUND, CORE_OPS_MULT, MID_RESETS);
 
     resetn = 0;
     repeat (10) @(posedge clk);
     resetn = 1;
     repeat (5) @(posedge clk);
 
+    // 1. directed scenarios
+    if (RUN_SCENARIOS) begin
+      for (int id = FIRST_SCENARIO; id <= LAST_SCENARIO; id++) begin
+        apply_profile(id);
+        issue_cmd(CMD_REMOTE, id, $sformatf("scenario %0d %s", id, rs_name(id)));
+      end
+      base_knobs();
+    end
+
+    // 2. random rounds
     for (int rd = 0; rd < NUM_ROUNDS; rd++) begin
       randomize_knobs();
       tb_info($sformatf("TOP: round %0d knobs: %s", rd, knob_str()));
@@ -351,18 +497,16 @@ module Tb_RNF;
       issue_cmd(CMD_RANDOM, OPS_PER_ROUND, "random round after the mid-traffic resets");
     end
 
+    // 4. flush, final checks
     base_knobs();
+    issue_cmd(CMD_REMOTE, RS_CLEAN_PRIV, "CleanInvalid on the private lines");
     issue_cmd(CMD_FLUSH, 0, "end-of-test flush");
     repeat (500) @(posedge clk);
     sb.final_memory_check();
     check_dcache_empty();
-
-    need("dcache: load / store hit",          c_hit);
-    need("dcache: miss",                      c_miss);
-    need("dcache: Evict",                     c_evict);
-    need("dcache: WriteBackFull",             c_wb);
-    need("dcache: snoop hit",                 c_snp_hit);
-    need("dcache: snoop answered with data",  c_snp_data);
+    if (chk.open_txn != 0 || chk.open_snp != 0)
+      sb.err("DUT_STATE", $sformatf("end of test: %0d request(s) and %0d snoop(s) of the dcache are still open on the bus", chk.open_txn, chk.open_snp));
+    check_coverage();
 
     sb.final_report(SEED);
     report_dcache();
