@@ -13,8 +13,8 @@
 - [The TSHR Labor Exploitation Scandal](#3-the-tshr-labor-exploitation-scandal)
 - [The Python Developer Privilege](#4-the-python-developer-privilege)
 - [The RTL Development Methodology](#5-the-rtl-development-methodology)
-- [The Git History](#6-the-git-history)
-- [The Retry Loop — Sisyphus of the Interconnect](#7-the-retry-loop--sisyphus-of-the-interconnect)
+- [The Retry Loop — Sisyphus of the Interconnect](#6-the-retry-loop--sisyphus-of-the-interconnect)
+- [The Git History](#7-the-git-history)
 - [The Protocol Channel Drama — The Real Housewives of AMBA](#8-the-protocol-channel-drama--the-real-housewives-of-amba)
 - [The Verification Engineer's Descent Into Madness](#9-the-verification-engineers-descent-into-madness)
 - [Additional Members of the Disaster](#10-additional-members-of-the-disaster)
@@ -206,28 +206,8 @@ Nobody knows how. Nobody wants to know how.
 
 He simply appeared one night, added a matrix of address comparisons, and disappeared.
 
-## 6. The Git History
 
-A beautiful record of engineering progress.
-
-```
-damn
-asdfh
-am i stupid
-fix
-fix2
-final_fix
-final_fix_real
-why
-feeling sleepy
-i gotta pee before missing the bus
-```
-
-Each commit represents a meaningful step in the development process.
-
-Probably.
-
-## 7. The Retry Loop — Sisyphus of the Interconnect
+## 6. The Retry Loop — Sisyphus of the Interconnect
 
 While UD carries responsibilities, the Retry mechanism is condemned to eternal torment.
 
@@ -246,6 +226,29 @@ The transaction knows no peace.
 It only knows `RetryAck`, `PCrdGrant`, and the crushing inevitability of another attempt.
 
 **One must imagine the RN-F happy.**
+**what about the undergrad behind all of these tho?**
+
+## 7. The Git History
+
+A beautiful record of engineering progress.
+
+```
+damn
+asdfh
+am i stupid
+fix
+fix2
+final_fix
+(the part where undergrad is happy)
+final_fix_real
+why
+feeling sleepy
+i gotta pee before missing the bus
+```
+
+Each commit represents a meaningful step in the development process.
+
+Probably.
 
 ## 8. The Protocol Channel Drama — The Real Housewives of AMBA
 
