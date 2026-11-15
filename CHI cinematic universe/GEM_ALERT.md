@@ -226,6 +226,7 @@ The transaction knows no peace.
 It only knows `RetryAck`, `PCrdGrant`, and the crushing inevitability of another attempt.
 
 **One must imagine the RN-F happy.**
+
 **what about the undergrad behind all of these tho?**
 
 ## 7. The Git History
