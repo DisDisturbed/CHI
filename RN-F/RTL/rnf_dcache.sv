@@ -156,15 +156,42 @@ module rnf_dcache
   logic [SNP_W-1:0] rxs_bits;
   local_snp_flit_t  rxs;
 
-  rnf_rx_fifo #(.W(RSP_W), .DEPTH(RX_FIFO_DEPTH)) u_rsp_rx (
-    .clk(clk), .resetn(resetn), .flitv_i(rsp_rx.flitv == Y), .flit_i(rsp_rx.flit), .lcrdv_o(rsp_rx.lcrdv),
-    .valid_o(rxr_v), .flit_o(rxr_bits), .pop_i(rxr_pop));
-  rnf_rx_fifo #(.W(DAT_W), .DEPTH(RX_FIFO_DEPTH)) u_dat_rx (
-    .clk(clk), .resetn(resetn), .flitv_i(dat_rx.flitv == Y), .flit_i(dat_rx.flit), .lcrdv_o(dat_rx.lcrdv),
-    .valid_o(rxd_v), .flit_o(rxd_bits), .pop_i(rxd_pop));
-  rnf_rx_fifo #(.W(SNP_W), .DEPTH(RX_FIFO_DEPTH)) u_snp_rx (
-    .clk(clk), .resetn(resetn), .flitv_i(snp_rx.flitv == Y), .flit_i(snp_rx.flit), .lcrdv_o(snp_rx.lcrdv),
-    .valid_o(rxs_v), .flit_o(rxs_bits), .pop_i(rxs_pop));
+  rnf_rx_fifo #(.W(RSP_W), 
+                .DEPTH(RX_FIFO_DEPTH))
+    u_rsp_rx (
+    .clk(clk),
+   .resetn(resetn),
+   .flitv_i(rsp_rx.flitv == Y),
+   .flit_i(rsp_rx.flit),
+   .lcrdv_o(rsp_rx.lcrdv),
+   .valid_o(rxr_v),
+   .flit_o(rxr_bits),
+   .pop_i(rxr_pop)
+   );
+  rnf_rx_fifo #(.W(DAT_W),
+                .DEPTH(RX_FIFO_DEPTH))
+    u_dat_rx (
+    .clk(clk),
+    .resetn(resetn),
+    .flitv_i(dat_rx.flitv == Y),
+    .flit_i(dat_rx.flit),
+    .lcrdv_o(dat_rx.lcrdv),
+    .valid_o(rxd_v),
+    .flit_o(rxd_bits),
+    .pop_i(rxd_pop)
+    );
+  rnf_rx_fifo #(.W(SNP_W),
+                .DEPTH(RX_FIFO_DEPTH)) 
+    u_snp_rx (
+    .clk(clk),
+    .resetn(resetn),
+    .flitv_i(snp_rx.flitv == Y),
+    .flit_i(snp_rx.flit),
+    .lcrdv_o(snp_rx.lcrdv),
+    .valid_o(rxs_v),
+    .flit_o(rxs_bits),
+    .pop_i(rxs_pop)
+    );
 
   assign rxr = local_rsp_flit_t'(rxr_bits);
   assign rxd = local_dat_flit_t'(rxd_bits);

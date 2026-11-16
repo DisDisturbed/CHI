@@ -870,14 +870,19 @@ module rnf_core_driver #(
 
       RS_UPGRADE_RACE: begin
         a = sb.pool[3];
-        // the first 240 rounds sweep every remote op over remote delays 0..15,
-        // three times over, so the snoop lands at each point of the dcache
-        // upgrade (before and after its request, while it waits for CompData;
-        // that last window is only a cycle or two wide); the rest are random
-        for (int it = 0; it < 270 && go(ep); it++) begin
-          int unsigned rk, rd;
-          rk = (it < 240) ? (it % 5) : rng.range(0, 4);
-          rd = (it < 240) ? ((it / 5) % 16) : rng.range(0, 15);
+        // the first 320 rounds sweep every remote op over offsets -16..15
+        // cycles between the remote request and the dcache store, twice over,
+        // so the snoop lands at each point of the dcache upgrade: before its
+        // request, after it, and in the narrow window where the request is
+        // already out but the home serves the remote one first (the Shared
+        // copy is lost while the dcache waits for CompData). The rest are random.
+        for (int it = 0; it < 340 && go(ep); it++) begin
+          int unsigned rk, rd, sd;
+          int off;
+          rk  = (it < 320) ? (it % 5) : rng.range(0, 4);
+          off = (it < 320) ? ((it / 5) % 32) - 16 : rng.range(0, 31) - 16;
+          rd  = (off > 0) ?  off : 0;                       // remote waits: the store goes first
+          sd  = (off < 0) ? -off : 0;                       // store waits: the remote goes first
           sb.rop_push(OP_CI, a, 1, 0); rop_wait(ep);
           acc(a, 0, ep);                                    // dcache Shared
           sb.rop_push(OP_RS, a, 1, 0); rop_wait(ep);        // both Shared
@@ -888,7 +893,8 @@ module rnf_core_driver #(
             3:       sb.rop_push(OP_WUF, a, 1, rd);
             default: sb.rop_push(OP_WUP, a, 1, rd);
           endcase
-          acc(a, 1, ep);                                    // store on the Shared line
+          repeat (sd) tick();
+          acc(a, 1, ep);                                    // store on the Shared line (or lost by now)
           rop_wait(ep);
         end
       end
