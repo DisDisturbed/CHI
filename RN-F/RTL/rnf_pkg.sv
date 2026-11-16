@@ -26,8 +26,11 @@ endpackage : rnf_pkg
 // Core <-> dcache interface.
 //
 // Request: the core holds req (valid = Y) until it samples ready = Y on a
-// clock edge; that edge accepts the request. One request is handled at a
-// time, ready stays N until its response has been given.
+// clock edge; that edge accepts the request. ready = Y while the dcache has
+// a free MSHR (NUM_MSHR requests can be open at once). Responses carry the
+// request's idx and come back in any order; requests to the same set are
+// answered in the order they were accepted. idx must not be reused while its
+// request is open.
 //   kill       present in the struct, not looked at by the dcache yet
 //   addr       must be aligned to width; an access never crosses 16 bytes
 //   width      at most MaxAccessWidth/8 bytes

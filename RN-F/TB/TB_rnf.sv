@@ -61,7 +61,8 @@ module Tb_RNF;
   parameter int WAYS                   = 4;
   parameter int RX_FIFO_DEPTH          = 4;
   parameter int CORE_MAX_OUT           = 16;       // requests the core keeps in flight at most (<= 2**IW)
-  parameter bit REQUIRE_CORE_OOO       = 0;        // also require the dcache to have taken several requests at once and answered out of order
+  parameter int NUM_MSHR               = 4;        // dcache MSHRs; must be <= NUM_TRACKERS (HN-F)
+  parameter bit REQUIRE_CORE_OOO       = (NUM_MSHR > 1); // also require the dcache to have taken several requests at once and answered out of order
   parameter int CMD_TIMEOUT_CYCLES     = 400000;
   parameter int OVERALL_TIMEOUT_CYCLES = 16000000;
 
@@ -116,7 +117,7 @@ module Tb_RNF;
   // ---------------------------------------------------------------- RN-F 0: RTL dcache + core driver
   rnf_dcache #(
     .NODEID(7'h01), .HNID(HN_ID), .AddrSize(AW), .MaxAccessWidth(DW), .ReqIdxWidth(IW),
-    .SETS(SETS), .WAYS(WAYS), .RX_FIFO_DEPTH(RX_FIFO_DEPTH)
+    .SETS(SETS), .WAYS(WAYS), .RX_FIFO_DEPTH(RX_FIFO_DEPTH), .NUM_MSHR(NUM_MSHR)
   ) dut (
     .clk(clk), .resetn(resetn),
     .core(core_if),
@@ -329,72 +330,96 @@ module Tb_RNF;
 
   // ---------------------------------------------------------------- dcache coverage
   // keys "dc ...": what the dcache went through, sampled inside it
-  rstate_e cv_rs;
+  // every MSHR runs the same per-request FSM; the "request FSM" coverage
+  // below is collected over all of them
   sstate_e cv_ss;
-  txn_e    cv_rt;
-  bit      cv_upg      = 0;     // the request in flight is a store on a Shared line
+  bit      cv_upg [NUM_MSHR];   // the request in this MSHR is a store on a Shared line
   bit      cv_rsp_prev = 0;
+  initial foreach (cv_upg[k]) cv_upg[k] = 0;
 
-  function automatic string req_state_str();
-    case (cv_rs)
-      R_REQ, R_WAIT, R_WDAT, R_WCOMP: return $sformatf("%s %s", cv_rs.name(), cv_rt.name());
-      default:                        return cv_rs.name();
+  function automatic string req_state_str(rstate_e rs, txn_e rt);
+    case (rs)
+      R_REQ, R_WAIT, R_WDAT, R_WCOMP: return $sformatf("%s %s", rs.name(), rt.name());
+      default:                        return rs.name();
     endcase
   endfunction
 
   function automatic void cov_dcache();
     cache_state_e st;
     snp_opcode_e  so;
+    rstate_e      rs;
+    txn_e         rt;
     bit           store;
     string        opn;
-    cv_rs = rstate_e'(dut.r_q.state);
+    int           nopen, nmiss;
+    addr_t        a;
+    logic [5:0]   sset;
     cv_ss = sstate_e'(dut.s_q.state);
-    cv_rt = txn_e'(dut.r_q.txn);
-    store = (dut.r_q.op == rnf_pkg::MEM_OP_STORE);
-    if (store) opn = "store"; else opn = "load";
 
-    // every snoop: type x state of the line, and what the request FSM was doing
+    // every snoop: type x state of the line, and what the MSHRs were doing
     if (cv_ss == S_CMP) begin
       st = dut.s_hit ? dut.s_hit_st : CS_I;
       so = dut.s_q.opcode;
       sb.cov_hit($sformatf("dc snoop: %s on %s", so.name(), st.name()));
-      if (cv_rs != R_IDLE) begin
-        sb.cov_hit($sformatf("dc snoop while the request FSM is in %s", req_state_str()));
-        if (dut.sn_set == dut.q_set) begin
-          if (cv_rt == T_READ && dut.sn_tag == dut.q_tag)
+      for (int k = 0; k < NUM_MSHR; k++) begin
+        rs = rstate_e'(dut.m_q[k].state);
+        rt = txn_e'(dut.m_q[k].txn);
+        a  = addr_t'(dut.m_q[k].addr);
+        if (rs == R_IDLE) continue;
+        sb.cov_hit($sformatf("dc snoop while the request FSM is in %s", req_state_str(rs, rt)));
+        if (dut.sn_set == dut.m_q[k].addr[6 +: $clog2(SETS)]) begin
+          if (rt == T_READ && dut.sn_tag == dut.m_q[k].addr[AW-1:6+$clog2(SETS)])
             sb.cov_hit("dc snoop: on the line of the read in flight");
-          if (cv_rt == T_WB && dut.sn_tag == dut.r_q.vtag)    sb.cov_hit("dc snoop: on the line of the WriteBackFull in flight");
-          if (cv_rt == T_EVICT && dut.sn_tag == dut.r_q.vtag) sb.cov_hit("dc snoop: on the line of the Evict in flight");
+          if (rt == T_WB && dut.sn_tag == dut.m_q[k].vtag)    sb.cov_hit("dc snoop: on the line of the WriteBackFull in flight");
+          if (rt == T_EVICT && dut.sn_tag == dut.m_q[k].vtag) sb.cov_hit("dc snoop: on the line of the Evict in flight");
         end
       end
     end
     if (dut.u_snp_rx.cnt_q >= 2) sb.cov_hit("dc snoop: two or more snoops queued");
 
-    // every core request: op x what the lookup found
-    if (cv_rs == R_LOOKUP && dut.r_q.first) begin
-      if (dut.r_hit) begin
-        st = dut.r_hit_st;
-        sb.cov_hit($sformatf("dc core: %s hit on %s", opn, st.name()));
-      end else if (dut.r_inv) begin
-        sb.cov_hit($sformatf("dc core: %s miss, free way", opn));
-      end else begin
-        st = dut.rd_st[dut.rr_way];
-        sb.cov_hit($sformatf("dc core: miss replaces a %s line", st.name()));
+    // the MSHR holding the RAM port: op x what its lookup found
+    if (dut.own_v) begin
+      int k;
+      k     = int'(dut.own_i);
+      rs    = rstate_e'(dut.m_q[k].state);
+      store = (dut.m_q[k].op == rnf_pkg::MEM_OP_STORE);
+      if (store) opn = "store"; else opn = "load";
+      if (rs == R_LOOKUP && dut.m_q[k].first) begin
+        if (dut.own_lk.hit) begin
+          st = dut.own_lk.hst;
+          sb.cov_hit($sformatf("dc core: %s hit on %s", opn, st.name()));
+        end else if (dut.own_lk.inv) begin
+          sb.cov_hit($sformatf("dc core: %s miss, free way", opn));
+        end else begin
+          st = dut.rd_st[dut.own_rr_way];
+          sb.cov_hit($sformatf("dc core: miss replaces a %s line", st.name()));
+        end
+        cv_upg[k] = dut.own_lk.hit && store && (dut.own_lk.hst == CS_SC || dut.own_lk.hst == CS_SD);
       end
-      cv_upg = dut.r_hit && store && (dut.r_hit_st == CS_SC || dut.r_hit_st == CS_SD);
+      if (rs == R_FILL_SEL) begin
+        sb.cov_hit(dut.own_lk.hit ? "dc fill: line still here, own data kept" : "dc fill: data taken from CompData");
+        if (cv_upg[k]) sb.cov_hit(dut.own_lk.hit ? "dc upgrade: Shared copy kept until CompData" : "dc upgrade: Shared copy lost to a snoop before CompData");
+        cv_upg[k] = 0;
+      end
+      if (rs == R_WB_CMP) begin
+        st = dut.rd_st[dut.m_q[k].way];
+        if (st != CS_I && dut.rd_tag[dut.m_q[k].way] == dut.m_q[k].vtag) sb.cov_hit($sformatf("dc write-back: line sent as %s", st.name()));
+        else                                                             sb.cov_hit("dc write-back: line lost to a snoop");
+      end
     end
 
-    if (cv_rs == R_FILL_SEL) begin
-      sb.cov_hit(dut.r_hit ? "dc fill: line still here, own data kept" : "dc fill: data taken from CompData");
-      if (cv_upg) sb.cov_hit(dut.r_hit ? "dc upgrade: Shared copy kept until CompData" : "dc upgrade: Shared copy lost to a snoop before CompData");
-      cv_upg = 0;
+    // MSHR occupancy
+    nopen = 0; nmiss = 0;
+    for (int k = 0; k < NUM_MSHR; k++) begin
+      rs = rstate_e'(dut.m_q[k].state);
+      if (rs != R_IDLE) nopen++;
+      if (rs inside {R_REQ, R_WAIT, R_RETRY, R_FILL_TAG, R_FILL_SEL, R_FILL, R_WDAT, R_WCOMP}) nmiss++;
+      if (rs == R_DEP) sb.cov_hit("dc mshr: request waited for an older MSHR on its set");
     end
-
-    if (cv_rs == R_WB_CMP) begin
-      st = dut.rd_st[dut.r_q.way];
-      if (st != CS_I && dut.rd_tag[dut.r_q.way] == dut.r_q.vtag) sb.cov_hit($sformatf("dc write-back: line sent as %s", st.name()));
-      else                                                       sb.cov_hit("dc write-back: line lost to a snoop");
-    end
+    if (nopen >= 2)        sb.cov_hit("dc mshr: 2+ MSHRs open");
+    if (nopen == NUM_MSHR) sb.cov_hit("dc mshr: every MSHR open");
+    if (nmiss >= 2)        sb.cov_hit("dc mshr: 2+ CHI transactions in flight");
+    if (nmiss >= 1 && dut.perf_hit) sb.cov_hit("dc mshr: hit under an open miss");
 
     if (core_if.req.valid == Y && core_if.ready == Y && cv_rsp_prev) sb.cov_hit("dc core: request accepted the cycle after a response");
     cv_rsp_prev = (core_if.rsp.valid == Y);
@@ -409,8 +434,11 @@ module Tb_RNF;
         if (dut.u_tag_ram.state_mem[s][w] != CS_I) n++;
     if (n != 0)
       sb.err("DUT_STATE", $sformatf("end of test: dcache still holds %0d valid line(s) after every line got CleanInvalid", n));
-    if (int'(dut.r_q.state) != 0 || int'(dut.s_q.state) != 0)      // 0 = R_IDLE / S_IDLE
-      sb.err("DUT_STATE", $sformatf("end of test: dcache is not idle (request FSM state %0d, snoop FSM state %0d)", dut.r_q.state, dut.s_q.state));
+    for (int k = 0; k < NUM_MSHR; k++)
+      if (int'(dut.m_q[k].state) != 0)                               // 0 = R_IDLE
+        sb.err("DUT_STATE", $sformatf("end of test: dcache MSHR %0d is not idle (state %0d)", k, dut.m_q[k].state));
+    if (int'(dut.s_q.state) != 0)                                    // 0 = S_IDLE
+      sb.err("DUT_STATE", $sformatf("end of test: dcache snoop FSM is not idle (state %0d)", dut.s_q.state));
   endfunction
 
   function automatic void need(string k);
@@ -521,6 +549,11 @@ module Tb_RNF;
       need("core: response overtook an older request to another line");
       need("core: load response overtook an older store");
       need("bb core: two requests to one line open at once");
+      need("dc mshr: 2+ MSHRs open");
+      need("dc mshr: every MSHR open");
+      need("dc mshr: 2+ CHI transactions in flight");
+      need("dc mshr: hit under an open miss");
+      need("dc mshr: request waited for an older MSHR on its set");
     end
   endfunction
 
@@ -551,6 +584,10 @@ module Tb_RNF;
   initial begin
     chi_tb_pkg::chi_scoreboard s;
 
+    if (NUM_TRACKERS < NUM_MSHR)
+      $fatal(1, "Tb_RNF: NUM_TRACKERS (%0d) < NUM_MSHR (%0d): the HN-F must be able to track every request the dcache can have open",
+             NUM_TRACKERS, NUM_MSHR);
+
     log_init(LOG_MODE, VERBOSE);
     s = new(NRNF, 1, 6, 0);
     s.trng = new(SEED ^ 32'h5EED_0001);
@@ -562,8 +599,8 @@ module Tb_RNF;
     sb = s;
     base_knobs();
 
-    $display("=== Tb_RNF: SEED=%0d NUM_TRACKERS=%0d SETS=%0d WAYS=%0d scenarios=%0b(%0d..%0d) rounds=%0d x %0d ops (core x%0d) mid_resets=%0d ===",
-             SEED, NUM_TRACKERS, SETS, WAYS, RUN_SCENARIOS, FIRST_SCENARIO, LAST_SCENARIO, NUM_ROUNDS, OPS_PER_ROUND, CORE_OPS_MULT, MID_RESETS);
+    $display("=== Tb_RNF: SEED=%0d NUM_TRACKERS=%0d NUM_MSHR=%0d SETS=%0d WAYS=%0d scenarios=%0b(%0d..%0d) rounds=%0d x %0d ops (core x%0d) mid_resets=%0d ===",
+             SEED, NUM_TRACKERS, NUM_MSHR, SETS, WAYS, RUN_SCENARIOS, FIRST_SCENARIO, LAST_SCENARIO, NUM_ROUNDS, OPS_PER_ROUND, CORE_OPS_MULT, MID_RESETS);
 
     resetn = 0;
     repeat (10) @(posedge clk);

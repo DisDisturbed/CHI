@@ -47,6 +47,7 @@ Files are stored with LF line endings on both PCs (`.gitattributes`).
 | `make lint` | Show all Verilator `-Wall` warnings without building |
 | `make regress SEEDS='1 2 3'` | Run several seeds without waveforms and print one result line each |
 | `make stress SEEDS='1 2 3'` | `regress` once per configuration in `STRESS_CFGS` (trackers 2/8, resets, long runs, `LOCK_ALL=1`, early Comp off) |
+| `make stress-rnf SEEDS='1 2 3'` | `TB=rnf` `regress` once per configuration in `RNF_STRESS_CFGS`: dcache MSHRs 1/2/4/8 paired with HN-F trackers, RX FIFO depths, cache shapes, resets, long runs |
 | `make clean` | Delete `build/` and `out/` |
 
 | Option | Default | Meaning |
@@ -76,9 +77,19 @@ RN-F/TB/        TB_rnf.sv (Tb_RNF), rnf_core_driver.sv, rnf_chi_checker.sv, rnf_
 behavioural `rnf_model` (RN-F 1) on the HN-F RTL, with the behavioural SN-F. Both RN-Fs
 work on the same lines, so they snoop each other through the HN-F.
 
+The dcache has `NUM_MSHR` MSHRs (default 4): up to that many core requests are open at
+once, misses overlap, hits are answered under open misses, and responses come back out
+of order (by `idx`). Requests to the same set wait for the older ones on that set.
+`Tb_RNF` refuses `NUM_TRACKERS < NUM_MSHR`, and `REQUIRE_CORE_OOO` defaults to
+`NUM_MSHR > 1`: the run must then show several requests open and responses overtaking
+(coverage keys `core: ...`, `bb core: ...`, `dc mshr: ...`). `NUM_MSHR=1` is the old
+one-request-at-a-time dcache.
+
 ```bash
 make run     TB=rnf SEED=3
+make run     TB=rnf SEED=3 G='NUM_MSHR=8 NUM_TRACKERS=8'
 make regress TB=rnf SEEDS='1 2 3 4' G='SETS=4 WAYS=2'
+make stress-rnf SEEDS='1 2 3'
 ```
 
 ### What runs

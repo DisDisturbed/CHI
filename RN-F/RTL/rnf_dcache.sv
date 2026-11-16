@@ -4,10 +4,10 @@
 package rnf_dcache_pkg;
 
   typedef enum logic [4:0] {
-    R_IDLE,
+    R_IDLE,       // MSHR free
     R_LOOKUP,     // tags of the set are valid: hit / miss / victim
     R_LOAD,       // load data is valid
-    R_TAG_RD,     // read the tags again (after a wait the set may have changed)
+    R_TAG_RD,     // read the tags (first lookup, or again after a wait: the set may have changed)
     R_REQ,        // send the request flit
     R_WAIT,       // wait for the first response
     R_RETRY,      // RetryAck seen: wait for the PCrdGrant, then resend
@@ -21,7 +21,8 @@ package rnf_dcache_pkg;
     R_WDAT,       // send write data
     R_WCOMP,      // wait for Comp of a write
     R_ACK,        // send CompAck
-    R_RESP        // answer the core
+    R_RESP,       // answer the core
+    R_DEP         // wait until every older MSHR on the same set has finished
   } rstate_e;
 
   typedef enum logic [2:0] { T_READ, T_EVICT, T_WB, T_NCRD, T_NCWR } txn_e;
@@ -38,14 +39,39 @@ package rnf_dcache_pkg;
 endpackage : rnf_dcache_pkg
 
 // =============================================================================
-// rnf_dcache - CHI RN-F data cache (functional baseline)
+// rnf_dcache - CHI RN-F data cache with NUM_MSHR miss status holding registers
 //
-//  Core side : rnf_core_if, one request at a time.
+//  Core side : rnf_core_if. Up to NUM_MSHR requests open at once, answered by
+//              idx in any order (a hit is answered under an older miss).
 //  CHI side  : REQ / RSP / DAT transmit, SNP / RSP / DAT receive.
 //
 //  Cache     : SETS x WAYS lines of 64 bytes. The tag entry holds the CHI line
 //              state (I / SC / UC / UD / SD). Replacement uses an Invalid way
 //              first, otherwise one round-robin pointer per set.
+//
+//  MSHRs     : every accepted core request gets an MSHR and lives in it until
+//              it is answered: lookup, victim Evict / WriteBackFull, the read,
+//              RetryAck / PCrdGrant, fill, re-lookup, CompAck, response. Each
+//              MSHR runs the same per-request FSM (r-states); they share
+//                * the single tag / data RAM port (with the snoop FSM),
+//                * the REQ, RSP (CompAck) and DAT (write data) TX channels,
+//                * the PCrdGrant counters and the core response.
+//              The TxnID of an MSHR's transaction is {sequence, MSHR index},
+//              so responses on RSP / DAT are routed by TxnID.
+//
+//  Ordering  : a request is accepted while an MSHR is free. If an older MSHR
+//              is open on the same SET, the new one waits in R_DEP until all
+//              of those finish, so per set (and so per line) requests are
+//              handled in order and two MSHRs never race for one set's victim.
+//              Requests to other sets overtake freely (hit under miss, miss
+//              under miss). Non-cacheable requests follow the same rule.
+//
+//  RAM port  : one agent at a time. An agent that read the tags / data keeps
+//              the port while it acts on what it read (r-states LOOKUP,
+//              FILL_SEL, WB_CMP, WB_RD; snoop S_CMP, S_DATA). Otherwise the
+//              snoop FSM goes first, then the MSHRs in rotating order, then a
+//              new request's first tag read (done in its accept cycle when the
+//              port is free, so a hit costs no extra cycle).
 //
 //  Requests  : load miss            ReadShared
 //              store miss / store on a Shared line   ReadUnique
@@ -54,13 +80,10 @@ endpackage : rnf_dcache_pkg
 //              non-cacheable        ReadNoSnp / WriteNoSnpPtl
 //              RetryAck is followed by a resend once the PCrdGrant is there.
 //
-//  Snoops    : served by their own FSM, also while a request of this cache is
-//              outstanding. Both FSMs share the single RAM port: the snoop FSM
-//              has priority, the request FSM only finishes the short read ->
-//              act sequence it is in (r_atomic) and then waits.
-//              Policy: a snoop that allows it leaves a Shared Clean copy and
-//              passes dirty data on (SnpRespData_SC_PD); SnpOnce keeps the
-//              state; SnpUnique / SnpCleanInvalid / SnpMakeInvalid go to I.
+//  Snoops    : served by their own FSM at any time. Policy: a snoop that
+//              allows it leaves a Shared Clean copy and passes dirty data on
+//              (SnpRespData_SC_PD); SnpOnce keeps the state; SnpUnique /
+//              SnpCleanInvalid / SnpMakeInvalid go to I.
 // =============================================================================
 module rnf_dcache
   import chi_pkg::*;
@@ -77,7 +100,8 @@ module rnf_dcache
   parameter int       SETS           = 16,
   parameter int       WAYS           = 4,
   parameter int       RX_FIFO_DEPTH  = 4,
-  parameter int       TX_CREDIT_MAX  = 15
+  parameter int       TX_CREDIT_MAX  = 15,
+  parameter int       NUM_MSHR       = 4
 ) (
   input wire clk,
   input wire resetn,
@@ -99,6 +123,7 @@ module rnf_dcache
   localparam int RSP_W  = $bits(local_rsp_flit_t);
   localparam int DAT_W  = $bits(local_dat_flit_t);
   localparam int SNP_W  = $bits(local_snp_flit_t);
+  localparam int MW     = (NUM_MSHR > 1) ? $clog2(NUM_MSHR) : 1;   // MSHR index bits
 
   initial begin
     if (AddrSize > TSHR_ADDR_WIDTH)
@@ -109,6 +134,8 @@ module rnf_dcache
       $fatal(1, "rnf_dcache: RX_FIFO_DEPTH (%0d) must be 2..15 (one link credit per entry)", RX_FIFO_DEPTH);
     if ((1 << SET_W) != SETS || (1 << WAY_W) != WAYS || SETS < 2 || WAYS < 2)
       $fatal(1, "rnf_dcache: SETS (%0d) and WAYS (%0d) must be powers of two, at least 2", SETS, WAYS);
+    if (NUM_MSHR < 1 || NUM_MSHR > 16)
+      $fatal(1, "rnf_dcache: NUM_MSHR (%0d) must be 1..16", NUM_MSHR);
   end
 
   // ------------------------------------------------------------------ link layer
@@ -156,50 +183,23 @@ module rnf_dcache
   logic [SNP_W-1:0] rxs_bits;
   local_snp_flit_t  rxs;
 
-  rnf_rx_fifo #(.W(RSP_W), 
-                .DEPTH(RX_FIFO_DEPTH))
-    u_rsp_rx (
-    .clk(clk),
-   .resetn(resetn),
-   .flitv_i(rsp_rx.flitv == Y),
-   .flit_i(rsp_rx.flit),
-   .lcrdv_o(rsp_rx.lcrdv),
-   .valid_o(rxr_v),
-   .flit_o(rxr_bits),
-   .pop_i(rxr_pop)
-   );
-  rnf_rx_fifo #(.W(DAT_W),
-                .DEPTH(RX_FIFO_DEPTH))
-    u_dat_rx (
-    .clk(clk),
-    .resetn(resetn),
-    .flitv_i(dat_rx.flitv == Y),
-    .flit_i(dat_rx.flit),
-    .lcrdv_o(dat_rx.lcrdv),
-    .valid_o(rxd_v),
-    .flit_o(rxd_bits),
-    .pop_i(rxd_pop)
-    );
-  rnf_rx_fifo #(.W(SNP_W),
-                .DEPTH(RX_FIFO_DEPTH)) 
-    u_snp_rx (
-    .clk(clk),
-    .resetn(resetn),
-    .flitv_i(snp_rx.flitv == Y),
-    .flit_i(snp_rx.flit),
-    .lcrdv_o(snp_rx.lcrdv),
-    .valid_o(rxs_v),
-    .flit_o(rxs_bits),
-    .pop_i(rxs_pop)
-    );
+  rnf_rx_fifo #(.W(RSP_W), .DEPTH(RX_FIFO_DEPTH)) u_rsp_rx (
+    .clk(clk), .resetn(resetn), .flitv_i(rsp_rx.flitv == Y), .flit_i(rsp_rx.flit),
+    .lcrdv_o(rsp_rx.lcrdv), .valid_o(rxr_v), .flit_o(rxr_bits), .pop_i(rxr_pop));
+  rnf_rx_fifo #(.W(DAT_W), .DEPTH(RX_FIFO_DEPTH)) u_dat_rx (
+    .clk(clk), .resetn(resetn), .flitv_i(dat_rx.flitv == Y), .flit_i(dat_rx.flit),
+    .lcrdv_o(dat_rx.lcrdv), .valid_o(rxd_v), .flit_o(rxd_bits), .pop_i(rxd_pop));
+  rnf_rx_fifo #(.W(SNP_W), .DEPTH(RX_FIFO_DEPTH)) u_snp_rx (
+    .clk(clk), .resetn(resetn), .flitv_i(snp_rx.flitv == Y), .flit_i(snp_rx.flit),
+    .lcrdv_o(snp_rx.lcrdv), .valid_o(rxs_v), .flit_o(rxs_bits), .pop_i(rxs_pop));
 
   assign rxr = local_rsp_flit_t'(rxr_bits);
   assign rxd = local_dat_flit_t'(rxd_bits);
   assign rxs = local_snp_flit_t'(rxs_bits);
 
   // ------------------------------------------------------------------ RAMs
-  // request FSM (r_*) and snoop FSM (s_*) drive the one port; they never do so
-  // in the same cycle (see r_atomic / s_blk)
+  // the MSHRs (r_*) and the snoop FSM (s_*) drive the one port; the port
+  // arbiter below makes sure only one agent uses it in a cycle
   logic                 r_tag_re, r_tag_we, s_tag_re, s_tag_we;
   logic [SET_W-1:0]     r_tag_set, s_tag_set;
   logic [WAY_W-1:0]     r_tag_way, s_tag_way;
@@ -240,7 +240,9 @@ module rnf_dcache
     .clk(clk), .addr_i(ram_addr), .re_i(ram_re), .we_i(ram_we), .be_i(r_dat_be),
     .wdata_i(r_dat_wdata), .rdata_o(ram_rdata));
 
-  // ------------------------------------------------------------------ request FSM state
+  // ------------------------------------------------------------------ MSHR state
+  typedef logic [NUM_MSHR-1:0] mvec_t;
+
   typedef struct packed {
     rstate_e                    state;
     txn_e                       txn;
@@ -251,6 +253,8 @@ module rnf_dcache
     logic [MaxAccessWidth-1:0]  data;
     logic [ReqIdxWidth-1:0]     idx;
     mem_unit_e                  src;
+    logic                       cach;        // cacheable
+    mvec_t                      dep;         // older MSHRs on the same set still open
     logic                       first;       // first lookup of this request (perf counters)
     // line being filled / replaced
     logic [WAY_W-1:0]           way;
@@ -283,12 +287,16 @@ module rnf_dcache
     logic [511:0]               wb_buf;
   } rreg_t;
 
-  rreg_t r_q, r_d;
+  rreg_t m_q [NUM_MSHR];
+  rreg_t m_d [NUM_MSHR];
 
   logic [WAY_W-1:0] rr_q [SETS];             // round-robin victim pointer per set
   logic             rr_inc;
+  logic [SET_W-1:0] rr_set;
   logic [3:0]       pcrd_q [16];             // PCrdGrants not used yet, per PCrdType
   logic             pcrd_inc, pcrd_dec;
+  logic [3:0]       pcrd_dec_type;
+  logic [MW-1:0]    rot_q;                   // rotating MSHR priority (port, TX channels, core response)
 
   // ------------------------------------------------------------------ snoop FSM state
   typedef struct packed {
@@ -305,10 +313,6 @@ module rnf_dcache
   } sreg_t;
 
   sreg_t s_q, s_d;
-
-  wire s_blk    = (s_q.state == S_WANT) || (s_q.state == S_CMP) || (s_q.state == S_DATA);
-  wire r_atomic = (r_q.state == R_LOOKUP) || (r_q.state == R_FILL_SEL) ||
-                  (r_q.state == R_WB_CMP) || (r_q.state == R_WB_RD);
 
   // ------------------------------------------------------------------ helpers
   function automatic logic [15:0] be_of(width_e w, logic [3:0] off);
@@ -359,62 +363,240 @@ module rnf_dcache
     endcase
   endfunction
 
-  wire [SET_W-1:0] q_set  = r_q.addr[6 +: SET_W];
-  wire [TAG_W-1:0] q_tag  = r_q.addr[AddrSize-1 -: TAG_W];
-  wire [1:0]       q_beat = r_q.addr[5:4];
-  wire [3:0]       q_off  = r_q.addr[3:0];
-  wire [15:0]      q_be   = be_of(r_q.width, q_off);
-  wire [127:0]     q_wbeat = 128'(r_q.data) << {q_off, 3'b000};
-  wire             q_store = (r_q.op == MEM_OP_STORE);
+  function automatic logic [SET_W-1:0] set_of(logic [AddrSize-1:0] a);
+    return a[6 +: SET_W];
+  endfunction
 
+  function automatic logic [TAG_W-1:0] tag_of(logic [AddrSize-1:0] a);
+    return a[AddrSize-1 -: TAG_W];
+  endfunction
+
+  // lookup of a tag on the tag RAM output (valid in the cycle after a tag read)
+  typedef struct packed {
+    logic             hit;
+    logic [WAY_W-1:0] hway;
+    cache_state_e     hst;
+    logic             inv;
+    logic [WAY_W-1:0] iway;
+  } lk_t;
+
+  function automatic lk_t lookup(logic [TAG_W-1:0] t);
+    lk_t r;
+    r = '0;
+    r.hst = CS_I;
+    for (int w = WAYS - 1; w >= 0; w--) begin
+      if (rd_st[w] != CS_I && rd_tag[w] == t) begin
+        r.hit = 1'b1; r.hway = WAY_W'(w); r.hst = rd_st[w];
+      end
+      if (rd_st[w] == CS_I) begin
+        r.inv = 1'b1; r.iway = WAY_W'(w);
+      end
+    end
+    return r;
+  endfunction
+
+  // state a filled line gets
+  function automatic cache_state_e fill_state(rreg_t e);
+    cache_state_e s;
+    unique case (e.cresp)
+      RESP_UC:    s = CS_UC;
+      RESP_UD_PD: s = CS_UD;
+      RESP_SD_PD: s = CS_SD;
+      default:    s = CS_SC;
+    endcase
+    // the line stayed here Shared Dirty: its own data is kept and it is still dirty
+    if (e.keep && e.old_st == CS_SD) s = (e.op == MEM_OP_STORE) ? CS_UD : CS_SD;
+    return s;
+  endfunction
+
+  // start a CHI transaction for an MSHR (TxnID = {sequence, MSHR index})
+  function automatic rreg_t start_txn(rreg_t e, txn_e kind, int i);
+    rreg_t n;
+    n             = e;
+    n.state       = R_REQ;
+    n.txn         = kind;
+    if (NUM_MSHR == 1) n.txnid = e.txnid + 12'd1;
+    else               n.txnid = {e.txnid[11:MW] + 1'b1, MW'(i)};
+    n.allow_retry = 1'b1;
+    n.pcrd_type   = '0;
+    n.got_retry   = 1'b0;
+    n.got_comp    = 1'b0;
+    n.got_dbid    = 1'b0;
+    n.werr        = 1'b0;
+    n.cerr        = 1'b0;
+    n.rd_act      = (kind == T_READ) || (kind == T_NCRD);
+    return n;
+  endfunction
+
+  function automatic local_req_flit_t mk_req(rreg_t e);
+    local_req_flit_t f;
+    f            = '0;
+    f.tgtid      = HNID;
+    f.srcid      = NODEID;
+    f.txnid      = e.txnid;
+    f.allowretry = e.allow_retry ? Y : N;
+    f.pcrdttype  = e.pcrd_type;
+    f.size       = WIDTH_64;
+    f.memattr    = MEMATTR_NORMAL_WB;
+    f.addr       = TSHR_ADDR_WIDTH'({tag_of(e.addr), set_of(e.addr), 6'b0});
+    unique case (e.txn)
+      T_READ: begin
+        f.opcode     = (e.op == MEM_OP_STORE) ? REQ_READ_UNIQUE : REQ_READ_SHARED;
+        f.expcompack = 1'b1;
+      end
+      T_EVICT: begin
+        f.opcode = REQ_EVICT;
+        f.addr   = TSHR_ADDR_WIDTH'({e.vtag, set_of(e.addr), 6'b0});
+      end
+      T_WB: begin
+        f.opcode = REQ_WRITE_BACK_FULL;
+        f.addr   = TSHR_ADDR_WIDTH'({e.vtag, set_of(e.addr), 6'b0});
+      end
+      T_NCRD: begin
+        f.opcode  = REQ_READ_NO_SNOOP;
+        f.addr    = TSHR_ADDR_WIDTH'(e.addr);
+        f.size    = e.width;
+        f.memattr = MEMATTR_NORMAL_NC;
+      end
+      default: begin
+        f.opcode  = REQ_WRITE_NO_SNOOP_PTL;
+        f.addr    = TSHR_ADDR_WIDTH'(e.addr);
+        f.size    = e.width;
+        f.memattr = MEMATTR_NORMAL_NC;
+      end
+    endcase
+    return f;
+  endfunction
+
+  function automatic local_dat_flit_t mk_wdat(rreg_t e);
+    local_dat_flit_t f;
+    f         = '0;
+    f.tgtid   = HNID;
+    f.srcid   = NODEID;
+    f.txnid   = e.wdbid;
+    f.dbid    = e.wdbid;
+    f.homenid = HNID;
+    if (e.txn == T_WB) begin
+      f.opcode = DAT_COPY_BACK_WR_DATA;
+      f.resp   = e.wb_resp;
+      f.dataid = e.cnt;
+      f.be     = e.wb_vld ? '1 : '0;
+      f.data   = e.wb_vld ? e.wb_buf[e.cnt*128 +: 128] : '0;
+    end else begin
+      f.opcode = DAT_NON_COPY_BACK_WR_DATA;
+      f.resp   = RESP_I;
+      f.dataid = e.addr[5:4];
+      f.be     = be_of(e.width, e.addr[3:0]);
+      f.data   = 128'(e.data) << {e.addr[3:0], 3'b000};
+    end
+    return f;
+  endfunction
+
+  function automatic local_rsp_flit_t mk_ack(rreg_t e);
+    local_rsp_flit_t f;
+    f        = '0;
+    f.tgtid  = e.chome;
+    f.srcid  = NODEID;
+    f.txnid  = e.cdbid;
+    f.opcode = RSP_COMP_ACK;
+    return f;
+  endfunction
+
+  function automatic logic [MW-1:0] rot_idx(logic [MW-1:0] base, int k);
+    int v;
+    v = (int'(base) + k) % NUM_MSHR;
+    return MW'(v);
+  endfunction
+
+  // ------------------------------------------------------------------ snoop lookup
   wire [SET_W-1:0] sn_set = s_q.addr[6 +: SET_W];
   wire [TAG_W-1:0] sn_tag = s_q.addr[AddrSize-1 -: TAG_W];
 
-  // lookups on the tag RAM output
-  logic             r_hit, r_inv, s_hit;
-  logic [WAY_W-1:0] r_hit_way, r_inv_way, s_hit_way;
-  cache_state_e     r_hit_st, s_hit_st;
-
+  logic             s_hit;
+  logic [WAY_W-1:0] s_hit_way;
+  cache_state_e     s_hit_st;
   always_comb begin
-    r_hit = 1'b0; r_hit_way = '0; r_hit_st = CS_I; r_inv = 1'b0; r_inv_way = '0;
     s_hit = 1'b0; s_hit_way = '0; s_hit_st = CS_I;
-    for (int w = WAYS - 1; w >= 0; w--) begin
-      if (rd_st[w] != CS_I && rd_tag[w] == q_tag) begin
-        r_hit = 1'b1; r_hit_way = WAY_W'(w); r_hit_st = rd_st[w];
-      end
-      if (rd_st[w] == CS_I) begin
-        r_inv = 1'b1; r_inv_way = WAY_W'(w);
-      end
+    for (int w = WAYS - 1; w >= 0; w--)
       if (rd_st[w] != CS_I && rd_tag[w] == sn_tag) begin
         s_hit = 1'b1; s_hit_way = WAY_W'(w); s_hit_st = rd_st[w];
+      end
+  end
+
+  // ------------------------------------------------------------------ RAM port arbiter
+  // CompData at the head of the DAT FIFO, per MSHR
+  mvec_t rxd_mine;
+  always_comb
+    for (int i = 0; i < NUM_MSHR; i++)
+      rxd_mine[i] = rxd_v && m_q[i].rd_act && (rxd.txnid == m_q[i].txnid) && (rxd.opcode == DAT_COMP_DATA);
+
+  function automatic logic is_atomic(rstate_e s);
+    return (s == R_LOOKUP) || (s == R_FILL_SEL) || (s == R_WB_CMP) || (s == R_WB_RD);
+  endfunction
+
+  function automatic logic wants_port(rreg_t e, logic mine);
+    return (e.state == R_TAG_RD) || (e.state == R_FILL_TAG) || (e.state == R_WB_TAG) ||
+           (e.state == R_FILL_DONE) || (e.state == R_FILL && mine && !e.keep);
+  endfunction
+
+  mvec_t e_port;          // MSHR i owns the port this cycle
+  logic  s_grant;         // snoop FSM owns the port this cycle
+  logic  a_grant;         // a new request may do its first tag read in its accept cycle
+  logic  port_lock;
+
+  always_comb begin
+    logic found;
+    logic [MW-1:0] i;
+    e_port    = '0;
+    s_grant   = 1'b0;
+    a_grant   = 1'b0;
+    port_lock = 1'b0;
+    found     = 1'b0;
+    i         = '0;
+    // an agent acting on what it read keeps the port
+    if (s_q.state == S_CMP || s_q.state == S_DATA) begin
+      s_grant   = 1'b1;
+      port_lock = 1'b1;
+    end
+    for (int k = 0; k < NUM_MSHR; k++)
+      if (is_atomic(m_q[k].state)) begin
+        e_port[k] = 1'b1;
+        port_lock = 1'b1;
+      end
+    if (!port_lock) begin
+      if (s_q.state == S_WANT) begin
+        s_grant = 1'b1;
+      end else begin
+        for (int k = 0; k < NUM_MSHR; k++) begin
+          i = rot_idx(rot_q, k);
+          if (!found && wants_port(m_q[i], rxd_mine[i])) begin
+            e_port[i] = 1'b1;
+            found     = 1'b1;
+          end
+        end
+        a_grant = !found;
       end
     end
   end
 
-  wire [WAY_W-1:0] rr_way = rr_q[q_set];
+  // ------------------------------------------------------------------ perf / debug
+  logic perf_hit, perf_miss, perf_evict, perf_snp, perf_snp_hit, perf_snp_data;
+  logic [4:0] perf_wb, perf_retry;           // can happen in several MSHRs in one cycle
 
-  // CompData of the read in flight / anything else on the DAT channel
-  wire rxd_mine = rxd_v && r_q.rd_act && (rxd.txnid == r_q.txnid) && (rxd.opcode == DAT_COMP_DATA);
-
-  // state a filled line gets
-  cache_state_e fill_st;
+  // the MSHR doing a lookup this cycle and what it found (for testbench coverage)
+  logic             own_v;
+  logic [MW-1:0]    own_i;
+  lk_t              own_lk;
+  logic [WAY_W-1:0] own_rr_way;
   always_comb begin
-    unique case (r_q.cresp)
-      RESP_UC:    fill_st = CS_UC;
-      RESP_UD_PD: fill_st = CS_UD;
-      RESP_SD_PD: fill_st = CS_SD;
-      default:    fill_st = CS_SC;
-    endcase
-    // the line stayed here Shared Dirty: its own data is kept and it is still dirty
-    if (r_q.keep && r_q.old_st == CS_SD) fill_st = q_store ? CS_UD : CS_SD;
+    own_v = 1'b0; own_i = '0;
+    for (int k = 0; k < NUM_MSHR; k++)
+      if (e_port[k] && is_atomic(m_q[k].state)) begin own_v = 1'b1; own_i = MW'(k); end
+    own_lk     = lookup(tag_of(m_q[own_i].addr));
+    own_rr_way = rr_q[set_of(m_q[own_i].addr)];
   end
 
-  // ------------------------------------------------------------------ perf counters
-  logic perf_hit, perf_miss, perf_evict, perf_wb, perf_retry, perf_snp, perf_snp_hit, perf_snp_data;
-
-  // ------------------------------------------------------------------ request FSM
-  logic            start_txn;
-  txn_e            start_kind;
+  // ------------------------------------------------------------------ MSHR FSMs
   logic            r_ack_v;                 // CompAck wants the RSP channel
   logic            r_dat_v;                 // write data wants the DAT channel
   local_req_flit_t req_c;
@@ -427,416 +609,464 @@ module rnf_dcache
   logic                       c_ready, c_rsp_v, c_rsp_err;
   logic [MaxAccessWidth-1:0]  c_rsp_data;
   cache_state_e               c_rsp_st;
+  mem_op_e                    c_rsp_op;
+  logic [ReqIdxWidth-1:0]     c_rsp_idx;
+  mem_unit_e                  c_rsp_src;
+
+  mvec_t active, freed;
 
   always_comb begin
-    r_d        = r_q;
-    start_txn  = 1'b0;
-    start_kind = T_READ;
-    rr_inc     = 1'b0;
-    pcrd_inc   = 1'b0;
-    pcrd_dec   = 1'b0;
+    logic             req_taken, dat_taken, ack_taken, rsp_taken, pcrd_taken;
+    logic [MW-1:0]    i;
+    rreg_t            e, n;
+    lk_t              lk;
+    logic [SET_W-1:0] q_set;
+    logic [TAG_W-1:0] q_tag;
+    logic [1:0]       q_beat;
+    logic [3:0]       q_off;
+    logic             q_store;
+    logic [WAY_W-1:0] rrw;
+    logic             free_found;
+    logic [MW-1:0]    free_i;
+    mvec_t            dep_now;
+
+    for (int k = 0; k < NUM_MSHR; k++) m_d[k] = m_q[k];
+    rr_inc        = 1'b0;
+    rr_set        = '0;
+    pcrd_inc      = 1'b0;
+    pcrd_dec      = 1'b0;
+    pcrd_dec_type = '0;
 
     c_ready    = 1'b0;
     c_rsp_v    = 1'b0;
-    c_rsp_data = r_q.rdata;
-    c_rsp_err  = r_q.err;
-    c_rsp_st   = r_q.rst;
+    c_rsp_data = '0;
+    c_rsp_err  = 1'b0;
+    c_rsp_st   = CS_I;
+    c_rsp_op   = MEM_OP_LOAD;
+    c_rsp_idx  = '0;
+    c_rsp_src  = MEM_UNIT_LOAD;
 
-    r_tag_re   = 1'b0;
-    r_tag_we   = 1'b0;
-    r_tag_set  = q_set;
-    r_tag_way  = r_q.way;
-    r_tag_tag  = q_tag;
-    r_tag_st   = CS_I;
-    r_dat_re   = 1'b0;
-    r_dat_we   = 1'b0;
-    r_dat_set  = q_set;
-    r_dat_way  = r_q.way;
-    r_dat_beat = q_beat;
-    r_dat_be   = '1;
+    r_tag_re    = 1'b0;
+    r_tag_we    = 1'b0;
+    r_tag_set   = '0;
+    r_tag_way   = '0;
+    r_tag_tag   = '0;
+    r_tag_st    = CS_I;
+    r_dat_re    = 1'b0;
+    r_dat_we    = 1'b0;
+    r_dat_set   = '0;
+    r_dat_way   = '0;
+    r_dat_beat  = '0;
+    r_dat_be    = '1;
     r_dat_wdata = rxd.data;
 
-    req_v      = 1'b0;
-    r_ack_v    = 1'b0;
-    r_dat_v    = 1'b0;
-    rxd_pop    = rxd_v && !rxd_mine;        // a DAT flit nobody waits for is dropped
+    req_v   = 1'b0;
+    r_ack_v = 1'b0;
+    r_dat_v = 1'b0;
+    req_c   = '0;
+    ack_c   = '0;
+    wdat_c  = '0;
+    rxd_pop = rxd_v && !(|rxd_mine);           // a DAT flit nobody waits for is dropped
 
-    perf_hit = 1'b0; perf_miss = 1'b0; perf_evict = 1'b0; perf_wb = 1'b0; perf_retry = 1'b0;
+    perf_hit = 1'b0; perf_miss = 1'b0; perf_evict = 1'b0; perf_wb = '0; perf_retry = '0;
 
     // ---- responses on the RSP channel are taken as they arrive
     rxr_pop = rxr_v;
-    if (rxr_v) begin
-      if (rxr.opcode == RSP_PCR_GRANT_ACK) begin
-        pcrd_inc = 1'b1;
-      end else if (rxr.txnid == r_q.txnid) begin
+    if (rxr_v && rxr.opcode == RSP_PCR_GRANT_ACK) pcrd_inc = 1'b1;
+
+    req_taken  = 1'b0;
+    dat_taken  = s_dat_v;                       // the snoop FSM goes first on RSP / DAT
+    ack_taken  = s_rsp_v;
+    rsp_taken  = 1'b0;
+    pcrd_taken = 1'b0;
+
+    for (int k = 0; k < NUM_MSHR; k++) begin
+      i       = rot_idx(rot_q, k);
+      e       = m_q[i];
+      n       = m_q[i];
+      q_set   = set_of(e.addr);
+      q_tag   = tag_of(e.addr);
+      q_beat  = e.addr[5:4];
+      q_off   = e.addr[3:0];
+      q_store = (e.op == MEM_OP_STORE);
+      lk      = lookup(q_tag);
+      rrw     = rr_q[q_set];
+
+      if (rxr_v && rxr.opcode != RSP_PCR_GRANT_ACK && e.state != R_IDLE && rxr.txnid == e.txnid) begin
         unique case (rxr.opcode)
           RSP_RETRY_ACK: begin
-            r_d.got_retry = 1'b1;
-            r_d.pcrd_type = rxr.pcrdttype;
+            n.got_retry = 1'b1;
+            n.pcrd_type = rxr.pcrdttype;
           end
           RSP_COMP: begin
-            r_d.got_comp = 1'b1;
-            if (rxr.resperr[1]) r_d.werr = 1'b1;
+            n.got_comp = 1'b1;
+            if (rxr.resperr[1]) n.werr = 1'b1;
           end
           RSP_COMP_DBID_RESP: begin
-            r_d.got_comp = 1'b1;
-            r_d.got_dbid = 1'b1;
-            r_d.wdbid    = rxr.dbid;
-            if (rxr.resperr[1]) r_d.werr = 1'b1;
+            n.got_comp = 1'b1;
+            n.got_dbid = 1'b1;
+            n.wdbid    = rxr.dbid;
+            if (rxr.resperr[1]) n.werr = 1'b1;
           end
           RSP_DBID_RESP: begin
-            r_d.got_dbid = 1'b1;
-            r_d.wdbid    = rxr.dbid;
+            n.got_dbid = 1'b1;
+            n.wdbid    = rxr.dbid;
           end
           default: ;
         endcase
       end
-    end
 
-    // ---- request flit
-    req_c            = '0;
-    req_c.tgtid      = HNID;
-    req_c.srcid      = NODEID;
-    req_c.txnid      = r_q.txnid;
-    req_c.allowretry = r_q.allow_retry ? Y : N;
-    req_c.pcrdttype  = r_q.pcrd_type;
-    req_c.size       = WIDTH_64;
-    req_c.memattr    = MEMATTR_NORMAL_WB;
-    req_c.addr       = TSHR_ADDR_WIDTH'({q_tag, q_set, 6'b0});
-    unique case (r_q.txn)
-      T_READ: begin
-        req_c.opcode     = q_store ? REQ_READ_UNIQUE : REQ_READ_SHARED;
-        req_c.expcompack = 1'b1;
-      end
-      T_EVICT: begin
-        req_c.opcode = REQ_EVICT;
-        req_c.addr   = TSHR_ADDR_WIDTH'({r_q.vtag, q_set, 6'b0});
-      end
-      T_WB: begin
-        req_c.opcode = REQ_WRITE_BACK_FULL;
-        req_c.addr   = TSHR_ADDR_WIDTH'({r_q.vtag, q_set, 6'b0});
-      end
-      T_NCRD: begin
-        req_c.opcode  = REQ_READ_NO_SNOOP;
-        req_c.addr    = TSHR_ADDR_WIDTH'(r_q.addr);
-        req_c.size    = r_q.width;
-        req_c.memattr = MEMATTR_NORMAL_NC;
-      end
-      default: begin
-        req_c.opcode  = REQ_WRITE_NO_SNOOP_PTL;
-        req_c.addr    = TSHR_ADDR_WIDTH'(r_q.addr);
-        req_c.size    = r_q.width;
-        req_c.memattr = MEMATTR_NORMAL_NC;
-      end
-    endcase
+      unique case (e.state)
+        R_IDLE: ;
 
-    // ---- CompAck flit
-    ack_c        = '0;
-    ack_c.tgtid  = r_q.chome;
-    ack_c.srcid  = NODEID;
-    ack_c.txnid  = r_q.cdbid;
-    ack_c.opcode = RSP_COMP_ACK;
-
-    // ---- write data flit
-    wdat_c         = '0;
-    wdat_c.tgtid   = HNID;
-    wdat_c.srcid   = NODEID;
-    wdat_c.txnid   = r_q.wdbid;
-    wdat_c.dbid    = r_q.wdbid;
-    wdat_c.homenid = HNID;
-    if (r_q.txn == T_WB) begin
-      wdat_c.opcode = DAT_COPY_BACK_WR_DATA;
-      wdat_c.resp   = r_q.wb_resp;
-      wdat_c.dataid = r_q.cnt;
-      wdat_c.be     = r_q.wb_vld ? '1 : '0;
-      wdat_c.data   = r_q.wb_vld ? r_q.wb_buf[r_q.cnt*128 +: 128] : '0;
-    end else begin
-      wdat_c.opcode = DAT_NON_COPY_BACK_WR_DATA;
-      wdat_c.resp   = RESP_I;
-      wdat_c.dataid = q_beat;
-      wdat_c.be     = q_be;
-      wdat_c.data   = q_wbeat;
-    end
-
-    unique case (r_q.state)
-      // ------------------------------------------------------------ accept
-      R_IDLE: begin
-        c_ready = !s_blk;
-        if (core.req.valid == Y && c_ready) begin
-          r_d.op       = core.req.op;
-          r_d.addr     = core.req.addr;
-          r_d.width    = core.req.width;
-          r_d.data     = core.req.data;
-          r_d.idx      = core.req.idx;
-          r_d.src      = core.req.src;
-          r_d.first    = 1'b1;
-          r_d.acc_done = 1'b0;
-          r_d.err      = 1'b0;
-          r_d.rdata    = '0;
-          r_d.rst      = CS_I;
-          if (core.req.cacheable == Y) begin
-            r_tag_re  = 1'b1;
-            r_tag_set = core.req.addr[6 +: SET_W];
-            r_d.state = R_LOOKUP;
-          end else begin
-            start_txn  = 1'b1;
-            start_kind = (core.req.op == MEM_OP_STORE) ? T_NCWR : T_NCRD;
+        // ---------------------------------------------------------- ordering
+        R_DEP: begin
+          if (e.dep == '0) begin
+            if (e.cach) n.state = R_TAG_RD;
+            else        n = start_txn(n, q_store ? T_NCWR : T_NCRD, int'(i));
           end
         end
-      end
 
-      // ------------------------------------------------------------ hit / miss
-      R_LOOKUP: begin
-        r_d.first = 1'b0;
-        if (r_hit && (!q_store || r_hit_st == CS_UC || r_hit_st == CS_UD)) begin
-          perf_hit     = r_q.first;
-          r_d.acc_done = 1'b1;
-          r_dat_way    = r_hit_way;
-          if (!q_store) begin
-            r_dat_re  = 1'b1;
-            r_d.rst   = r_hit_st;
-            r_d.state = R_LOAD;
-          end else begin
-            r_dat_we    = 1'b1;
-            r_dat_be    = q_be;
-            r_dat_wdata = q_wbeat;
-            r_d.rst     = CS_UD;
-            if (r_hit_st == CS_UC) begin
-              r_tag_we  = 1'b1;
-              r_tag_way = r_hit_way;
-              r_tag_st  = CS_UD;
-            end
-            r_d.state = r_q.ack_pend ? R_ACK : R_RESP;
-          end
-        end else begin
-          perf_miss = r_q.first;
-          if (r_q.ack_pend) begin
-            r_d.state = R_ACK;                 // the filled line is not usable: ack, then start over
-          end else if (r_hit || r_inv) begin
-            start_txn  = 1'b1;                 // store on a Shared line, or a free way
-            start_kind = T_READ;
-          end else begin
-            r_d.way  = rr_way;                 // replace a valid line first
-            r_d.vtag = rd_tag[rr_way];
-            rr_inc   = 1'b1;
-            start_txn = 1'b1;
-            if (rd_st[rr_way] == CS_SC || rd_st[rr_way] == CS_UC) begin
-              r_tag_we   = 1'b1;               // a clean line is dropped right away
-              r_tag_way  = rr_way;
-              r_tag_tag  = rd_tag[rr_way];
-              r_tag_st   = CS_I;
-              start_kind = T_EVICT;
-              perf_evict = 1'b1;
+        // ---------------------------------------------------------- hit / miss
+        R_LOOKUP: begin
+          n.first = 1'b0;
+          if (lk.hit && (!q_store || lk.hst == CS_UC || lk.hst == CS_UD)) begin
+            perf_hit   = e.first;
+            n.acc_done = 1'b1;
+            r_dat_set  = q_set;
+            r_dat_way  = lk.hway;
+            r_dat_beat = q_beat;
+            if (!q_store) begin
+              r_dat_re = 1'b1;
+              n.rst    = lk.hst;
+              n.state  = R_LOAD;
             end else begin
-              start_kind = T_WB;               // a dirty line stays until its data is sent
+              r_dat_we    = 1'b1;
+              r_dat_be    = be_of(e.width, q_off);
+              r_dat_wdata = 128'(e.data) << {q_off, 3'b000};
+              n.rst       = CS_UD;
+              if (lk.hst == CS_UC) begin
+                r_tag_we  = 1'b1;
+                r_tag_set = q_set;
+                r_tag_way = lk.hway;
+                r_tag_tag = q_tag;
+                r_tag_st  = CS_UD;
+              end
+              n.state = e.ack_pend ? R_ACK : R_RESP;
             end
-          end
-        end
-      end
-
-      R_LOAD: begin
-        r_d.rdata = load_of(ram_rdata, r_q.width, q_off);
-        if (r_q.ack_pend) begin
-          r_d.state = R_ACK;
-        end else begin
-          c_rsp_v    = 1'b1;
-          c_rsp_data = load_of(ram_rdata, r_q.width, q_off);
-          r_d.state  = R_IDLE;
-        end
-      end
-
-      R_TAG_RD: begin
-        if (!s_blk) begin
-          r_tag_re  = 1'b1;
-          r_d.state = R_LOOKUP;
-        end
-      end
-
-      // ------------------------------------------------------------ request / first response
-      R_REQ: begin
-        req_v = 1'b1;
-        if (req_rdy) r_d.state = R_WAIT;
-      end
-
-      R_WAIT: begin
-        if (r_q.got_retry) begin
-          r_d.got_retry = 1'b0;
-          perf_retry    = 1'b1;
-          r_d.state     = R_RETRY;
-        end else begin
-          unique case (r_q.txn)
-            T_READ:  if (rxd_mine) r_d.state = R_FILL_TAG;
-            T_NCRD: begin
-              if (rxd_mine) begin
-                rxd_pop      = 1'b1;
-                r_d.rdata    = load_of(rxd.data, r_q.width, q_off);
-                r_d.err      = rxd.resperr[1];
-                r_d.acc_done = 1'b1;
-                r_d.rd_act   = 1'b0;
-                r_d.state    = R_RESP;
+          end else begin
+            perf_miss = e.first;
+            if (e.ack_pend) begin
+              n.state = R_ACK;                   // the filled line is not usable: ack, then start over
+            end else if (lk.hit || lk.inv) begin
+              n = start_txn(n, T_READ, int'(i)); // store on a Shared line, or a free way
+            end else begin
+              n.way  = rrw;                      // replace a valid line first
+              n.vtag = rd_tag[rrw];
+              rr_inc = 1'b1;
+              rr_set = q_set;
+              if (rd_st[rrw] == CS_SC || rd_st[rrw] == CS_UC) begin
+                r_tag_we   = 1'b1;               // a clean line is dropped right away
+                r_tag_set  = q_set;
+                r_tag_way  = rrw;
+                r_tag_tag  = rd_tag[rrw];
+                r_tag_st   = CS_I;
+                perf_evict = 1'b1;
+                n = start_txn(n, T_EVICT, int'(i));
+              end else begin
+                n = start_txn(n, T_WB, int'(i)); // a dirty line stays until its data is sent
               end
             end
-            T_EVICT: if (r_q.got_comp) r_d.state = R_TAG_RD;
-            T_WB:    if (r_q.got_dbid) r_d.state = R_WB_TAG;
-            default: begin
-              if (r_q.got_dbid) begin
-                r_d.cnt   = '0;
-                r_d.state = R_WDAT;
+          end
+        end
+
+        R_LOAD: begin
+          n.rdata = load_of(ram_rdata, e.width, q_off);
+          if (e.ack_pend) begin
+            n.state = R_ACK;
+          end else if (!rsp_taken) begin
+            rsp_taken  = 1'b1;
+            c_rsp_v    = 1'b1;
+            c_rsp_data = load_of(ram_rdata, e.width, q_off);
+            c_rsp_err  = e.err;
+            c_rsp_st   = e.rst;
+            c_rsp_op   = e.op;
+            c_rsp_idx  = e.idx;
+            c_rsp_src  = e.src;
+            n.state    = R_IDLE;
+          end else begin
+            n.state = R_RESP;                    // another MSHR answers the core this cycle
+          end
+        end
+
+        R_TAG_RD: begin
+          if (e_port[i]) begin
+            r_tag_re  = 1'b1;
+            r_tag_set = q_set;
+            n.state   = R_LOOKUP;
+          end
+        end
+
+        // ---------------------------------------------------------- request / first response
+        R_REQ: begin
+          if (!req_taken) begin
+            req_taken = 1'b1;
+            req_v     = 1'b1;
+            req_c     = mk_req(e);
+            if (req_rdy) n.state = R_WAIT;
+          end
+        end
+
+        R_WAIT: begin
+          if (e.got_retry) begin
+            n.got_retry = 1'b0;
+            perf_retry  = perf_retry + 5'd1;
+            n.state     = R_RETRY;
+          end else begin
+            unique case (e.txn)
+              T_READ:  if (rxd_mine[i]) n.state = R_FILL_TAG;
+              T_NCRD: begin
+                if (rxd_mine[i]) begin
+                  rxd_pop    = 1'b1;
+                  n.rdata    = load_of(rxd.data, e.width, q_off);
+                  n.err      = rxd.resperr[1];
+                  n.acc_done = 1'b1;
+                  n.rd_act   = 1'b0;
+                  n.state    = R_RESP;
+                end
               end
+              T_EVICT: if (e.got_comp) n.state = R_TAG_RD;
+              T_WB:    if (e.got_dbid) n.state = R_WB_TAG;
+              default: begin
+                if (e.got_dbid) begin
+                  n.cnt   = '0;
+                  n.state = R_WDAT;
+                end
+              end
+            endcase
+          end
+        end
+
+        R_RETRY: begin
+          if (!pcrd_taken && pcrd_q[e.pcrd_type] != '0) begin
+            pcrd_taken    = 1'b1;
+            pcrd_dec      = 1'b1;
+            pcrd_dec_type = e.pcrd_type;
+            n.allow_retry = 1'b0;
+            n.state       = R_REQ;
+          end
+        end
+
+        // ---------------------------------------------------------- line fill
+        R_FILL_TAG: begin
+          if (e_port[i]) begin
+            r_tag_re  = 1'b1;
+            r_tag_set = q_set;
+            n.state   = R_FILL_SEL;
+          end
+        end
+
+        R_FILL_SEL: begin
+          n.keep   = lk.hit;
+          n.old_st = lk.hst;
+          n.way    = lk.hit ? lk.hway : (lk.inv ? lk.iway : rrw);
+          n.seen   = '0;
+          n.state  = R_FILL;
+        end
+
+        R_FILL: begin
+          if (rxd_mine[i] && (e.keep || e_port[i])) begin
+            rxd_pop = 1'b1;
+            if (!e.keep) begin
+              r_dat_we    = 1'b1;
+              r_dat_set   = q_set;
+              r_dat_way   = e.way;
+              r_dat_beat  = rxd.dataid;
+              r_dat_be    = '1;
+              r_dat_wdata = rxd.data;
             end
-          endcase
-        end
-      end
-
-      R_RETRY: begin
-        if (pcrd_q[r_q.pcrd_type] != '0) begin
-          pcrd_dec        = 1'b1;
-          r_d.allow_retry = 1'b0;
-          r_d.state       = R_REQ;
-        end
-      end
-
-      // ------------------------------------------------------------ line fill
-      R_FILL_TAG: begin
-        if (!s_blk) begin
-          r_tag_re  = 1'b1;
-          r_d.state = R_FILL_SEL;
-        end
-      end
-
-      R_FILL_SEL: begin
-        r_d.keep   = r_hit;
-        r_d.old_st = r_hit_st;
-        r_d.way    = r_hit ? r_hit_way : (r_inv ? r_inv_way : rr_way);
-        r_d.seen   = '0;
-        r_d.state  = R_FILL;
-      end
-
-      R_FILL: begin
-        if (rxd_mine && (r_q.keep || !s_blk)) begin
-          rxd_pop = 1'b1;
-          if (!r_q.keep) begin
-            r_dat_we    = 1'b1;
-            r_dat_beat  = rxd.dataid;
-            r_dat_wdata = rxd.data;
-          end
-          if (r_q.seen == '0) begin
-            r_d.cresp = rxd.resp;
-            r_d.cdbid = rxd.dbid;
-            r_d.chome = rxd.homenid;
-          end
-          if (rxd.resperr[1]) r_d.cerr = 1'b1;
-          r_d.seen = r_q.seen | (4'b0001 << rxd.dataid);
-          if (r_d.seen == 4'hF) begin
-            r_d.rd_act = 1'b0;
-            r_d.state  = R_FILL_DONE;
+            if (e.seen == '0) begin
+              n.cresp = rxd.resp;
+              n.cdbid = rxd.dbid;
+              n.chome = rxd.homenid;
+            end
+            if (rxd.resperr[1]) n.cerr = 1'b1;
+            n.seen = e.seen | (4'b0001 << rxd.dataid);
+            if (n.seen == 4'hF) begin
+              n.rd_act = 1'b0;
+              n.state  = R_FILL_DONE;
+            end
           end
         end
-      end
 
-      R_FILL_DONE: begin
-        if (!s_blk) begin
-          r_d.ack_pend = 1'b1;
-          if (r_q.cerr) begin                  // a line that came with an error is not kept
-            r_d.err      = 1'b1;
-            r_d.acc_done = 1'b1;
-            r_d.state    = R_ACK;
+        R_FILL_DONE: begin
+          if (e_port[i]) begin
+            n.ack_pend = 1'b1;
+            if (e.cerr) begin                    // a line that came with an error is not kept
+              n.err      = 1'b1;
+              n.acc_done = 1'b1;
+              n.state    = R_ACK;
+            end else begin
+              r_tag_we  = 1'b1;
+              r_tag_set = q_set;
+              r_tag_way = e.way;
+              r_tag_tag = q_tag;
+              r_tag_st  = fill_state(e);
+              n.state   = R_TAG_RD;              // do the core access before the CompAck
+            end
+          end
+        end
+
+        // ---------------------------------------------------------- write-back
+        R_WB_TAG: begin
+          if (e_port[i]) begin
+            r_tag_re  = 1'b1;
+            r_tag_set = q_set;
+            n.state   = R_WB_CMP;
+          end
+        end
+
+        R_WB_CMP: begin
+          n.cnt = '0;
+          if (rd_st[e.way] != CS_I && rd_tag[e.way] == e.vtag) begin
+            n.wb_resp  = st2resp(rd_st[e.way]);
+            n.wb_vld   = 1'b1;
+            r_tag_we   = 1'b1;
+            r_tag_set  = q_set;
+            r_tag_way  = e.way;
+            r_tag_tag  = e.vtag;
+            r_tag_st   = CS_I;
+            r_dat_re   = 1'b1;
+            r_dat_set  = q_set;
+            r_dat_way  = e.way;
+            r_dat_beat = 2'd0;
+            n.state    = R_WB_RD;
+          end else begin                         // a snoop took the line: nothing left to write
+            n.wb_resp = RESP_I;
+            n.wb_vld  = 1'b0;
+            n.state   = R_WDAT;
+          end
+        end
+
+        R_WB_RD: begin
+          n.wb_buf[e.cnt*128 +: 128] = ram_rdata;
+          if (e.cnt != 2'd3) begin
+            r_dat_re   = 1'b1;
+            r_dat_set  = q_set;
+            r_dat_way  = e.way;
+            r_dat_beat = e.cnt + 2'd1;
+            n.cnt      = e.cnt + 2'd1;
           end else begin
-            r_tag_we  = 1'b1;
-            r_tag_st  = fill_st;
-            r_d.state = R_TAG_RD;              // do the core access before the CompAck
+            n.cnt   = '0;
+            n.state = R_WDAT;
           end
         end
-      end
 
-      // ------------------------------------------------------------ write-back
-      R_WB_TAG: begin
-        if (!s_blk) begin
-          r_tag_re  = 1'b1;
-          r_d.state = R_WB_CMP;
-        end
-      end
-
-      R_WB_CMP: begin
-        r_d.cnt = '0;
-        if (rd_st[r_q.way] != CS_I && rd_tag[r_q.way] == r_q.vtag) begin
-          r_d.wb_resp = st2resp(rd_st[r_q.way]);
-          r_d.wb_vld  = 1'b1;
-          r_tag_we    = 1'b1;
-          r_tag_tag   = r_q.vtag;
-          r_tag_st    = CS_I;
-          r_dat_re    = 1'b1;
-          r_dat_beat  = 2'd0;
-          r_d.state   = R_WB_RD;
-        end else begin                         // a snoop took the line: nothing left to write
-          r_d.wb_resp = RESP_I;
-          r_d.wb_vld  = 1'b0;
-          r_d.state   = R_WDAT;
-        end
-      end
-
-      R_WB_RD: begin
-        r_d.wb_buf[r_q.cnt*128 +: 128] = ram_rdata;
-        if (r_q.cnt != 2'd3) begin
-          r_dat_re   = 1'b1;
-          r_dat_beat = r_q.cnt + 2'd1;
-          r_d.cnt    = r_q.cnt + 2'd1;
-        end else begin
-          r_d.cnt   = '0;
-          r_d.state = R_WDAT;
-        end
-      end
-
-      R_WDAT: begin
-        r_dat_v = 1'b1;
-        if (dat_rdy && !s_dat_v) begin
-          if (r_q.txn != T_WB || r_q.cnt == 2'd3) r_d.state = R_WCOMP;
-          else                                    r_d.cnt   = r_q.cnt + 2'd1;
-        end
-      end
-
-      R_WCOMP: begin
-        if (r_q.got_comp) begin
-          if (r_q.txn == T_WB) begin
-            perf_wb   = 1'b1;
-            r_d.state = R_TAG_RD;
-          end else begin
-            r_d.acc_done = 1'b1;
-            r_d.err      = r_q.werr;
-            r_d.state    = R_RESP;
+        R_WDAT: begin
+          if (!dat_taken) begin
+            dat_taken = 1'b1;
+            r_dat_v   = 1'b1;
+            wdat_c    = mk_wdat(e);
+            if (dat_rdy) begin
+              if (e.txn != T_WB || e.cnt == 2'd3) n.state = R_WCOMP;
+              else                                n.cnt   = e.cnt + 2'd1;
+            end
           end
         end
-      end
 
-      // ------------------------------------------------------------ finish
-      R_ACK: begin
-        r_ack_v = 1'b1;
-        if (rsp_rdy && !s_rsp_v) begin
-          r_d.ack_pend = 1'b0;
-          r_d.state    = r_q.acc_done ? R_RESP : R_TAG_RD;
+        R_WCOMP: begin
+          if (e.got_comp) begin
+            if (e.txn == T_WB) begin
+              perf_wb = perf_wb + 5'd1;
+              n.state = R_TAG_RD;
+            end else begin
+              n.acc_done = 1'b1;
+              n.err      = e.werr;
+              n.state    = R_RESP;
+            end
+          end
         end
+
+        // ---------------------------------------------------------- finish
+        R_ACK: begin
+          if (!ack_taken) begin
+            ack_taken = 1'b1;
+            r_ack_v   = 1'b1;
+            ack_c     = mk_ack(e);
+            if (rsp_rdy) begin
+              n.ack_pend = 1'b0;
+              n.state    = e.acc_done ? R_RESP : R_TAG_RD;
+            end
+          end
+        end
+
+        R_RESP: begin
+          if (!rsp_taken) begin
+            rsp_taken  = 1'b1;
+            c_rsp_v    = 1'b1;
+            c_rsp_data = e.rdata;
+            c_rsp_err  = e.err;
+            c_rsp_st   = e.rst;
+            c_rsp_op   = e.op;
+            c_rsp_idx  = e.idx;
+            c_rsp_src  = e.src;
+            n.state    = R_IDLE;
+          end
+        end
+
+        default: n.state = R_IDLE;
+      endcase
+
+      m_d[i] = n;
+    end
+
+    // ---- MSHRs that finished this cycle release the requests waiting on them
+    for (int k = 0; k < NUM_MSHR; k++) begin
+      active[k] = (m_q[k].state != R_IDLE);
+      freed[k]  = active[k] && (m_d[k].state == R_IDLE);
+    end
+    for (int k = 0; k < NUM_MSHR; k++) m_d[k].dep = m_d[k].dep & ~freed;
+
+    // ---- accept a new core request into a free MSHR
+    free_found = 1'b0;
+    free_i     = '0;
+    for (int k = NUM_MSHR - 1; k >= 0; k--)
+      if (!active[k]) begin free_found = 1'b1; free_i = MW'(k); end
+    c_ready = free_found;
+
+    dep_now = '0; 
+    for (int k = 0; k < NUM_MSHR; k++)
+      dep_now[k] = active[k] && (set_of(m_q[k].addr) == set_of(core.req.addr));
+
+    if (core.req.valid == Y && c_ready) begin
+      n          = m_q[free_i];
+      n.op       = core.req.op;
+      n.addr     = core.req.addr;
+      n.width    = core.req.width;
+      n.data     = core.req.data;
+      n.idx      = core.req.idx;
+      n.src      = core.req.src;
+      n.cach     = (core.req.cacheable == Y);
+      n.dep      = dep_now & ~freed;
+      n.first    = 1'b1;
+      n.acc_done = 1'b0;
+      n.err      = 1'b0;
+      n.rdata    = '0;
+      n.rst      = CS_I;
+      n.ack_pend = 1'b0;
+      n.rd_act   = 1'b0;
+      if (dep_now != '0) begin //((dep_no & ~freed) != '0); might save a 1 cycle bubble
+        n.state = R_DEP;
+      end else if (!n.cach) begin
+        n = start_txn(n, (core.req.op == MEM_OP_STORE) ? T_NCWR : T_NCRD, int'(free_i));
+      end else if (a_grant) begin
+        r_tag_re  = 1'b1;                        // first tag read in the accept cycle
+        r_tag_set = set_of(core.req.addr);
+        n.state   = R_LOOKUP;
+      end else begin
+        n.state = R_TAG_RD;
       end
-
-      R_RESP: begin
-        c_rsp_v   = 1'b1;
-        r_d.state = R_IDLE;
-      end
-
-      default: r_d.state = R_IDLE;
-    endcase
-
-    if (start_txn) begin
-      r_d.state       = R_REQ;
-      r_d.txn         = start_kind;
-      r_d.txnid       = r_q.txnid + 12'd1;
-      r_d.allow_retry = 1'b1;
-      r_d.pcrd_type   = '0;
-      r_d.got_retry   = 1'b0;
-      r_d.got_comp    = 1'b0;
-      r_d.got_dbid    = 1'b0;
-      r_d.werr        = 1'b0;
-      r_d.cerr        = 1'b0;
-      r_d.rd_act      = (start_kind == T_READ) || (start_kind == T_NCRD);
+      m_d[free_i] = n;
     end
   end
 
@@ -891,7 +1121,7 @@ module rnf_dcache
       end
 
       S_WANT: begin
-        if (!r_atomic) begin
+        if (s_grant) begin
           s_tag_re  = 1'b1;
           s_d.state = S_CMP;
         end
@@ -994,10 +1224,10 @@ module rnf_dcache
     core.ready         = c_ready ? Y : N;
     core.rsp           = '0;
     core.rsp.valid     = c_rsp_v ? Y : N;
-    core.rsp.op        = r_q.op;
+    core.rsp.op        = c_rsp_op;
     core.rsp.data      = c_rsp_data;
-    core.rsp.idx       = r_q.idx;
-    core.rsp.src       = r_q.src;
+    core.rsp.idx       = c_rsp_idx;
+    core.rsp.src       = c_rsp_src;
     core.rsp.err       = c_rsp_err ? Y : N;
     core.rsp.chr_state = c_rsp_st;
   end
@@ -1008,12 +1238,15 @@ module rnf_dcache
 
   always_ff @(posedge clk or negedge resetn) begin
     if (!resetn) begin
-      r_q       <= '0;
-      r_q.state <= R_IDLE;
-      r_q.old_st <= CS_I;
-      r_q.rst   <= CS_I;
+      for (int k = 0; k < NUM_MSHR; k++) begin
+        m_q[k]        <= '0;
+        m_q[k].state  <= R_IDLE;
+        m_q[k].old_st <= CS_I;
+        m_q[k].rst    <= CS_I;
+      end
       s_q       <= '0;
       s_q.state <= S_IDLE;
+      rot_q     <= '0;
       for (int s = 0; s < SETS; s++) rr_q[s] <= '0;
       for (int k = 0; k < 16; k++)   pcrd_q[k] <= '0;
       perf_hits_r       <= '0;
@@ -1025,27 +1258,40 @@ module rnf_dcache
       perf_snoop_hits_r <= '0;
       perf_snoop_data_r <= '0;
     end else begin
-      r_q <= r_d;
-      s_q <= s_d;
-      if (rr_inc) rr_q[q_set] <= rr_q[q_set] + 1'b1;
+      for (int k = 0; k < NUM_MSHR; k++) m_q[k] <= m_d[k];
+      s_q   <= s_d;
+      rot_q <= rot_idx(rot_q, 1);
+      if (rr_inc) rr_q[rr_set] <= rr_q[rr_set] + 1'b1;
 
-      if (pcrd_inc && pcrd_dec && rxr.pcrdttype == r_q.pcrd_type) begin
+      if (pcrd_inc && pcrd_dec && rxr.pcrdttype == pcrd_dec_type) begin
         // granted and used in the same cycle
       end else begin
         if (pcrd_inc && pcrd_q[rxr.pcrdttype] != '1) pcrd_q[rxr.pcrdttype] <= pcrd_q[rxr.pcrdttype] + 1'b1;
-        if (pcrd_dec)                                pcrd_q[r_q.pcrd_type] <= pcrd_q[r_q.pcrd_type] - 1'b1;
+        if (pcrd_dec)                                pcrd_q[pcrd_dec_type] <= pcrd_q[pcrd_dec_type] - 1'b1;
       end
 
       if (perf_hit)      perf_hits_r       <= perf_hits_r + 1;
       if (perf_miss)     perf_misses_r     <= perf_misses_r + 1;
       if (perf_evict)    perf_evictions_r  <= perf_evictions_r + 1;
-      if (perf_wb)       perf_writebacks_r <= perf_writebacks_r + 1;
-      if (perf_retry)    perf_retries_r    <= perf_retries_r + 1;
+      perf_writebacks_r <= perf_writebacks_r + 32'(perf_wb);
+      perf_retries_r    <= perf_retries_r + 32'(perf_retry);
       if (perf_snp)      perf_snoops_r     <= perf_snoops_r + 1;
       if (perf_snp_hit)  perf_snoop_hits_r <= perf_snoop_hits_r + 1;
       if (perf_snp_data) perf_snoop_data_r <= perf_snoop_data_r + 1;
     end
   end
+
+  // ------------------------------------------------------------------ checks (simulation only)
+  // synthesis translate_off
+  always @(posedge clk) begin
+    if (resetn) begin
+      if ($countones(e_port) > 1)
+        $error("rnf_dcache: %0d MSHRs own the RAM port in one cycle (%b)", $countones(e_port), e_port);
+      if (s_grant && e_port != '0)
+        $error("rnf_dcache: snoop FSM and MSHR(s) %b own the RAM port in one cycle", e_port);
+    end
+  end
+  // synthesis translate_on
 
 endmodule
 `default_nettype wire

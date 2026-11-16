@@ -98,7 +98,7 @@ VFLAGS := --binary --timing -sv --top-module $(TOP) \
 # because Surfer stops noticing changes if the file is replaced by a rename.
 PLUS := $(if $(filter 1,$(WAVES)),+wave=$(FST).tmp,+no_wave)
 
-.PHONY: help build run wave sim lint regress stress clean doctor sync pull
+.PHONY: help build run wave sim lint regress stress stress-rnf clean doctor sync pull
 .DEFAULT_GOAL := help
 
 help:
@@ -112,6 +112,7 @@ help:
 	@echo "make lint    all Verilator warnings, no build"
 	@echo "make regress TB=random SEEDS='1 2 3' (no waveforms, prints a summary)"
 	@echo "make stress  SEEDS='1 2 3' (regress over every configuration in STRESS_CFGS)"
+	@echo "make stress-rnf SEEDS='1 2 3' (TB=rnf regress over RNF_STRESS_CFGS: MSHRs x trackers, ...)"
 	@echo "make clean   delete build/ and out/"
 
 $(BIN): $(SRCS)
@@ -161,6 +162,20 @@ stress:
 	@for g in $(STRESS_CFGS); do \
 	  echo "== G='$$g'"; \
 	  $(MAKE) --no-print-directory regress TB=random SEEDS='$(SEEDS)' G="$$g"; \
+	done
+
+# RN-F dcache (TB=rnf). The MSHR count is swept together with the HN-F
+# trackers: Tb_RNF requires NUM_TRACKERS >= NUM_MSHR (default 4 / 4).
+# NUM_MSHR=1 is the old one-request-at-a-time dcache (REQUIRE_CORE_OOO off).
+RNF_STRESS_CFGS ?= "" "NUM_MSHR=1" "NUM_MSHR=2 NUM_TRACKERS=2" "NUM_MSHR=2 NUM_TRACKERS=8" \
+                   "NUM_MSHR=8 NUM_TRACKERS=8" "NUM_MSHR=4 NUM_TRACKERS=8" \
+                   "RX_FIFO_DEPTH=2" "RX_FIFO_DEPTH=15" "SETS=4 WAYS=2" "SETS=64 WAYS=8" \
+                   "MID_RESETS=6" "NUM_ROUNDS=30 OPS_PER_ROUND=100"
+
+stress-rnf:
+	@for g in $(RNF_STRESS_CFGS); do \
+	  echo "== G='$$g'"; \
+	  $(MAKE) --no-print-directory regress TB=rnf SEEDS='$(SEEDS)' G="$$g"; \
 	done
 
 clean:
