@@ -958,7 +958,8 @@ module rnf_core_driver #(
           a  = sh ? sb.pool[rng.range(0, sb.pool.size() - 1)] : priv[rng.range(0, priv.size() - 1)];
           st = (it / 2) % 3;
           prep_line(a, st, ep);
-          if (sh && st == 0 && rng.chance(60)) begin        // the other RN-F owns the line dirty
+          // the other RN-F owns the line dirty: always in rounds 1/13/25, by chance in 7/19/31
+          if (sh && st == 0 && ((it % 12) == 1 || rng.chance(50))) begin
             sb.rop_push(rng.chance(50) ? OP_ST : OP_WUF, a, 1, 0); rop_wait(ep);
             sb.cov_hit("merge: sub-word stores onto a line the other RN-F holds dirty");
           end
