@@ -13,8 +13,14 @@
 //     dcache's are mirrored from its tag writes), memory image at the end
 //   * rnf_core_driver: byte-exact copy of the lines only the dcache touches
 //   * rnf_chi_checker: protocol checker on the dcache's CHI ports
-//   * coverage of what the dcache went through (cov_dcache); with the full
+//   * coverage of what the dcache went through (cov_dcache, white-box) and of
+//     the core side and the bus (driver / checker, black-box); with the full
 //     scenario range every cell in check_coverage() must have been reached
+//
+//  The core driver is a pipelined out-of-order core (up to CORE_MAX_OUT
+//  requests in flight, responses by idx in any order, held back only by byte
+//  hazards). REQUIRE_CORE_OOO=1 also requires the dcache to have accepted
+//  several requests at once and answered them out of order.
 //
 //  Sequence:
 //   1. directed scenarios rnf_tb_pkg::RS_* (the core driver runs them and
@@ -54,8 +60,10 @@ module Tb_RNF;
   parameter int SETS                   = 16;
   parameter int WAYS                   = 4;
   parameter int RX_FIFO_DEPTH          = 4;
+  parameter int CORE_MAX_OUT           = 16;       // requests the core keeps in flight at most (<= 2**IW)
+  parameter bit REQUIRE_CORE_OOO       = 0;        // also require the dcache to have taken several requests at once and answered out of order
   parameter int CMD_TIMEOUT_CYCLES     = 400000;
-  parameter int OVERALL_TIMEOUT_CYCLES = 8000000;
+  parameter int OVERALL_TIMEOUT_CYCLES = 16000000;
 
   localparam int       NRNF  = 2;
   localparam node_id_e HN_ID = 7'h40;
@@ -119,7 +127,7 @@ module Tb_RNF;
 
   rnf_core_driver #(
     .NAME("RNF0"), .IDX(0), .SEED(SEED * 7 + 1), .AddrSize(AW), .MaxAccessWidth(DW), .ReqIdxWidth(IW),
-    .OPS_MULT(CORE_OPS_MULT), .NC_PCT(NC_PCT), .PRIV_PCT(PRIV_PCT)
+    .OPS_MULT(CORE_OPS_MULT), .NC_PCT(NC_PCT), .PRIV_PCT(PRIV_PCT), .MAX_OUT(CORE_MAX_OUT)
   ) drv (
     .clk(clk), .resetn(resetn), .core(core_if)
   );
@@ -159,6 +167,7 @@ module Tb_RNF;
     sb.partial_states = 1;
     sb.err_line.delete();
     sb.default_weights();
+    drv.reset_knobs();
   endfunction
 
   // knobs for the directed scenarios
@@ -167,6 +176,11 @@ module Tb_RNF;
     case (id)
       RS_SNOOP_IN_WAIT: begin sb.snf_slow_pct = 40; sb.snf_lat_max = 12; end   // the dcache waits long for its own requests
       RS_WB_SNOOP_RACE, RS_EVICT_SNOOP_RACE, RS_UPGRADE_RACE: sb.snf_lat_max = 8;
+      RS_OOO_BURST: begin sb.snf_slow_pct = 60; sb.snf_lat_max = 16; end       // misses and non-cacheable accesses take long
+      RS_B2B_SET_CONFLICT, RS_B2B_SAME_LINE: begin sb.snf_lat_max = 10; sb.dat_shuffle = 1; end
+      RS_SUBWORD_MERGE: begin sb.dat_interleave = 1; sb.snp_lat_max = 10; end
+      RS_NC_SUBWORD: sb.snf_lat_max = 10;
+      RS_NC_ERR: sb.err_line[line_of(sb.nc_pool[sb.nc_pool.size() - 1])] = 1;  // the SN-F answers this line with an error
       default: ;
     endcase
   endfunction
@@ -196,12 +210,35 @@ module Tb_RNF;
     if (r.chance(40)) sb.snf_early_comp_pct = r.range(5, 60);
     if (r.chance(50)) sb.snf_pcrd_early_pct = r.range(10, 70);
     if (r.chance(40)) sb.snp_opt_data_pct   = r.range(10, 60);
+    // the behavioural RN-F's own request mix (legal CHI it may send next to the dcache)
+    if (r.chance(30)) sb.txid_mode     = int'(r.range(1, 3));
+    if (r.chance(30)) sb.zero_be_pct   = r.range(5, 30);
+    sb.nc_multi = r.chance(40);
+    if (r.chance(40)) sb.unaligned_pct = r.range(10, 60);
+    sb.partial_states = r.chance(80);
+    // the core: in-flight window, op mix, widths, gaps
+    case (r.range(0, 9))
+      0:       drv.k_out_lim = 1;                               // blocking core
+      1, 2:    drv.k_out_lim = r.range(2, 4);
+      default: drv.k_out_lim = r.range(4, CORE_MAX_OUT);
+    endcase
+    drv.k_store_pct = r.range(20, 80);
+    drv.k_nc_pct    = r.chance(20) ? 0 : r.range(5, 30);
+    drv.k_priv_pct  = r.range(10, 50);
+    drv.k_gap_max   = r.range(0, 10);
+    drv.k_b2b_pct   = r.range(30, 100);
+    foreach (drv.k_w_wt[i]) drv.k_w_wt[i] = r.range(0, 10);
+    if (r.chance(25)) drv.k_w_wt[0] = 40;                       // mostly single bytes
+    if (r.chance(15)) drv.k_w_wt[$size(drv.k_w_wt) - 1] = 40;  // mostly full dwords
   endfunction
 
   function automatic string knob_str();
-    return $sformatf("cr_cap=%0d cr_pct=%0d snp_lat=%0d bubble=%0d max_out=%0d ack_lat=%0d intlv=%0b shuffle=%0b snf_lat=%0d snf_slow=%0d hot=%0d/%0d%% retry=%0d%%",
+    return $sformatf("cr_cap=%0d cr_pct=%0d snp_lat=%0d bubble=%0d max_out=%0d ack_lat=%0d intlv=%0b shuffle=%0b snf_lat=%0d snf_slow=%0d hot=%0d/%0d%% retry=%0d%% txid=%0d zbe=%0d ncm=%0b unal=%0d ptl=%0b | core: out=%0d st=%0d%% nc=%0d%% priv=%0d%% gap=%0d b2b=%0d%% w=%0d/%0d/%0d/%0d",
                      sb.rx_cr_cap, sb.rx_cr_pct, sb.snp_lat_max, sb.bubble_pct, sb.max_out, sb.ack_lat_max, sb.dat_interleave,
-                     sb.dat_shuffle, sb.snf_lat_max, sb.snf_slow_pct, sb.hot_n, sb.hot_pct, sb.snf_retry_pct);
+                     sb.dat_shuffle, sb.snf_lat_max, sb.snf_slow_pct, sb.hot_n, sb.hot_pct, sb.snf_retry_pct,
+                     sb.txid_mode, sb.zero_be_pct, sb.nc_multi, sb.unaligned_pct, sb.partial_states,
+                     drv.k_out_lim, drv.k_store_pct, drv.k_nc_pct, drv.k_priv_pct, drv.k_gap_max, drv.k_b2b_pct,
+                     drv.k_w_wt[0], drv.k_w_wt[1], drv.k_w_wt[2], drv.k_w_wt[3]);
   endfunction
 
   // ---------------------------------------------------------------- reset / commands
@@ -429,12 +466,73 @@ module Tb_RNF;
     need("dc snoop: on the line of the WriteBackFull in flight");
     need("chk: snoop answered while a request is outstanding");
     need("chk: snoop answered for the line of the outstanding request");
+    check_core_coverage();
   endfunction
+
+  // black-box coverage of the core side (driver and checker, pins only)
+  function automatic void check_core_coverage();
+    string lg;
+    string st_names [3] = '{"not held", "Shared Clean", "Unique"};
+    // every width, cacheable and not, load and store
+    foreach (st_names[i]) begin
+      need($sformatf("bb core: load on a line %s",  st_names[i]));
+      need($sformatf("bb core: store on a line %s", st_names[i]));
+      need($sformatf("bb core: sub-word store (<8B) on a line %s", st_names[i]));
+    end
+    for (int b = 1; b <= DW / 8; b *= 2)
+      foreach (sn_kind[i]) need($sformatf("core: %s %0dB %s", sn_kind[i], b, sn_op[i]));
+    lg = drv.lane_gaps();
+    if (lg != "") sb.err("COVERAGE", {"never reached: cacheable access lanes -", lg});
+    // hit / miss / victims, seen on the bus
+    need("bb core: load completed without a line read (hit)");
+    need("bb core: store completed without a line read (hit)");
+    need("bb core: load completed after a line read (miss)");
+    need("bb core: store completed after a line read (miss)");
+    need("bb core: miss open while a victim was written back (WriteBackFull)");
+    need("bb core: miss open while a victim was evicted (Evict)");
+    need("bb core: load whose line was snooped while it was open");
+    need("bb core: store whose line was snooped while it was open");
+    // the core: pipelining and hazards (what the driver did)
+    need("drv: request presented with 1 other request(s) in flight");
+    need("drv: load held back by a store to its bytes (RAW)");
+    need("drv: store held back by a load of its bytes (WAR)");
+    need("drv: store held back by a store to its bytes (WAW)");
+    need("drv: sub-word stores to one line issued while another is in flight");
+    need("drv: request waited 8+ cycles for ready");
+    need("core: request accepted the cycle after a response");
+    need("core: rsp.err on nc load");
+    // sub-word merging, checked byte-exact
+    need("merge: load returned the bytes of 2+ sub-word stores (exact)");
+    need("merge: load returned the bytes of sub-word stores that were in flight together (exact)");
+    need("merge: load returned stored bytes next to bytes never stored (exact)");
+    need("merge: sub-word stores onto a line that starts not held");
+    need("merge: sub-word stores onto a line that starts Shared");
+    need("merge: sub-word stores onto a line that starts Unique Dirty");
+    need("merge: sub-word stores onto a line the other RN-F holds dirty");
+    // what the dcache did with the requests in flight: only when asked for
+    if (REQUIRE_CORE_OOO) begin
+      need("drv: request presented with 2-3 other request(s) in flight");
+      need("drv: request presented with 4+ other request(s) in flight");
+      need("core: request accepted with 1 other request(s) outstanding");
+      need("core: request accepted with 2-3 other request(s) outstanding");
+      need("core: requests accepted in back-to-back cycles");
+      need("core: two stores to one line outstanding at the dcache");
+      need("core: response overtook an older request");
+      need("core: response overtook an older request to another line");
+      need("core: load response overtook an older store");
+      need("bb core: two requests to one line open at once");
+    end
+  endfunction
+
+  string sn_kind [4] = '{"cached", "cached", "nc", "nc"};
+  string sn_op   [4] = '{"load", "store", "load", "store"};
 
   function automatic void report_dcache();
     $display("  ---- dcache (RNF0) ----");
     $display("  core accesses       : %0d loads, %0d stores (%0d non-cacheable, %0d private), %0d picks of a busy line", drv.n_load, drv.n_store, drv.n_nc, drv.n_priv, drv.n_busy);
-    $display("  private exact checks: %0d", drv.n_priv_chk);
+    $display("  private exact checks: %0d (%0d of them on bytes merged from 2+ stores)", drv.n_priv_chk, drv.n_merge_chk);
+    $display("  in flight (core)    : up to %0d issued, up to %0d accepted by the dcache at once; %0d responses out of order", drv.max_drv_out, drv.max_dut_out, drv.n_ooo);
+    $display("  core stalls         : %0d on a byte hazard, %0d on a full window; %0d err responses", drv.n_hz_stall, drv.n_full_stall, drv.n_err_rsp);
     $display("  hits / misses       : %0d / %0d", dut.perf_hits_r, dut.perf_misses_r);
     $display("  Evict / WriteBack   : %0d / %0d", dut.perf_evictions_r, dut.perf_writebacks_r);
     $display("  snoops              : %0d (%0d hit a line, %0d answered with data)", dut.perf_snoops_r, dut.perf_snoop_hits_r, dut.perf_snoop_data_r);
@@ -506,6 +604,8 @@ module Tb_RNF;
     check_dcache_empty();
     if (chk.open_txn != 0 || chk.open_snp != 0)
       sb.err("DUT_STATE", $sformatf("end of test: %0d request(s) and %0d snoop(s) of the dcache are still open on the bus", chk.open_txn, chk.open_snp));
+    if (chk.open_core != 0)
+      sb.err("DUT_STATE", $sformatf("end of test: %0d core request(s) were accepted and never answered", chk.open_core));
     check_coverage();
 
     sb.final_report(SEED);

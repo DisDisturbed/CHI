@@ -40,13 +40,15 @@ module req_rx_arbiter
       automatic int p = (rr_ptr_q + k) % NUM_RNF;
       if ((avail != '0) && (port_cr_q[p] < CNTW'(CreditsPerPort))) begin
         rnf_req_lcrdv[p] = 1'b1;
-        avail            = avail - 1'b1;
-        any_grant        = 1'b1;
+        avail        = avail - 1'b1;
+        any_grant    = 1'b1;
       end
     end
 
     rr_ptr_d = rr_ptr_q;
-    if (any_grant) rr_ptr_d = (rr_ptr_q == PORT_IDXW'(NUM_RNF-1)) ? '0 : (rr_ptr_q + 1'b1);
+    if (any_grant) begin
+     rr_ptr_d = (rr_ptr_q == PORT_IDXW'(NUM_RNF-1)) ? '0 : (rr_ptr_q + 1'b1);
+    end
   end
 
   always_ff @(posedge clk or negedge resetn) begin
@@ -57,7 +59,7 @@ module req_rx_arbiter
       rr_ptr_q <= rr_ptr_d;
       for (int p = 0; p < NUM_RNF; p++) begin
         port_cr_q[p] <= port_cr_q[p] + CNTW'(rnf_req_lcrdv[p])
-                        - CNTW'((rnf_req_flitv[p] == Y) && (port_cr_q[p] != '0));
+                       - CNTW'((rnf_req_flitv[p] == Y) && (port_cr_q[p] != '0));
       end
     end
   end

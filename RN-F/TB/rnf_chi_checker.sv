@@ -21,11 +21,19 @@
 //             to the right node and TxnID, within SNP_RSP_MAX cycles; the
 //             response is legal for the snoop type and for the state the line
 //             had; dirty data is never dropped; returned data is a legal value
-//  core       a cacheable store may only complete on a line held Unique
+//  core       requests are tracked by idx (any number in flight, answered in
+//             any order): a response must answer an accepted request with
+//             that idx, an idx is not reused before its response, a cacheable
+//             store may only complete on a line held Unique
 //  link       no flit without a credit, FLITV only with FLITPEND
 //
+// Coverage (keys "bb core: ..."), from the pins only: core op x the line's
+// state on the bus at accept, hit / miss (a line read for that line between
+// accept and response), victims written back / evicted while a core miss
+// was open, snoops on the line of an open core request.
+//
 // Failures go to the scoreboard as PROTOCOL / LINK_CREDIT / FLITPEND.
-// open_txn / open_snp are what is still in flight (0 at the end of a test).
+// open_txn / open_snp / open_core are what is still in flight (0 at the end of a test).
 // =============================================================================
 module rnf_chi_checker #(
   parameter chi_pkg::node_id_e NODEID      = 7'h01,
@@ -84,6 +92,15 @@ module rnf_chi_checker #(
     bit          late;
   endclass
 
+  // one core request, from accept to response
+  class creq_c;
+    bit          store, cach;
+    addr_t       la;
+    int          nbytes;
+    lst_e        st0;
+    bit          saw_rd, saw_wb, saw_ev, saw_snp;
+  endclass
+
   lst_e  lst    [addr_t];
   bit    ldirty [addr_t];        // the line is dirty for sure
   bit    held   [addr_t];        // filled and not given up yet (Evict / WriteBack allowed)
@@ -93,12 +110,25 @@ module rnf_chi_checker #(
   snp_c  sn      [logic [11:0]];
 
   int unsigned cyc = 0;
-  int          open_txn = 0, open_snp = 0;
+  int          open_txn = 0, open_snp = 0, open_core = 0;
   int          req_cr = 0, rsp_cr = 0, dat_cr = 0;
 
-  // last core request accepted (for the store check)
-  bit    c_busy = 0, c_store, c_cach;
-  addr_t c_la;
+  // core requests accepted and not answered yet, by idx
+  creq_c creq [int];
+
+  function automatic string s_op(bit st);
+    if (st) return "store";
+    return "load";
+  endfunction
+
+  function automatic string lst_str(lst_e s);
+    case (s)
+      L_SC:    return "Shared Clean";
+      L_U:     return "Unique";
+      L_SD:    return "Shared Dirty";
+      default: return "not held";
+    endcase
+  endfunction
 
   function automatic lst_e st_of(addr_t la);
     return lst.exists(la) ? lst[la] : L_I;
@@ -181,6 +211,12 @@ module rnf_chi_checker #(
     end else if (f.memattr != MEMATTR_NORMAL_NC) begin
       perr($sformatf("%s MemAttr=%04b (expected %04b)", f.opcode.name(), f.memattr, MEMATTR_NORMAL_NC));
     end
+    // what the open core requests caused
+    foreach (creq[k]) if (creq[k].cach) begin
+      if ((f.opcode == REQ_READ_SHARED || f.opcode == REQ_READ_UNIQUE) && creq[k].la == la) creq[k].saw_rd = 1;
+      if (f.opcode == REQ_WRITE_BACK_FULL && creq[k].la != la) creq[k].saw_wb = 1;
+      if (f.opcode == REQ_EVICT           && creq[k].la != la) creq[k].saw_ev = 1;
+    end
     t = new();
     t.f = f; t.la = la;
     t.is_rd = (f.opcode == REQ_READ_SHARED || f.opcode == REQ_READ_UNIQUE || f.opcode == REQ_READ_NO_SNOOP);
@@ -239,6 +275,7 @@ module rnf_chi_checker #(
     end
     if (ack_wait.exists(la) && ack_wait[la] > 0)
       sb.err("SNOOP_ORDER", $sformatf("%s checker: snoop %s addr=%0h arrived after CompData and before the CompAck for that line", NAME, f.opcode.name(), la));
+    foreach (creq[k]) if (creq[k].la == la) creq[k].saw_snp = 1;
     s = new();
     s.f = f; s.la = la; s.t0 = cyc;
     s.rr = sb.rd_begin(la, NAME);
@@ -447,7 +484,7 @@ module rnf_chi_checker #(
       lst.delete(); ldirty.delete(); held.delete(); ack_wait.delete();
       tx.delete(); by_dbid.delete(); sn.delete();
       req_cr = 0; rsp_cr = 0; dat_cr = 0;
-      c_busy = 0;
+      creq.delete();
     end else if (sb != null) begin
       // link layer of the three RN-F TX channels
       if (req.flitv == Y) begin
@@ -496,22 +533,49 @@ module rnf_chi_checker #(
         endcase
       end
 
-      // core: a cacheable store completes on a Unique line, and makes it dirty
+      // core: responses by idx; a cacheable store completes on a Unique line, and makes it dirty
       if (core.rsp.valid == Y) begin
-        if (!c_busy) perr("core response without a request");
-        else if (c_store && c_cach && core.rsp.err != Y && !snp_open_on(c_la)) begin
-          if (st_of(c_la) != L_U)
-            perr($sformatf("store to addr=%0h completed, but the line is %s on the bus, not Unique", c_la, st_of(c_la).name()));
-          else ldirty[c_la] = 1;
+        int    k;
+        creq_c c;
+        string opn;
+        k = int'(core.rsp.idx);
+        if (!creq.exists(k)) perr($sformatf("core response idx=%0d, but no accepted request with that idx is open", k));
+        else begin
+          c   = creq[k];
+          opn = c.store ? "store" : "load";
+          if (c.store && c.cach && core.rsp.err != Y && !snp_open_on(c.la)) begin
+            if (st_of(c.la) != L_U)
+              perr($sformatf("store to addr=%0h completed, but the line is %s on the bus, not Unique", c.la, st_of(c.la).name()));
+            else ldirty[c.la] = 1;
+          end
+          if (c.cach && core.rsp.err != Y) begin
+            if (c.saw_rd) sb.cov_hit($sformatf("bb core: %s completed after a line read (miss)", opn));
+            else          sb.cov_hit($sformatf("bb core: %s completed without a line read (hit)", opn));
+            if (c.saw_rd && c.saw_wb) sb.cov_hit("bb core: miss open while a victim was written back (WriteBackFull)");
+            if (c.saw_rd && c.saw_ev) sb.cov_hit("bb core: miss open while a victim was evicted (Evict)");
+            if (c.saw_snp)            sb.cov_hit($sformatf("bb core: %s whose line was snooped while it was open", opn));
+          end
+          creq.delete(k);
         end
-        c_busy = 0;
       end
       if (core.req.valid == Y && core.ready == Y) begin
-        if (c_busy) perr("core request accepted while the previous one has no response yet");
-        c_busy  = 1;
-        c_store = (core.req.op == MEM_OP_STORE);
-        c_cach  = (core.req.cacheable == Y);
-        c_la    = line_of(addr_t'(core.req.addr));
+        int    k;
+        creq_c c;
+        k = int'(core.req.idx);
+        if (creq.exists(k)) perr($sformatf("core request accepted with idx=%0d while the request with that idx has no response yet", k));
+        c = new();
+        c.store  = (core.req.op == MEM_OP_STORE);
+        c.cach   = (core.req.cacheable == Y);
+        c.la     = line_of(addr_t'(core.req.addr));
+        c.nbytes = size_bytes(core.req.width);
+        c.st0    = st_of(c.la);
+        if (c.cach) sb.cov_hit($sformatf("bb core: %s on a line %s", s_op(c.store), lst_str(c.st0)));
+        if (c.cach && c.store && c.nbytes < 8) sb.cov_hit($sformatf("bb core: sub-word store (<8B) on a line %s", lst_str(c.st0)));
+        foreach (creq[j]) if (creq[j].la == c.la) begin
+          sb.cov_hit("bb core: two requests to one line open at once");
+          break;
+        end
+        creq[k] = c;
       end
 
       // a snoop nobody answers
@@ -522,6 +586,7 @@ module rnf_chi_checker #(
 
       open_txn = tx.size();
       open_snp = sn.size();
+      open_core = creq.size();
     end
   end
 

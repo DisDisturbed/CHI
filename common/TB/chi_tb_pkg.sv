@@ -540,6 +540,14 @@ package chi_tb_pkg;
       n_store++;
     endfunction
 
+    // a line no cache holds and no op is in flight on (non-cacheable, after
+    // the traffic stopped): memory holds its value, it is known again
+    function void resync_line(addr_t a);
+      line_info L;
+      L = get_line(a);
+      if (L.pend.size() == 0 && L.nbusy == 0) begin L.cur = snf_line(a); L.known = 1; end
+    endfunction
+
     function void mark_unknown(addr_t a);
       line_info L;
       L = get_line(a);

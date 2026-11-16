@@ -1,4 +1,5 @@
-
+/* at most 1 unused credit per port
+  idle RN-F cannot hoard trackers.*/
 
 module credit_cntr #(
   parameter int MaxCredits = 2

@@ -5,11 +5,11 @@
 // this is the simplest possible or lets say "dumbest" tracker module i could think of
 // it only knows one transaction at time so HN-F node should be handle it
 // it has no idea about the interfaceses or RN-F port counts
-// it only see 2 things one requester and one snoop target (snoop target can be SN-F dont forget this)
+// it only see 2 things one requester and one snoop target snf is not a snoop target it is just a dumb slave
 // top module should instantiate this module multiple times to track multiple outstanding requests at one
 // HN-F also need to track which TSHR is free to give request to them
 // HN-F also need to know which port RN-F plugs
-// HN-F also need its own snoop filter
+// HN-F also need its own snoop filter it doesnt have one
 // HN-F also need address hazard detection to detect which tracker is safe to give
 //
 // NONE OF THAT ROUTING AND ARBITRATION LIVES INSIDE THIS FILE.
@@ -24,7 +24,7 @@ module TSHR
   parameter int AddrWidth      = 39,
   parameter int DataWidth      = 128,
   // total data moved per transaction as bits .
-  // must be an integer multiple of DataWidth. NumBeats = CacheLineWidth /
+  // must be an integer multiple of DataWidth. NumBeats = CacheLineWidth 
   parameter int CacheLineWidth = 512,
   parameter int TRK_ID         = 0,
   parameter chi_pkg::node_id_e HNFID = 7'h40,
@@ -224,31 +224,16 @@ module TSHR
     local_dat_flit_t rx_dat_flit_req;
 
    // simplest possible fsm that i can think of
-   // the basic sequence of the fsm is the following:
-   // data flit comes to the HN-F node from RN-F0. It holds the addr and other useful things inside the tracker.
-   // after it accepts the flit, it goes to RN-F1 for snoop requests and waits for their response.
-   // depending on the RN-F1's response (and if it's a read or write), it either goes to ST_DBIDRESP_SEND or ST_RDATA_SEND.
+   // the basic sequence of the fsm is the following
+   // req flit comes to the HN-F node from RN-F0 It holds the addr and other useful things inside the tracker
+   // after it accepts the flit it goes to RN-F1 for snoop requests and waits for their response
+   // depending on the RN-F1's response and depending on read or write, it either goes to ST_DBIDRESP_SEND or ST_RDATA_SEND
 
-   // path from ST_DBIDRESP_SEND (The Write Flow - WriteUniquePtl):
-   // 1. ST_DBIDRESP_SEND: Send a DBIDResp back to the original requester (RN-F0), telling it "I am ready for your write data."
-   // 2. ST_WDATA_WAIT: Wait for the requester to send the actual write data on the DAT channel (now: NumBeats beats).
-   // 3. ST_SN_REQ_SEND: Forward a request (WriteNoSnpPtl) down to the memory (SN-F).
-   // 4. ST_SN_RSP_WAIT: Wait for the memory to reply with CompDBIDResp, meaning memory is ready for the data.
-   // 5. ST_SN_DATA_SEND: Push the captured write data down to the memory (now: NumBeats beats).
-   // 6. ST_COMP_SEND: Send a final Completion (Comp) to the original requester.
-   // 7. ST_COMPACK_WAIT: Wait for the requester to acknowledge the completion (CompAck).
-   // 8. ST_DONE: Clean up and return to IDLE.
-
-
-   // path from ST_RDATA_SEND (The Read Flow - ReadUnique):
-   // 1. ST_RDATA_SEND: We already got the requested data from snooping RN-F1. Forward this data directly to the original requester (RN-F0) as CompData (now: NumBeats beats).
-   // 2. ( skipped Memory access steps for this flow).
-   // 3. ST_COMPACK_WAIT: Wait for the requester to acknowledge receipt of the data (CompAck).
-   // 4. ST_DONE: Clean up and return to IDLE.
+  // i was going to include everything in here but like  i have second monitor now so i just open specs at this point
 
    assign ready_o = (state_q == ST_IDLE);
    logic dirty_hit_q, dirty_hit_d;
-
+  //  default state you dont like latches are you? so dont hurt the feelings of this state
   function automatic void fsm_defaults();
     state_d       = state_q;
     tx_type_d     = tx_type_q;
@@ -276,7 +261,7 @@ module TSHR
     pcrdtype_d     = pcrdtype_q;
     retry_ret_d    = retry_ret_q;
 
-    // default all output ports to inactive
+    // you lazy interfaceses just sleep for now
     snp_flitv    = N; snp_flitpend    = N; snp_flit    = '0;
     rsp_tx_flitv = N; rsp_tx_flitpend = N; rsp_tx_flit = '0;
     dat_tx_flitv = N; dat_tx_flitpend = N; dat_tx_flit = '0;
@@ -292,10 +277,8 @@ module TSHR
     pcrd_type_o = pcrdtype_q;
   endfunction
 
-  // requester's CompAck comes in while we're waiting on it in
-  // ST_COMPACK_WAIT; the snoop target's SnpResp comes in while we're
-  // waiting on it in ST_SNOOP_WAIT. Each is now its own fixed port, so
-  // this is just a plain state-based pick, no index needed.
+  // requester CompAck comes in while waiting on it in ST_COMPACK_WAIT the snoop target SnpResp comes in while we are 
+   // waiting on it in ST_SNOOP_WAIT each own fixed port so this is just a pick
   function automatic void fsm_select_inputs();
     rx_rsp_flitv_snp = (rsp_rx_snp_flitv == Y);
     rx_rsp_flit_snp  = rsp_rx_snp_flit;
@@ -318,12 +301,15 @@ module TSHR
     end
   endfunction
 
-  // CHI does not order the SN-F's separate Comp against DBIDResp or the
-  // write data: it may come before DBIDResp, between DBIDResp and the data,
-  // or after the data. So it is caught here in every state, not only in
-  // ST_SN_COMP_WAIT. HN_TXNID is ours alone, and sn_comp_seen is cleared
-  // when the SN request is (re)sent, so a Comp can only belong to the write
-  // that is outstanding now.
+  // the chief engineer at amba thought this is a good idea so here we go
+  // specs doesnt order snfs separate comp against the dbidresp or the write data 
+  // it might come before dbidresp between dbidresp and data or after the data 
+  // so it should be caught every state not only in the comp_wait 
+  // it even gets worst dont get comfortable 
+  // when sn request is send or resend yea it can resend it so comp can only belong to the write 
+  // that is why it is outstanding
+
+  // so every function is some combination of where is comp gotten
   function automatic void fsm_watch_sn_comp();
     if ((sn_rsp_flitv == Y) && (sn_rsp_flit.opcode == RSP_COMP) && (sn_rsp_flit.txnid == HN_TXNID)) begin
       sn_comp_seen_d = 1'b1;
@@ -336,7 +322,7 @@ module TSHR
     dirty_hit_d = 1'b0;
     ptl_d       = 1'b0;
     if (tx_type_q == TX_READ && ptl_q) begin
-      // partial snoop data is in memory now: read the whole line from there
+      // the partial snoop is in the memory so get that little boy
       state_d = ST_SN_REQ_SEND;
     end else if (tx_type_q == TX_WRITE_UNIQUE) begin
       state_d = ST_DBIDRESP_SEND;
@@ -346,7 +332,7 @@ module TSHR
       state_d = ST_DONE;
     end
   endfunction
-
+  
   function automatic void goto_after_sn_write();
     if (tx_type_q == TX_WRITE_BACK) begin
       state_d = expcompack_q ? ST_COMPACK_WAIT : ST_DONE;
@@ -354,9 +340,9 @@ module TSHR
       state_d = ST_COMP_SEND;
     end
   endfunction
-
+ // a imaginary resting spot it doenst exist they said
   function automatic void st_idle();
-    dirty_hit_d    = 0;
+    dirty_hit_d    = 0; //you stupid fuck
     beat_cnt_d     = '0;
     resperr_d      = '0;
     wdata_resp_d   = '0;
@@ -377,22 +363,22 @@ module TSHR
       state_d      = ST_ALLOC;
     end
   endfunction
-
+   // well it is just waiting until hazard cleared 
   function automatic void st_hazard_wait();
     if (!hazard_i) begin
       state_d = ST_ALLOC;
     end
   endfunction
-
-  function automatic void st_alloc(); // allocate a place in the TSHR
-    if (hazard_i) begin
+  //lets go guys we have a transaction to route so we are allocating one spot for it
+  function automatic void st_alloc(); 
+    if (hazard_i) begin // HAZARD EXIST freak the fuck out and panic sell everything right now
       state_d = ST_HAZARD_WAIT;
-    end else if (opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_CLEAN_FULL || opcode_q == REQ_WRITE_BACK_PTL) begin
+    end else if (opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_CLEAN_FULL || opcode_q == REQ_WRITE_BACK_PTL) begin 
       tx_type_d = TX_WRITE_BACK;
       state_d   = ST_DBIDRESP_SEND; // Skip snoop
     end else if (opcode_q == REQ_WRITE_UNIQUE_PTL || opcode_q == REQ_WRITE_UNIQUE_FULL) begin
       tx_type_d = TX_WRITE_UNIQUE;
-      state_d   = ST_SNOOP_SEND;
+      state_d   = ST_SNOOP_SEND; 
     end else if (opcode_q == REQ_WRITE_NO_SNOOP_PTL || opcode_q == REQ_WRITE_NO_SNOOP_FULL) begin
       tx_type_d = TX_WRITE_NOSNP;
       state_d   = ST_DBIDRESP_SEND;
@@ -415,7 +401,7 @@ module TSHR
   endfunction
 
   // sending a required snoop to the destination depending of the credit
-  //  not depends combinationally on snp_lcrdv.
+  //  not depends combinationally on snp_lcrdv due to credit counters
   function automatic void st_snoop_send();
     snp_flitv          = Y;
     snp_flitpend       = Y;
@@ -446,11 +432,11 @@ module TSHR
       if (opcode_q == REQ_CLEAN_SHARED) begin
         snp_flit.opcode = SNP_CLEAN_SHARED;
       end else if (opcode_q == REQ_CLEAN_INVALID || opcode_q == REQ_CLEAN_UNIQUE) begin
-        // CleanUnique: SnpCleanInvalid, not SnpMakeInvalid. The requester may be
-        // SC while the other RN-F is SD; that dirty data must reach memory.
+        // CleanUnique SnpCleanInvalid not SnpMakeInvalid The requester may be
+        // SC while the other RN-F is SD that dirty data must reach memory 
         snp_flit.opcode = SNP_CLEAN_INVALID;
       end else begin
-        snp_flit.opcode = SNP_MAKE_INVALID; // MakeInvalid / MakeUnique
+        snp_flit.opcode = SNP_MAKE_INVALID; // MakeInvalid and MakeUnique
       end
     end else begin
       snp_flit.opcode   = SNP_UNIQUE;
@@ -463,8 +449,8 @@ module TSHR
   endfunction
 
   // waiting for the response of the snoop it means that response are waiting from the destination
-  // snoop-target identity is implicitly guaranteed by the crossbar's
-  // fixed physical wiring for the lifetime
+  // snoop-target identity is implicitly guaranteed by the top module
+  // fixed physical wiring for the transaction lifetime
   function automatic void st_snoop_wait();
     logic [BeatCntW-1:0] idx;
     logic                dirty;
@@ -486,11 +472,9 @@ module TSHR
       end else begin
         beat_cnt_d = '0;
         if (tx_type_q == TX_READ && (ptl_q || ptl_d)) begin
-          // SnpRespDataPtl holds only some bytes of the line, so it cannot be
-          // forwarded as CompData. Write those bytes to memory (WriteNoSnpPtl),
-          // then read the merged line back (see goto_after_dirty_wb).
-          // SnpRespDataPtl_UD (SnpOnce, owner stays UDP) has no PD bit but
-          // takes the same path: memory gets bytes the owner still holds dirty.
+          // SnpRespDataPtl holds only some bytes of the line so it cannot be forwarded as CompData
+          // write those bytes to memory then read the merged line back and yea it is slow
+          // SnpRespDataPtl_UD has no PD bit but takes the same path memory gets bytes the owner still holds dirty
           state_d = ST_DIRTY_WB_REQ_SEND;
         end else if (tx_type_q == TX_READ) begin
           state_d = ST_RDATA_SEND;
@@ -507,13 +491,13 @@ module TSHR
     end
     else if ((rx_rsp_flitv_snp == Y) && (rx_rsp_flit_snp.opcode == RSP_SNP_RESP) && (rx_rsp_flit_snp.txnid == HN_TXNID)) begin // also correct for snpresp_i
       if (tx_type_q == TX_READ) begin
-        // read miss: target doesn't have the line
+        // read miss target doesnt have the line
         state_d = ST_SN_REQ_SEND;
       end else if (tx_type_q == TX_CMO) begin
         state_d = ST_COMP_SEND;
       
       end else begin
-        // wait for invalidate ack
+        // wait for invalidate
         state_d = ST_DBIDRESP_SEND;
       end
     end
@@ -532,12 +516,11 @@ module TSHR
     sn_req_flit.pcrdttype  = (allowretry_q == Y) ? 4'h0 : pcrdtype_q;
     sn_req_flit.memattr    = '0;
 
-    // SnpRespDataPtl: only the bytes with BE set are valid, so a Full write
-    // (all BE must be 1) is not allowed
+    // SnpRespDataPtl: only the bytes with BE set are valid a Full write all BE must be 1 is not allowed
     sn_req_flit.opcode     = ptl_q ? REQ_WRITE_NO_SNOOP_PTL : REQ_WRITE_NO_SNOOP_FULL;
 
     wb_chain_d     = 1'b1;
-    sn_comp_seen_d = 1'b0; // new SN write: no Comp for it can exist yet
+    sn_comp_seen_d = 1'b0; 
     if (sn_req_gnt) begin
       state_d = ST_DIRTY_WB_RSP_WAIT;
     end
@@ -612,12 +595,11 @@ module TSHR
     logic [BeatCntW-1:0] idx;
     idx = BeatCntW'(rx_dat_flit_req.dataid >> DidShift);
     // srcid check added: txnid alone is NOT a unique transaction key
-    // across different requesters (CHI only guarantees TxnID
-    // uniqueness *within* one requester's own outstanding set), so if
+    // across different requesters CHI only guarantees TxnID uniqueness  one requester own outstanding set so if
     // two different RN-Fs happen to pick the same TxnID, matching on
     // txnid alone could let a write-data beat meant for a different
-    // requester's transaction get accepted here. srcid_q was latched
-    // from the original request, so requiring it to match fixes the issue
+    // requester transaction get accepted here srcid_q was latched
+    // from the original request so requiring it to match fixes the issue
     if ((rx_dat_flitv_req == Y) && (rx_dat_flit_req.txnid == txnid_q) && (rx_dat_flit_req.srcid == srcid_q) &&
         ((rx_dat_flit_req.opcode == DAT_NON_COPY_BACK_WR_DATA) || (rx_dat_flit_req.opcode == DAT_COPY_BACK_WR_DATA))) begin
       data_d[idx]  = rx_dat_flit_req.data;
@@ -707,10 +689,10 @@ module TSHR
       end
     end
   endfunction
-
+  //st_sn_data_send write data to SN-F carried TxnID = txnid_q. CHI needs TxnID = the DBID SN-F granted Now sn_dbid_q the dirty-writeback state already did this
   function automatic void st_sn_data_send();
     sn_dat_tx_flitv        = Y;
-    sn_dat_tx_flitpend     = Y; // link layer: FLITPEND with every FLITV, last beat included
+    sn_dat_tx_flitpend     = Y; //FLITPEND with every FLITV
     sn_dat_tx_flit.qos     = qos_q;
     sn_dat_tx_flit.tgtid   = SNFID;
     sn_dat_tx_flit.srcid   = HNFID;
@@ -737,7 +719,7 @@ module TSHR
   endfunction
 
   function automatic void st_sn_comp_wait();
-    // the Comp itself is latched by fsm_watch_sn_comp()
+    //  comp latched by fsm_watch_sn_comp()
     if (sn_comp_seen_q || sn_comp_seen_d) begin
       if (wb_chain_q) begin
         goto_after_dirty_wb();
@@ -746,7 +728,8 @@ module TSHR
       end
     end
   endfunction
-
+  // RetryAck -> ST_SN_RETRY_WAIT -> get a P-credit of that PCrdType from HN-F's pool -> resend the same
+  //  request with AllowRetry=N and that PCrdType  it loops back into the retry_ret_q  for simplicity
   function automatic void st_sn_retry_wait();
     pcrd_req_o  = 1'b1;
     pcrd_type_o = pcrdtype_q;
@@ -758,7 +741,7 @@ module TSHR
 
   function automatic void st_rdata_send();
     dat_tx_flitv        = Y;
-    dat_tx_flitpend     = Y; // link layer: FLITPEND with every FLITV, last beat included
+    dat_tx_flitpend     = Y; 
     dat_tx_flit.qos     = qos_q;
     dat_tx_flit.tgtid   = srcid_q;
     dat_tx_flit.srcid   = HNFID;
@@ -813,10 +796,10 @@ module TSHR
     if (compack_seen_q || compack_seen_d) begin
 
       if (dirty_hit_q == 1'b1) begin
-        // served the core, now go push the dirty data to memory
+        // served the core now go push the dirty data to memory
         state_d = ST_DIRTY_WB_REQ_SEND;
       end else begin
-        // normal read, no writeback needed
+        // normal read no writeback
         state_d = ST_DONE;
       end
 
@@ -892,6 +875,7 @@ module TSHR
          tx_type_q <= tx_type_d;
       end else begin
          $display("[%0t] TSHR Module: unsupported tx_type  %s", $time, tx_type_d.name());
+         
          tx_type_q <= tx_type_q; //  dont send garbage
       end
       dirty_hit_q   <= dirty_hit_d;

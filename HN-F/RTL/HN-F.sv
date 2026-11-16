@@ -1,9 +1,15 @@
 
 // HN_F - basic functional baseline
-// for exactly NUM_RNF==2 - see the elaboration check below), no retry
-// handling on a lost request-arbitration round. This is enough plumbing
-// to run the existing scenario-style tests against multiple concurrent
-// TSHR trackers.
+// for exactly NUM_RNF==2 
+// most important limitation is that it doesnt have a snoop filter so every 
+// rnf snoops the other one
+// This is enough plumbing
+// well it should be good enough
+
+/*  HN-F only gives an rnf a REQ credit when a
+    free tracker is not already promised to another outstanding credit
+    Every accepted request has a tracker Ports take turns.*/
+
 module HN_F
   import chi_pkg::*;
   import common_pkg::*;
@@ -19,19 +25,19 @@ module HN_F
 ) (
   input  wire clk,
   input  wire resetn,
+  //2 rnf only like isnt it enough
+  chi_req.rx rnf_req    [NUM_RNF], 
+  chi_snp.tx rnf_snp    [NUM_RNF], 
+  chi_rsp.rx rnf_rsp_rx [NUM_RNF], 
+  chi_rsp.tx rnf_rsp_tx [NUM_RNF], 
+  chi_dat.rx rnf_dat_rx [NUM_RNF], 
+  chi_dat.tx rnf_dat_tx [NUM_RNF], 
 
-  chi_req.rx rnf_req    [NUM_RNF], // RX: RN-F
-  chi_snp.tx rnf_snp    [NUM_RNF], // TX: HN-F
-  chi_rsp.rx rnf_rsp_rx [NUM_RNF], // RX: RN-F
-  chi_rsp.tx rnf_rsp_tx [NUM_RNF], // TX: HN-F
-  chi_dat.rx rnf_dat_rx [NUM_RNF], // RX: RN-F
-  chi_dat.tx rnf_dat_tx [NUM_RNF], // TX: HN-F
-
-  //assumed one SN-F or my brain is going to explode
-  chi_req.tx snf_req,              // TX: HN-F
-  chi_rsp.rx snf_rsp,              // RX: SN-F
-  chi_dat.tx snf_dat_tx,           // TX: HN-F
-  chi_dat.rx snf_dat_rx            // RX: SN-F
+  //assumed one snf or my brain is going to explode
+  chi_req.tx snf_req,              
+  chi_rsp.rx snf_rsp,              
+  chi_dat.tx snf_dat_tx,           
+  chi_dat.rx snf_dat_rx            
 );
 
   initial begin
@@ -47,7 +53,7 @@ module HN_F
   end
 
   logic        tracker_ready [NUM_TRACKERS];
-  logic        tracker_valid [NUM_TRACKERS]; // allocated to a live txn right now
+  logic        tracker_valid [NUM_TRACKERS]; // allocated to a live txn 
 
   logic [11:0] trk_txnid     [NUM_TRACKERS];
   node_id_e    trk_srcid     [NUM_TRACKERS];
@@ -59,73 +65,74 @@ module HN_F
     for (int t = 0; t < NUM_TRACKERS; t++) tracker_valid[t] = !tracker_ready[t];
   end
 
-  // ---- REQ Channel (RX) ----
+  // REQ tx
   common_pkg::yn_status_e         trk_req_flitv      [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_req_flitpend   [NUM_TRACKERS];
   tshr_flit_pkg::local_req_flit_t trk_req_flit       [NUM_TRACKERS];
 
-  // ---- SNP Channel (TX) ----
+  // SNP chanell (no tx here sorry)
   common_pkg::yn_status_e         trk_snp_flitv      [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_snp_flitpend   [NUM_TRACKERS];
   tshr_flit_pkg::local_snp_flit_t trk_snp_flit       [NUM_TRACKERS];
   logic                           trk_snp_gnt        [NUM_TRACKERS];
 
-  // ---- RSP Channel (TX) ----
+  // RSP TX
   common_pkg::yn_status_e         trk_rsp_tx_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_rsp_tx_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_rsp_flit_t trk_rsp_tx_flit    [NUM_TRACKERS];
   logic                           trk_rsp_tx_gnt     [NUM_TRACKERS];
 
-  // ---- RSP Channel (RX from Requester) ----
+  // RSP chanell from requester (cmon mate of course it is called RX)
   common_pkg::yn_status_e         trk_rsp_rx_req_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_rsp_rx_req_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_rsp_flit_t trk_rsp_rx_req_flit    [NUM_TRACKERS];
 
-  // ---- RSP Channel (RX from Snoop Target) ----
+  //RSP channel from the target
   common_pkg::yn_status_e         trk_rsp_rx_snp_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_rsp_rx_snp_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_rsp_flit_t trk_rsp_rx_snp_flit    [NUM_TRACKERS];
 
-  // ---- DAT Channel (TX) ----
+  // DATA channel tx
   common_pkg::yn_status_e         trk_dat_tx_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_dat_tx_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_dat_tx_flit    [NUM_TRACKERS];
   logic                           trk_dat_tx_gnt     [NUM_TRACKERS];
 
-  // ---- DAT Channel (RX from Requester) ----
+  // DATA channel from requester
   common_pkg::yn_status_e         trk_dat_rx_req_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_dat_rx_req_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_dat_rx_req_flit    [NUM_TRACKERS];
 
-  // ---- DAT Channel (RX from Snoop Target) ----
+  //DATa channel from the target
   common_pkg::yn_status_e         trk_dat_rx_snp_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_dat_rx_snp_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_dat_rx_snp_flit    [NUM_TRACKERS];
 
-  // ---- SN-F REQ Channel (TX) ----
+  //SNF req channel 
   common_pkg::yn_status_e         trk_sn_req_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_sn_req_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_req_flit_t trk_sn_req_flit    [NUM_TRACKERS];
   logic                           trk_sn_req_gnt     [NUM_TRACKERS];
 
-  // ---- SN-F RSP Channel (RX) ----
+  // SNF response channel
   common_pkg::yn_status_e         trk_sn_rsp_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_sn_rsp_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_rsp_flit_t trk_sn_rsp_flit    [NUM_TRACKERS];
 
-  // ---- SN-F DAT Channel (TX) ----
+  // SNF data TX
   common_pkg::yn_status_e         trk_sn_dat_tx_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_sn_dat_tx_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_sn_dat_tx_flit    [NUM_TRACKERS];
   logic                           trk_sn_dat_tx_gnt     [NUM_TRACKERS];
 
-  // ---- SN-F DAT Channel (RX) ----
+  // SNF data RX
   common_pkg::yn_status_e         trk_sn_dat_rx_flitv   [NUM_TRACKERS];
   common_pkg::yn_status_e         trk_sn_dat_rx_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_sn_dat_rx_flit    [NUM_TRACKERS];
 
-  logic [RNF_IDX_W-1:0] req_port_idx_q [NUM_TRACKERS]; // which RN-F is the requester
-  logic [RNF_IDX_W-1:0] snp_port_idx   [NUM_TRACKERS]; // which RN-F is the snoop target (
+// this line is actually pretty important 
+  logic [RNF_IDX_W-1:0] req_port_idx_q [NUM_TRACKERS]; // which RN-F is  requester
+  logic [RNF_IDX_W-1:0] snp_port_idx   [NUM_TRACKERS]; // which RN-F is snoop target 
 
   always_comb begin
     for (int t = 0; t < NUM_TRACKERS; t++) begin
@@ -149,7 +156,7 @@ module HN_F
       assign rnf_req[r].lcrdv         = rnf_req_lcrdv_flat[r];
     end
   endgenerate
-
+   //try to make the relationship between trackers and RX channel (it doesnt work they are constantly fighting)
   req_rx_arbiter #(
     .NUM_RNF      (NUM_RNF),
     .NUM_TRACKERS (NUM_TRACKERS)
@@ -160,7 +167,8 @@ module HN_F
     .rnf_req_lcrdv        (rnf_req_lcrdv_flat),
     .tracker_ready        (tracker_ready)
   );
-
+  //just which tshr gets the request 
+   
   Allocator #(
     .NUM_TRACKERS(NUM_TRACKERS),
     .NUM_RNF     (NUM_RNF)
@@ -175,7 +183,7 @@ module HN_F
     .alloc_port_o       ( alloc_port_idx ),
     .alloc_drop_o       ( alloc_drop )
   );
-
+    // cmon mate lets give those trackers a break
   always_ff @(posedge clk) begin
     if (resetn && alloc_drop) begin
       $error("[%0t] HN_F: a request arrived with no free tracker - REQ credit accounting is broken", $time);
@@ -186,8 +194,7 @@ module HN_F
     for (int t = 0; t < NUM_TRACKERS; t++) trk_req_flitpend[t] = N;
   end
 
-  // latch which physical RN-F port originated the request, the instant a
-  // tracker is actually granted one.
+  // if tracker is not busy latch the data or it will be lost
   always_ff @(posedge clk or negedge resetn) begin
     if (!resetn) begin
       for (int t = 0; t < NUM_TRACKERS; t++) req_port_idx_q[t] <= '0;
@@ -199,7 +206,7 @@ module HN_F
   end
 
   localparam int LineOffW = $clog2(CacheLineWidth / 8);
-
+  
   always_ff @(posedge clk or negedge resetn) begin
     if (!resetn) begin
       for (int a = 0; a < NUM_TRACKERS; a++)
@@ -218,7 +225,8 @@ module HN_F
       end
     end
   end
-
+   //HN-F records allocation order and holds tracker in the new ST_HAZARD_WAIT while an older tracker is active on the same 64B line.
+   // this is just a patch 
   always_comb begin
     for (int a = 0; a < NUM_TRACKERS; a++) begin
       trk_hazard[a] = 1'b0;
@@ -231,8 +239,9 @@ module HN_F
     end
   end
 
-  // P-credit pool for SN-F retry: PCrdGrant carries no TxnID, so it is
-  // banked here per PCrdType and handed to one waiting tracker.
+  // P credit  pool for sn-f retry that bitchass snf better behave at the first try
+  // anway it banked here  per pcrdtype and given to the waiting tracker
+  // i am lazy to make this more beaftifull 
   logic                 trk_pcrd_req  [NUM_TRACKERS];
   logic [3:0]           trk_pcrd_type [NUM_TRACKERS];
   logic                 trk_pcrd_gnt  [NUM_TRACKERS];
@@ -264,6 +273,12 @@ module HN_F
     end
   end
 
+// from here on it is just plumming and really doesnt need to be read
+// snf is only instantiated once and i am lazy to make it configurable 
+// who gives a shit like why the same hnf connects to multiple memories
+
+
+  /// TSHR instantiation i mean like this should be obvious
   genvar i;
   generate
     for (i = 0; i < NUM_TRACKERS; i = i + 1) begin : gen_tshr
@@ -280,56 +295,56 @@ module HN_F
         .resetn              (resetn),
         .ready_o             (tracker_ready[i]),
 
-        // Exported nametags for the crossbar routers
+        // name tags for each tracker which gets what
         .TxnID_o             (trk_txnid[i]),
         .SrcID_o             (trk_srcid[i]),
         .Addr_o              (trk_addr[i]),
         .hazard_i            (trk_hazard[i]),
 
-        // ---- REQ from Requester (rx side) ----
+        // REQ from rnf
         .req_flitv           (trk_req_flitv[i]),
         .req_flitpend        (trk_req_flitpend[i]),
-        .req_flit            (trk_req_flit[i]), // driven by Allocator
+        .req_flit            (trk_req_flit[i]), // driven by allocator or it is dropping flits
 
-        // ---- SNP to Target (tx side) ----
+        // SNP to rnf
         .snp_flitv           (trk_snp_flitv[i]),
         .snp_flitpend        (trk_snp_flitpend[i]),
         .snp_flit            (trk_snp_flit[i]),
         .snp_gnt             (trk_snp_gnt[i]),
 
-        // ---- RSP to Requester (tx side) ----
+        // RSP to rnf
         .rsp_tx_flitv        (trk_rsp_tx_flitv[i]),
         .rsp_tx_flitpend     (trk_rsp_tx_flitpend[i]),
         .rsp_tx_flit         (trk_rsp_tx_flit[i]),
         .rsp_tx_gnt          (trk_rsp_tx_gnt[i]),
 
-        // ---- RSP from Requester (rx side) ----
+        // RSP from rnf
         .rsp_rx_req_flitv    (trk_rsp_rx_req_flitv[i]),
         .rsp_rx_req_flitpend (trk_rsp_rx_req_flitpend[i]),
         .rsp_rx_req_flit     (trk_rsp_rx_req_flit[i]),
 
-        // ---- RSP from Target (rx side) ----
+        // SNP RSP from rnf
         .rsp_rx_snp_flitv    (trk_rsp_rx_snp_flitv[i]),
         .rsp_rx_snp_flitpend (trk_rsp_rx_snp_flitpend[i]),
         .rsp_rx_snp_flit     (trk_rsp_rx_snp_flit[i]),
 
-        // ---- DAT to Requester (tx side) ----
+        // DATA to requester rnf
         .dat_tx_flitv        (trk_dat_tx_flitv[i]),
         .dat_tx_flitpend     (trk_dat_tx_flitpend[i]),
         .dat_tx_flit         (trk_dat_tx_flit[i]),
         .dat_tx_gnt          (trk_dat_tx_gnt[i]),
 
-        // ---- DAT from Requester (rx side) ----
+        // DATA from requester rnf
         .dat_rx_req_flitv    (trk_dat_rx_req_flitv[i]),
         .dat_rx_req_flitpend (trk_dat_rx_req_flitpend[i]),
         .dat_rx_req_flit     (trk_dat_rx_req_flit[i]),
 
-        // ---- DAT from Target (rx side) ----
+        // DATA from the target
         .dat_rx_snp_flitv    (trk_dat_rx_snp_flitv[i]),
         .dat_rx_snp_flitpend (trk_dat_rx_snp_flitpend[i]),
         .dat_rx_snp_flit     (trk_dat_rx_snp_flit[i]),
 
-        // ---- SN-F side ----
+        // SNF side same same with the rnfs but different
         .sn_req_flitv        (trk_sn_req_flitv[i]),
         .sn_req_flitpend     (trk_sn_req_flitpend[i]),
         .sn_req_flit         (trk_sn_req_flit[i]),
@@ -362,7 +377,7 @@ module HN_F
   common_pkg::yn_status_e rnf_snp_flitv_flat   [NUM_RNF];
   common_pkg::yn_status_e rnf_snp_flitpend_flat[NUM_RNF];
   local_snp_flit_t        rnf_snp_flit_flat    [NUM_RNF];
-
+  
   generate
     for (genvar p = 0; p < NUM_RNF; p++) begin : gen_snp_port
 
@@ -391,7 +406,7 @@ module HN_F
 
       assign rnf_snp[p].flitv    = rnf_snp_flitv_flat[p];
       assign rnf_snp[p].flitpend = rnf_snp_flitpend_flat[p];
-//      assign rnf_snp[p].flit     = chi_snp::snp_flit_t'(rnf_snp_flit_flat[p]);
+//      assign rnf_snp[p].flit     = chi_snp::snp_flit_t'(rnf_snp_flit_flat[p]); 
       assign rnf_snp[p].flit     = rnf_snp_flit_flat[p];
     end
   endgenerate
@@ -403,10 +418,8 @@ module HN_F
     end
   end
 
-  // =====================================================================
-  // RSP-TX and DAT-TX to the requester: same arbitration pattern, masked
-  // by req_port_idx_q instead of snp_port_idx.
-  // =====================================================================
+  // RSP TX and DAT TX to the requester same arbitration pattern masked
+  // by req_port_idx_q instead of snp_port_idx 
   common_pkg::yn_status_e rsp_tx_masked_flitv [NUM_RNF][NUM_TRACKERS];
   logic                   rsp_tx_targets_me   [NUM_RNF][NUM_TRACKERS];
   logic                   rsp_tx_port_gnt     [NUM_RNF][NUM_TRACKERS];
@@ -422,7 +435,8 @@ module HN_F
   common_pkg::yn_status_e rnf_dat_tx_flitv_flat   [NUM_RNF];
   common_pkg::yn_status_e rnf_dat_tx_flitpend_flat[NUM_RNF];
   local_dat_flit_t        rnf_dat_tx_flit_flat    [NUM_RNF];
-
+ // generate arbiter for the req channel
+ //just a huge plumming
   generate
     for (genvar p = 0; p < NUM_RNF; p++) begin : gen_reqtgt_port
 
@@ -492,10 +506,7 @@ module HN_F
     end
   end
 
-  // =====================================================================
-  // SN-F TX path (single physical port each): every live tracker is a
-  // candidate, no per-port masking needed since there's only one port.
-  // =====================================================================
+  // SN-F TX path  every live tracker is a participant no per port masking needed (i am not claiming i can do it)
   logic sn_targets_me [NUM_TRACKERS];
   always_comb begin
     for (int t = 0; t < NUM_TRACKERS; t++) sn_targets_me[t] = tracker_valid[t];

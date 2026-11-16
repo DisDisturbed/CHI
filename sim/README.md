@@ -98,10 +98,30 @@ make regress TB=rnf SEEDS='1 2 3 4' G='SETS=4 WAYS=2'
    | `SNOOP_IN_WAIT` | Slow memory: snoops arrive while the dcache waits for its own request |
    | `NC_MIX` | Non-cacheable accesses of both RN-Fs on the same lines |
    | `PRIV_BURST` | Store / load bursts on the private lines |
+   | `SUBWORD_MERGE` | 8/16/32-byte windows (or scattered sub-words) built from smaller stores that are all in flight together, from a line not held / Shared / Unique Dirty / held dirty by the other RN-F, read back wide and narrow |
+   | `SUBWORD_LANES` | Every aligned position of every width stored, then read back at every width |
+   | `NC_SUBWORD` | Non-cacheable sub-word stores to disjoint bytes, in flight together, read back |
+   | `OOO_BURST` | Misses and slow non-cacheable accesses first, hits behind them, full in-flight window |
+   | `B2B_SAME_LINE` | Back-to-back loads / stores to one line (merges and hazards) while the other RN-F takes the line away |
+   | `B2B_SET_CONFLICT` | Every line of one set in flight at once: misses that need a victim while others are open |
+   | `HAZARD_CHAIN` | RAW / WAR / WAW chains on the same bytes with independent accesses between them |
+   | `NC_ERR` | One non-cacheable line answered with an error by the SN-F, mixed into bursts |
 
 2. **Random rounds.** The behavioural RN-F runs its random ops; the core driver mixes single
-   accesses with idle gaps, back-to-back runs, runs on one line, store-then-load of the same
-   bytes and walks over one set.
+   blocking accesses with idle gaps, pipelined bursts (any line, one line, one set), store
+   then load of the same bytes, sub-word merge windows, misses with hits queued behind them
+   and drain points. Per round the top re-rolls the HN-F/SN-F knobs, the behavioural RN-F's
+   request mix (TxnID overlap, zero byte enables, several non-coherent ops per line,
+   unaligned NC/partial writes, partial states) and the core's knobs (in-flight window 1..16,
+   store / NC / private mix, width weights, gaps).
+
+   **The core model** (`rnf_core_driver`) is a pipelined, out-of-order core: up to
+   `CORE_MAX_OUT` requests in flight with their own `idx`, the next request on the pins right
+   after the previous one is accepted, responses matched by `idx` in any order. It holds a
+   request back only for a byte hazard with one in flight (RAW / WAR / WAW); requests to other
+   bytes of the same line go out together. Accesses are 1/2/4/8 bytes, always aligned to
+   their size (an unaligned access traps in the core and never reaches the dcache). How many
+   requests the dcache takes at once is measured, never relied on.
 3. **Flush.** The dcache has no flush of its own: the behavioural RN-F sends CleanInvalid for
    every line, which pulls the dcache's dirty lines out through snoops.
 
@@ -111,6 +131,11 @@ make regress TB=rnf SEEDS='1 2 3 4' G='SETS=4 WAYS=2'
   its tag writes), the memory image after the flush.
 - **Private lines.** 12 lines only the dcache touches, in the same sets as the shared ones.
   The driver keeps its own byte-exact copy: a load must return exactly the bytes stored last.
+  It also remembers which store wrote each byte, so a load that returns the bytes of several
+  sub-word stores (also ones that were in flight together) counts as a merge check.
+- **Core side**: every response answers an accepted request with that `idx`, echoes its
+  `op` / `src`, an `idx` is never reused while open, `chr_state` is I for non-cacheable
+  accesses, `err` only on lines the SN-F was told to fail.
 - **`rnf_chi_checker`**: looks only at the dcache's pins and keeps its own view of each line.
   Request fields and legal start state, CompAck exactly once with the right TxnID, write data
   format and its Resp against the line's state, every snoop answered once, in time, legally for
@@ -122,12 +147,21 @@ make regress TB=rnf SEEDS='1 2 3 4' G='SETS=4 WAYS=2'
   cell listed in `check_coverage()` must have been reached or the run fails with `COVERAGE`.
   Only cells this HN-F can produce are required: it grants SC to ReadShared and UC to
   ReadUnique, so the dcache never holds a line as SD, and UC only between fill and store.
+- **Black-box coverage** (keys `bb core ...`, `core ...`, `drv ...`, `merge ...`), from the
+  pins and the reference models only, also required: every width x cacheable/NC x load/store,
+  every aligned lane of every width, core op x the line's bus state at accept, hit / miss /
+  victim write-back / Evict seen on the bus, snoops on the line of an open core request,
+  RAW / WAR / WAW stalls, sub-word stores to one line in flight together, byte-exact merge
+  checks, NC error responses. `REQUIRE_CORE_OOO=1` also requires what only a dcache that
+  takes several requests at once can produce (2+ accepted, responses out of order).
 - At the end the dcache must be idle and empty, with nothing open on the bus.
 
 | `G` parameter | Default | Meaning |
 | --- | --- | --- |
 | `RUN_SCENARIOS` | `1` | Run the directed scenarios |
-| `FIRST_SCENARIO` / `LAST_SCENARIO` | `1` / `9` | Scenario range (the coverage matrix needs the full range) |
+| `FIRST_SCENARIO` / `LAST_SCENARIO` | `1` / `17` | Scenario range (the coverage matrix needs the full range) |
+| `CORE_MAX_OUT` | `16` | Requests the core keeps in flight at most (at most 2**ReqIdxWidth) |
+| `REQUIRE_CORE_OOO` | `0` | Also require several requests accepted at once and out-of-order responses |
 | `CHECK_COVERAGE` | `1` | Fail on unreached coverage cells |
 | `NUM_ROUNDS` / `OPS_PER_ROUND` | `8` / `50` | Random rounds, behavioural RN-F ops per round |
 | `CORE_OPS_MULT` | `4` | Core accesses per behavioural RN-F op |

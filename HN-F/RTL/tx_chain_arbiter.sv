@@ -1,3 +1,8 @@
+/*  TX link credits  one credit counter per physical TX port inside this module
+    TSHR raises *_flitv from its state only the arbiter grants one tracker when the port has a credit
+    TSHR moves on when it sees *_gnt No credit can be stranded in a tracker and there is no comb loop
+    flitv never depends on gnt */
+
 module tx_chan_arbiter
   import common_pkg::*;
 #(
