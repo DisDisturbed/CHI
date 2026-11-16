@@ -184,6 +184,25 @@ module Tb_HNF_Random;
     end
   end
 
+`ifdef SNF_RTL
+  // RTL SN-F (SN-F/RTL/snf.sv) instead of the behavioural model (make SNF=rtl).
+  // No retries / errors / reordering from this SN-F. Its array starts with the
+  // scoreboard's default memory image, and every line it writes is mirrored
+  // into sb.snf_mem, so the scoreboard's golden memory stays the reference.
+  localparam bit SNF_IS_MODEL = 0;
+  localparam int SNF_RTL_AW   = 22;     // 4 MB at 0: the pool (<1 MB) and nc_pool (0x20_0000..)
+  snf #(.NODEID(SN_ID), .MEM_AW(SNF_RTL_AW), .MEM_BASE('0), .LATENCY(2)) snf (
+    .clk(clk), .resetn(resetn),
+    .req_rx(snf_req_if),
+    .rsp_tx(snf_rsp_if),
+    .dat_rx(snf_dat_tx_if),
+    .dat_tx(snf_dat_rx_if)
+  );
+  initial for (int i = 0; i < (1 << (SNF_RTL_AW - 6)); i++) snf.mem[i] = default_line(addr_t'(i) << 6);
+  always @(posedge clk)
+    if (resetn && sb != null && snf.w_commit) sb.snf_write(addr_t'(snf.w_addr), snf.w_buf, snf.w_be);
+`else
+  localparam bit SNF_IS_MODEL = 1;
   snf_model #(.NAME("SNF"), .IDX(0), .NODEID(SN_ID), .SEED(SEED * 7 + 3)) snf (
     .clk(clk), .resetn(resetn),
     .req_rx(snf_req_if),
@@ -191,6 +210,7 @@ module Tb_HNF_Random;
     .dat_rx(snf_dat_tx_if),
     .dat_tx(snf_dat_rx_if)
   );
+`endif
 
   // ---------------------------------------------------------------- knob profiles
   function automatic void base_knobs();
@@ -453,11 +473,18 @@ module Tb_HNF_Random;
       cr_eq($sformatf("RSP  <- RNF%0d", i), cr_hn_rrx[i], cr_rn_rrx[i]);
       cr_eq($sformatf("DAT  <- RNF%0d", i), cr_hn_drx[i], cr_rn_drx[i]);
     end
+`ifdef SNF_RTL
+    cr_eq("REQ  -> SNF ", int'(dut.u_sn_req_arb.u_port_cred.credit_q),                    int'(snf.cr_out));
+    cr_eq("DAT  -> SNF ", int'(dut.u_sn_dat_tx_arb.u_port_cred.credit_q),                 int'(snf.u_wd_cr.outstanding_q));
+    cr_eq("RSP  <- SNF ", int'(dut.u_snf_rsp_cred.outstanding_q),                         int'(snf.u_rsp_cr.credit_q));
+    cr_eq("DAT  <- SNF ", int'(dut.u_snf_dat_rx_cred.outstanding_q),                      int'(snf.u_dat_cr.credit_q));
+`else
     cr_eq("REQ  -> SNF ", int'(dut.u_sn_req_arb.u_port_cred.credit_q),                    snf.req_gr - snf.req_rc);
     cr_eq("DAT  -> SNF ", int'(dut.u_sn_dat_tx_arb.u_port_cred.credit_q),                 snf.wd_gr - snf.wd_rc);
     // HN-F RX ports: credits HN-F granted and the partner has not spent
     cr_eq("RSP  <- SNF ", int'(dut.u_snf_rsp_cred.outstanding_q),                         snf.rsp_cr_in - snf.rsp_cr_out);
     cr_eq("DAT  <- SNF ", int'(dut.u_snf_dat_rx_cred.outstanding_q),                      snf.dat_cr_in - snf.dat_cr_out);
+`endif
   endfunction
 
   // ---------------------------------------------------------------- snoop filter
@@ -539,7 +566,7 @@ module Tb_HNF_Random;
       return;
     end
     need(1,                 "tshr: enter ST_SNOOP_WAIT");
-    need(1,                 "tshr: enter ST_SN_RETRY_WAIT");
+    need(SNF_IS_MODEL,      "tshr: enter ST_SN_RETRY_WAIT");
     need(1,                 "tshr: enter ST_SN_COMP_WAIT");
     need(1,                 "tshr: enter ST_DIRTY_WB_DATA_SEND");
     need(1,                 "tshr: enter ST_COMPACK_WAIT");
@@ -547,7 +574,7 @@ module Tb_HNF_Random;
     need(1,                 "tshr: dirty write-back after TX_WRITE_UNIQUE");
     need(1,                 "tshr: dirty write-back after TX_CMO");
     need(1,                 "hnf: all trackers busy");
-    need(1,                 "snf: RetryAck");
+    need(SNF_IS_MODEL,      "snf: RetryAck");
     need(!LOCK_ALL && NUM_TRACKERS > 1, "tshr: enter ST_HAZARD_WAIT");
     need(!LOCK_ALL && NUM_TRACKERS > 1, "hnf: both RN-F REQ on the same cycle, same line");
     need(UNALIGNED,         "rn: unaligned ReadNoSnp");
@@ -557,11 +584,11 @@ module Tb_HNF_Random;
     need(!LOCK_ALL,         "sb: writes in flight on one line >=2");
     need(COMPACK_OPT,       "rn: CompAck on ReadOnce/ReadNoSnp");
     need(COMPACK_OPT,       "rn: CompAck on a write");
-    need(COMP_FIRST,        "snf: Comp before DBIDResp");
-    need(COMP_EARLY,        "snf: Comp after DBIDResp, before write data");
-    need(SNF_PCRD_EARLY,    "snf: PCrdGrant before RetryAck");
-    need(SNF_PCRD_EARLY,    "hnf: P-credit banked with no tracker waiting");
-    need(1,                 "snf: PCrdType != 0");
+    need(SNF_IS_MODEL && COMP_FIRST, "snf: Comp before DBIDResp");
+    need(SNF_IS_MODEL && COMP_EARLY, "snf: Comp after DBIDResp, before write data");
+    need(SNF_IS_MODEL && SNF_PCRD_EARLY, "snf: PCrdGrant before RetryAck");
+    need(SNF_IS_MODEL && SNF_PCRD_EARLY, "hnf: P-credit banked with no tracker waiting");
+    need(SNF_IS_MODEL,      "snf: PCrdType != 0");
     need(SNP_OPT_DATA,      "rn: clean SnpRespData_I on SnpUnique RetToSrc=0");
     need(ZERO_BE,           "rn: partial write with BE=0");
     need(MID_RESETS > 0,    "top: reset with traffic in flight");

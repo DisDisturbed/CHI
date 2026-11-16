@@ -73,7 +73,9 @@ endif
 
 # Parameters are fixed at compile time, so every distinct set gets its own
 # build directory and output directory, named after the parameters.
-TAG   := $(if $(strip $(ALL_G)),$(subst $(eval) ,_,$(strip $(ALL_G))),default)
+# SNF=rtl (TB=random only): the RTL SN-F (SN-F/RTL/snf.sv) instead of snf_model
+SNF   ?= model
+TAG   := $(if $(strip $(ALL_G)),$(subst $(eval) ,_,$(strip $(ALL_G))),default)$(if $(filter rtl,$(SNF)),_SNF=rtl)
 BUILD := build/$(TB)/$(TAG)
 OUT   := out/$(TB)/$(TAG)
 BIN   := $(BUILD)/V$(TOP)$(EXE)
@@ -81,17 +83,17 @@ FST   := $(OUT)/wave.fst
 GTKW  := waves/$(TB).gtkw
 
 SRCS  := $(wildcard ../common/RTL/*.sv ../common/TB/*.sv ../HN-F/RTL/*.sv ../HN-F/TB/*/*.sv \
-                   ../RN-F/RTL/*.sv ../RN-F/TB/*.sv) \
+                   ../RN-F/RTL/*.sv ../RN-F/TB/*.sv ../SN-F/RTL/*.sv) \
          $(wildcard filelists/*.f) support/sim_dump.sv Makefile
 
 # IMPURE: rnf_model.sv uses no_inline_task on tasks that reach sb.*, see README.
 VFLAGS := --binary --timing -sv --top-module $(TOP) \
           --trace-fst --trace-structs --trace-params \
           -Wno-fatal -Wno-IMPURE \
-          +define+SIM_TOP=$(TOP) \
+          +define+SIM_TOP=$(TOP) $(if $(filter rtl,$(SNF)),+define+SNF_RTL) \
           -j $(JOBS) --Mdir $(BUILD) -o V$(TOP) \
           $(addprefix -G,$(ALL_G)) \
-          -f filelists/$(TB).f support/sim_dump.sv
+          -f filelists/$(TB).f $(if $(filter rtl,$(SNF)),../SN-F/RTL/snf.sv) support/sim_dump.sv
 
 # Waves go to a temp file and are copied over wave.fst at the end, so a viewer
 # watching wave.fst does not read a half-written file. The copy is in place
