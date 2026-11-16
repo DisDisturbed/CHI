@@ -1,0 +1,751 @@
+=== Tb_HNF_Random: NRNF=4 SF=1x1 SEED=2 NUM_TRACKERS=4 LOCK_ALL=0 scenarios=1(1..27) rounds=8 x 50 ops/RN mid_resets=4 ===
+=== features: comp_first=1 comp_early=1 pcrd_early=1 compack_opt=1 snp_opt_data=1 zero_be=1 nc_multi=1 unaligned=1 txid_collide=1 ===
+=== requests: clean_unique=1 make_unique=1 evict=1 read_nsd=1 partial_states=1 ===
+[145000] TOP: start scenario 1
+[6465000] TOP: done  scenario 1 (632 cycles, failures so far 0)
+[6605000] TOP: snoop filter after scenario 1: 1 copies held, all covered by 1 entries; 0 stale bits
+[6605000] TOP: start scenario 2
+[22675000] TOP: done  scenario 2 (1607 cycles, failures so far 0)
+[22685000] TOP: snoop filter after scenario 2: 1 copies held, all covered by 1 entries; 0 stale bits
+[22685000] TOP: start scenario 3
+[31015000] TOP: done  scenario 3 (833 cycles, failures so far 0)
+[31095000] TOP: snoop filter after scenario 3: 1 copies held, all covered by 1 entries; 0 stale bits
+[31095000] TOP: start scenario 4
+[37525000] TOP: done  scenario 4 (643 cycles, failures so far 0)
+[37525000] TOP: snoop filter after scenario 4: 1 copies held, all covered by 1 entries; 0 stale bits
+[37525000] TOP: start scenario 5
+[47875000] TOP: done  scenario 5 (1035 cycles, failures so far 0)
+[47875000] TOP: snoop filter after scenario 5: 1 copies held, all covered by 1 entries; 0 stale bits
+[47875000] TOP: start scenario 6
+[50035000] TOP: done  scenario 6 (216 cycles, failures so far 0)
+[50035000] TOP: snoop filter after scenario 6: 1 copies held, all covered by 1 entries; 0 stale bits
+[50035000] TOP: start scenario 7
+[65385000] TOP: done  scenario 7 (1535 cycles, failures so far 0)
+[65385000] TOP: snoop filter after scenario 7: 1 copies held, all covered by 1 entries; 0 stale bits
+[65385000] TOP: start scenario 8
+[81995000] TOP: done  scenario 8 (1661 cycles, failures so far 0)
+[81995000] TOP: snoop filter after scenario 8: 1 copies held, all covered by 1 entries; 0 stale bits
+[81995000] TOP: start scenario 9
+[84825000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2012 srcid=2 opcode=REQ_CLEAN_UNIQUE addr=a0000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[84855000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=552 srcid=1 opcode=REQ_READ_SHARED addr=100000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[85065000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 120 cycles (only slow, not deadlocked)
+[85175000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 134 cycles (only slow, not deadlocked)
+[86685000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=406 srcid=1 opcode=REQ_READ_SHARED addr=60000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[86725000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=781 srcid=1 opcode=REQ_READ_UNIQUE addr=40000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[87025000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[87155000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 146 cycles (only slow, not deadlocked)
+[88215000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1353 srcid=2 opcode=REQ_READ_ONCE addr=20000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[88275000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=406 srcid=1 opcode=REQ_READ_SHARED addr=60000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[88405000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 118 cycles (only slow, not deadlocked)
+[88525000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[90395000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1389 srcid=2 opcode=REQ_READ_SHARED addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[90655000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[90785000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=245 srcid=1 opcode=REQ_READ_ONCE addr=90000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[90985000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 119 cycles (only slow, not deadlocked)
+[91885000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1785 srcid=2 opcode=REQ_READ_UNIQUE addr=70000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[92065000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 117 cycles (only slow, not deadlocked)
+[92675000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=791 srcid=1 opcode=REQ_WRITE_UNIQUE_FULL addr=10000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[92955000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 127 cycles (only slow, not deadlocked)
+[94115000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1694 srcid=2 opcode=REQ_READ_UNIQUE addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[94265000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=709 srcid=1 opcode=REQ_CLEAN_UNIQUE addr=c0000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[94415000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[94555000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 128 cycles (only slow, not deadlocked)
+[95725000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1225 srcid=2 opcode=REQ_WRITE_UNIQUE_PTL addr=40008 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[95785000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=334 srcid=1 opcode=REQ_READ_ONCE addr=70000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[95965000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 123 cycles (only slow, not deadlocked)
+[96055000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 126 cycles (only slow, not deadlocked)
+[97265000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=115 srcid=1 opcode=REQ_WRITE_UNIQUE_FULL addr=20000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[97515000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[97935000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=435 srcid=1 opcode=REQ_WRITE_UNIQUE_PTL addr=80010 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[98155000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 121 cycles (only slow, not deadlocked)
+[98645000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=20 srcid=1 opcode=REQ_READ_ONCE addr=90000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[98845000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 119 cycles (only slow, not deadlocked)
+[99395000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1303 srcid=2 opcode=REQ_READ_NOT_SHARED_DIRTY addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[99665000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 126 cycles (only slow, not deadlocked)
+[100225000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=963 srcid=1 opcode=REQ_READ_NO_SNOOP addr=210020 tx_type=TX_READ_NOSNP beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[100475000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[101675000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=406 srcid=1 opcode=REQ_READ_UNIQUE addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[101725000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=38 srcid=1 opcode=REQ_READ_NOT_SHARED_DIRTY addr=40000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[101975000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[102105000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 137 cycles (only slow, not deadlocked)
+[103805000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=688 srcid=1 opcode=REQ_READ_UNIQUE addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[104065000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[106705000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_DIRTY_WB_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1739 srcid=2 opcode=REQ_READ_CLEAN addr=c0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[106885000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_DIRTY_WB_RSP_WAIT after 117 cycles (only slow, not deadlocked)
+[108575000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1631 srcid=2 opcode=REQ_READ_SHARED addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[108875000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[111215000] TOP: done  scenario 9 (2922 cycles, failures so far 0)
+[111215000] TOP: snoop filter after scenario 9: 1 copies held, all covered by 1 entries; 0 stale bits
+[111215000] TOP: start scenario 10
+[114275000] TOP: done  scenario 10 (306 cycles, failures so far 0)
+[114275000] TOP: snoop filter after scenario 10: 0 copies held, all covered by 1 entries; 1 stale bits
+[114275000] TOP: start scenario 11
+[120345000] TOP: done  scenario 11 (607 cycles, failures so far 0)
+[120345000] TOP: snoop filter after scenario 11: 1 copies held, all covered by 1 entries; 0 stale bits
+[120345000] TOP: start scenario 12
+[125935000] TOP: done  scenario 12 (559 cycles, failures so far 0)
+[125935000] TOP: snoop filter after scenario 12: 1 copies held, all covered by 1 entries; 0 stale bits
+[125935000] TOP: start scenario 13
+[132355000] TOP: done  scenario 13 (642 cycles, failures so far 0)
+[132365000] TOP: snoop filter after scenario 13: 1 copies held, all covered by 1 entries; 0 stale bits
+[132365000] TOP: start scenario 14
+[137315000] TOP: done  scenario 14 (495 cycles, failures so far 0)
+[137315000] TOP: snoop filter after scenario 14: 1 copies held, all covered by 1 entries; 0 stale bits
+[137315000] TOP: start scenario 15
+[155325000] TOP: done  scenario 15 (1801 cycles, failures so far 0)
+[155325000] TOP: snoop filter after scenario 15: 0 copies held, all covered by 0 entries; 0 stale bits
+[155325000] TOP: start scenario 16
+[167405000] TOP: done  scenario 16 (1208 cycles, failures so far 0)
+[167405000] TOP: snoop filter after scenario 16: 1 copies held, all covered by 1 entries; 0 stale bits
+[167405000] TOP: start scenario 17
+[170135000] TOP: done  scenario 17 (273 cycles, failures so far 0)
+[170135000] TOP: snoop filter after scenario 17: 1 copies held, all covered by 1 entries; 0 stale bits
+[170135000] TOP: start scenario 18
+[197195000] TOP: done  scenario 18 (2706 cycles, failures so far 0)
+[197315000] TOP: snoop filter after scenario 18: 1 copies held, all covered by 1 entries; 0 stale bits
+[197315000] TOP: start scenario 19
+[219685000] TOP: done  scenario 19 (2237 cycles, failures so far 0)
+[219685000] TOP: snoop filter after scenario 19: 1 copies held, all covered by 1 entries; 0 stale bits
+[219685000] TOP: start scenario 20
+[233355000] TOP: done  scenario 20 (1367 cycles, failures so far 0)
+[233355000] TOP: snoop filter after scenario 20: 1 copies held, all covered by 1 entries; 0 stale bits
+[233355000] TOP: start scenario 21
+[238535000] TOP: done  scenario 21 (518 cycles, failures so far 0)
+[238535000] TOP: snoop filter after scenario 21: 1 copies held, all covered by 1 entries; 0 stale bits
+[238535000] TOP: start scenario 22
+[258345000] TOP: done  scenario 22 (1981 cycles, failures so far 0)
+[258345000] TOP: snoop filter after scenario 22: 1 copies held, all covered by 1 entries; 0 stale bits
+[258345000] TOP: start scenario 23
+[265085000] TOP: done  scenario 23 (674 cycles, failures so far 0)
+[265085000] TOP: snoop filter after scenario 23: 1 copies held, all covered by 1 entries; 0 stale bits
+[265085000] TOP: start scenario 24
+[275225000] TOP: done  scenario 24 (1014 cycles, failures so far 0)
+[275225000] TOP: snoop filter after scenario 24: 1 copies held, all covered by 1 entries; 0 stale bits
+[275225000] TOP: start scenario 25
+[301685000] TOP: done  scenario 25 (2646 cycles, failures so far 0)
+[301755000] TOP: snoop filter after scenario 25: 2 copies held, all covered by 1 entries; 0 stale bits
+[301755000] TOP: start scenario 26
+[329975000] TOP: done  scenario 26 (2822 cycles, failures so far 0)
+[329975000] TOP: snoop filter after scenario 26: 2 copies held, all covered by 1 entries; 0 stale bits
+[329975000] TOP: start scenario 27
+[358815000] TOP: done  scenario 27 (2884 cycles, failures so far 0)
+[358815000] TOP: snoop filter after scenario 27: 2 copies held, all covered by 1 entries; 0 stale bits
+[358815000] TOP: round 0 knobs: cr_cap=4 cr_pct=100 snp_lat=9 bubble=0 max_out=4 ack_lat=5 intlv=1 shuffle=0 snf_lat=6 snf_slow=18 hot=2/61% txid_mode=3 | retry=0% pcrd_types=9 pcrd_early=0% comp_first=34% comp_early=8% compack ro/wr=0/0 snp_opt_data=0% zero_be=20% nc_multi=0 unaligned=31%
+[358815000] TOP: start random round 0
+[360275000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=1 opcode=REQ_MAKE_UNIQUE addr=60000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[360455000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=0 srcid=3 opcode=REQ_READ_UNIQUE addr=60000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[360605000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 132 cycles (only slow, not deadlocked)
+[360725000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=4 opcode=REQ_READ_NOT_SHARED_DIRTY addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[360725000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 126 cycles (only slow, not deadlocked)
+[361035000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 130 cycles (only slow, not deadlocked)
+[361855000] TOP: done  random round 0 (304 cycles, failures so far 0)
+[361855000] TOP: snoop filter after random round 0: 1 copies held, all covered by 1 entries; 0 stale bits
+[361855000] TOP: round 1 knobs: cr_cap=7 cr_pct=100 snp_lat=4 bubble=0 max_out=1 ack_lat=2 intlv=1 shuffle=0 snf_lat=4 snf_slow=0 hot=4/44% txid_mode=3 | retry=0% pcrd_types=2 pcrd_early=0% comp_first=0% comp_early=0% compack ro/wr=1/0 snp_opt_data=44% zero_be=0% nc_multi=0 unaligned=33%
+[361855000] TOP: start random round 1
+[369125000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=0 srcid=1 opcode=REQ_READ_NOT_SHARED_DIRTY addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[369935000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 180 cycles (only slow, not deadlocked)
+[372245000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=0 srcid=1 opcode=REQ_READ_UNIQUE addr=40000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[372325000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 107 cycles (only slow, not deadlocked)
+[380495000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=3 opcode=REQ_READ_CLEAN addr=50000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[380535000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 103 cycles (only slow, not deadlocked)
+[382725000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=1 opcode=REQ_MAKE_UNIQUE addr=70000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[382865000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 113 cycles (only slow, not deadlocked)
+[385505000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=4 opcode=REQ_CLEAN_UNIQUE addr=40000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[385905000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 139 cycles (only slow, not deadlocked)
+[388275000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=0 srcid=3 opcode=REQ_READ_NOT_SHARED_DIRTY addr=100000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[388515000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 123 cycles (only slow, not deadlocked)
+[391815000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=4 opcode=REQ_CLEAN_UNIQUE addr=10000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[392075000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 125 cycles (only slow, not deadlocked)
+[393695000] TOP: done  random round 1 (3184 cycles, failures so far 0)
+[393695000] TOP: snoop filter after random round 1: 0 copies held, all covered by 1 entries; 1 stale bits
+[393695000] TOP: round 2 knobs: cr_cap=1 cr_pct=100 snp_lat=9 bubble=0 max_out=4 ack_lat=3 intlv=0 shuffle=0 snf_lat=7 snf_slow=0 hot=2/32% txid_mode=0 | retry=0% pcrd_types=9 pcrd_early=0% comp_first=0% comp_early=0% compack ro/wr=0/0 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=0%
+[393695000] TOP: start random round 2
+[394985000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2258 srcid=3 opcode=REQ_READ_CLEAN addr=b0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[395715000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=565 srcid=1 opcode=REQ_READ_SHARED addr=b0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[395975000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 198 cycles (only slow, not deadlocked)
+[396305000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 158 cycles (only slow, not deadlocked)
+[397005000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=2298 srcid=3 opcode=REQ_READ_UNIQUE addr=e0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[397065000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 105 cycles (only slow, not deadlocked)
+[398965000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2931 srcid=3 opcode=REQ_READ_UNIQUE addr=40000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[400445000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 247 cycles (only slow, not deadlocked)
+[402625000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1750 srcid=2 opcode=REQ_READ_SHARED addr=a0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[403345000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1682 srcid=2 opcode=REQ_CLEAN_UNIQUE addr=20000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[403365000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 173 cycles (only slow, not deadlocked)
+[403695000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 134 cycles (only slow, not deadlocked)
+[405515000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=991 srcid=1 opcode=REQ_READ_SHARED addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[407965000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 344 cycles (only slow, not deadlocked)
+[408495000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2664 srcid=3 opcode=REQ_READ_NOT_SHARED_DIRTY addr=70000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[408535000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 103 cycles (only slow, not deadlocked)
+[409995000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=810 srcid=1 opcode=REQ_READ_UNIQUE addr=70000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[410365000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 136 cycles (only slow, not deadlocked)
+[411665000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1425 srcid=2 opcode=REQ_READ_SHARED addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[412225000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 155 cycles (only slow, not deadlocked)
+[412405000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=2442 srcid=3 opcode=REQ_CLEAN_UNIQUE addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[412565000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 115 cycles (only slow, not deadlocked)
+[413255000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1700 srcid=2 opcode=REQ_READ_UNIQUE addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[414005000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 174 cycles (only slow, not deadlocked)
+[417855000] TOP: done  random round 2 (2416 cycles, failures so far 0)
+[417855000] TOP: snoop filter after random round 2: 1 copies held, all covered by 1 entries; 0 stale bits
+[417855000] TOP: round 3 knobs: cr_cap=13 cr_pct=100 snp_lat=10 bubble=26 max_out=3 ack_lat=2 intlv=1 shuffle=0 snf_lat=0 snf_slow=0 hot=1/30% txid_mode=2 | retry=40% pcrd_types=4 pcrd_early=69% comp_first=40% comp_early=0% compack ro/wr=1/1 snp_opt_data=39% zero_be=0% nc_multi=1 unaligned=0%
+[417855000] TOP: start random round 3
+[419355000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=980 srcid=4 opcode=REQ_READ_CLEAN addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[419425000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2913 srcid=1 opcode=REQ_READ_NOT_SHARED_DIRTY addr=b0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[419805000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 137 cycles (only slow, not deadlocked)
+[420255000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 189 cycles (only slow, not deadlocked)
+[421075000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2345 srcid=4 opcode=REQ_MAKE_UNIQUE addr=10000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[421175000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 109 cycles (only slow, not deadlocked)
+[421285000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=1624 srcid=1 opcode=REQ_READ_CLEAN addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[421315000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 102 cycles (only slow, not deadlocked)
+[424305000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=852 srcid=3 opcode=REQ_READ_NOT_SHARED_DIRTY addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[424755000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3727 srcid=1 opcode=REQ_READ_UNIQUE addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[425215000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 190 cycles (only slow, not deadlocked)
+[425785000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 202 cycles (only slow, not deadlocked)
+[426245000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1374 srcid=3 opcode=REQ_CLEAN_UNIQUE addr=70000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[426585000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 133 cycles (only slow, not deadlocked)
+[427395000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2074 srcid=3 opcode=REQ_READ_NOT_SHARED_DIRTY addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[427835000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3840 srcid=2 opcode=REQ_MAKE_UNIQUE addr=d0000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[428025000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 162 cycles (only slow, not deadlocked)
+[429005000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 216 cycles (only slow, not deadlocked)
+[429635000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2295 srcid=2 opcode=REQ_READ_UNIQUE addr=70000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[430465000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=761 srcid=4 opcode=REQ_READ_NOT_SHARED_DIRTY addr=e0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[430515000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 104 cycles (only slow, not deadlocked)
+[431345000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 270 cycles (only slow, not deadlocked)
+[431545000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=294 srcid=1 opcode=REQ_MAKE_UNIQUE addr=40000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[432395000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 184 cycles (only slow, not deadlocked)
+[433425000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2575 srcid=2 opcode=REQ_READ_SHARED addr=e0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[433635000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3526 srcid=3 opcode=REQ_READ_UNIQUE addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[435095000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 266 cycles (only slow, not deadlocked)
+[435485000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 284 cycles (only slow, not deadlocked)
+[435635000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=1796 srcid=2 opcode=REQ_READ_SHARED addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[436125000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3822 srcid=3 opcode=REQ_READ_CLEAN addr=b0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[436175000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 153 cycles (only slow, not deadlocked)
+[436515000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2526 srcid=4 opcode=REQ_MAKE_UNIQUE addr=a0000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[436665000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 153 cycles (only slow, not deadlocked)
+[437115000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 159 cycles (only slow, not deadlocked)
+[437455000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=536 srcid=2 opcode=REQ_READ_UNIQUE addr=d0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[438055000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 159 cycles (only slow, not deadlocked)
+[439165000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=3128 srcid=1 opcode=REQ_READ_NOT_SHARED_DIRTY addr=40000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[439225000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 105 cycles (only slow, not deadlocked)
+[440525000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1327 srcid=3 opcode=REQ_READ_SHARED addr=d0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[440735000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=656 srcid=4 opcode=REQ_MAKE_UNIQUE addr=f0000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[440835000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 130 cycles (only slow, not deadlocked)
+[441025000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=219 srcid=2 opcode=REQ_READ_UNIQUE addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[441175000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 143 cycles (only slow, not deadlocked)
+[442445000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 241 cycles (only slow, not deadlocked)
+[442625000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1097 srcid=2 opcode=REQ_READ_UNIQUE addr=80000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[443315000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 168 cycles (only slow, not deadlocked)
+[443895000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=487 srcid=1 opcode=REQ_CLEAN_UNIQUE addr=90000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[444075000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 117 cycles (only slow, not deadlocked)
+[445265000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2990 srcid=1 opcode=REQ_READ_SHARED addr=e0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[446385000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1643 srcid=3 opcode=REQ_READ_UNIQUE addr=c0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[447315000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 192 cycles (only slow, not deadlocked)
+[447645000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 337 cycles (only slow, not deadlocked)
+[447985000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2143 srcid=4 opcode=REQ_READ_UNIQUE addr=b0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[448245000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 125 cycles (only slow, not deadlocked)
+[452005000] TOP: done  random round 3 (3415 cycles, failures so far 0)
+[452005000] TOP: snoop filter after random round 3: 1 copies held, all covered by 1 entries; 0 stale bits
+[452005000] TOP: round 4 knobs: cr_cap=6 cr_pct=100 snp_lat=7 bubble=0 max_out=4 ack_lat=5 intlv=0 shuffle=0 snf_lat=4 snf_slow=0 hot=3/66% txid_mode=3 | retry=0% pcrd_types=12 pcrd_early=49% comp_first=0% comp_early=0% compack ro/wr=0/0 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=33%
+[452005000] TOP: start random round 4
+[454695000] TOP: done  random round 4 (269 cycles, failures so far 0)
+[454695000] TOP: snoop filter after random round 4: 1 copies held, all covered by 1 entries; 0 stale bits
+[454695000] TOP: round 5 knobs: cr_cap=8 cr_pct=100 snp_lat=0 bubble=0 max_out=2 ack_lat=1 intlv=0 shuffle=0 snf_lat=0 snf_slow=0 hot=4/24% txid_mode=3 | retry=39% pcrd_types=8 pcrd_early=52% comp_first=30% comp_early=0% compack ro/wr=0/1 snp_opt_data=37% zero_be=0% nc_multi=1 unaligned=0%
+[454695000] TOP: start random round 5
+[455805000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=3 opcode=REQ_READ_NOT_SHARED_DIRTY addr=d0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[456425000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 161 cycles (only slow, not deadlocked)
+[456865000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=1 opcode=REQ_READ_UNIQUE addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[457185000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=0 srcid=3 opcode=REQ_CLEAN_UNIQUE addr=a0000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[457285000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 141 cycles (only slow, not deadlocked)
+[457555000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 136 cycles (only slow, not deadlocked)
+[459085000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=0 srcid=3 opcode=REQ_READ_UNIQUE addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[459555000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=0 srcid=2 opcode=REQ_WRITE_UNIQUE_FULL addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[459625000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 153 cycles (only slow, not deadlocked)
+[459825000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 126 cycles (only slow, not deadlocked)
+[463345000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=3 opcode=REQ_CLEAN_UNIQUE addr=50000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[463475000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 112 cycles (only slow, not deadlocked)
+[464525000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=0 srcid=3 opcode=REQ_READ_UNIQUE addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[465115000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=1 opcode=REQ_READ_UNIQUE addr=e0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[465345000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 122 cycles (only slow, not deadlocked)
+[465825000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 229 cycles (only slow, not deadlocked)
+[467485000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=4 opcode=REQ_READ_SHARED addr=a0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[469005000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 251 cycles (only slow, not deadlocked)
+[472215000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=4 opcode=REQ_READ_CLEAN addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[472275000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 105 cycles (only slow, not deadlocked)
+[474315000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=0 srcid=2 opcode=REQ_READ_UNIQUE addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[474445000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 112 cycles (only slow, not deadlocked)
+[474865000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=3 opcode=REQ_READ_SHARED addr=c0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[475015000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 114 cycles (only slow, not deadlocked)
+[479425000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=0 srcid=1 opcode=REQ_READ_UNIQUE addr=80000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[480195000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 176 cycles (only slow, not deadlocked)
+[480305000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=4 opcode=REQ_READ_UNIQUE addr=100000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[480405000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 109 cycles (only slow, not deadlocked)
+[480655000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=0 srcid=2 opcode=REQ_READ_UNIQUE addr=90000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[481095000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 143 cycles (only slow, not deadlocked)
+[482175000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=3 opcode=REQ_CLEAN_UNIQUE addr=70000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[482295000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 111 cycles (only slow, not deadlocked)
+[484825000] TOP: done  random round 5 (3013 cycles, failures so far 0)
+[484825000] TOP: snoop filter after random round 5: 0 copies held, all covered by 0 entries; 0 stale bits
+[484825000] TOP: round 6 knobs: cr_cap=13 cr_pct=100 snp_lat=7 bubble=0 max_out=3 ack_lat=1 intlv=0 shuffle=1 snf_lat=3 snf_slow=5 hot=1/86% txid_mode=0 | retry=33% pcrd_types=7 pcrd_early=45% comp_first=0% comp_early=0% compack ro/wr=0/1 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=0%
+[484825000] TOP: start random round 6
+[486485000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=1620 srcid=2 opcode=REQ_WRITE_UNIQUE_PTL addr=3001f tx_type=TX_WRITE_NOSNP beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[486515000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 102 cycles (only slow, not deadlocked)
+[489835000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2305 srcid=3 opcode=REQ_READ_CLEAN addr=60000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[490575000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 173 cycles (only slow, not deadlocked)
+[491605000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=523 srcid=1 opcode=REQ_READ_UNIQUE addr=e0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[491805000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 119 cycles (only slow, not deadlocked)
+[496585000] TOP: done  random round 6 (1176 cycles, failures so far 0)
+[496585000] TOP: snoop filter after random round 6: 1 copies held, all covered by 1 entries; 0 stale bits
+[496585000] TOP: round 7 knobs: cr_cap=13 cr_pct=37 snp_lat=3 bubble=22 max_out=4 ack_lat=2 intlv=0 shuffle=0 snf_lat=4 snf_slow=0 hot=1/75% txid_mode=2 | retry=0% pcrd_types=16 pcrd_early=0% comp_first=0% comp_early=14% compack ro/wr=0/0 snp_opt_data=0% zero_be=26% nc_multi=1 unaligned=0%
+[496585000] TOP: start random round 7
+[497625000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2151 srcid=1 opcode=REQ_CLEAN_UNIQUE addr=c0000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[497985000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 135 cycles (only slow, not deadlocked)
+[506065000] TOP: done  random round 7 (948 cycles, failures so far 0)
+[506065000] TOP: snoop filter after random round 7: 0 copies held, all covered by 0 entries; 0 stale bits
+[506065000] TOP: reset round 0 knobs: cr_cap=2 cr_pct=71 snp_lat=2 bubble=8 max_out=2 ack_lat=3 intlv=0 shuffle=0 snf_lat=7 snf_slow=22 hot=1/31% txid_mode=2 | retry=34% pcrd_types=11 pcrd_early=37% comp_first=0% comp_early=0% compack ro/wr=0/1 snp_opt_data=0% zero_be=28% nc_multi=1 unaligned=0%
+[506065000] TOP: start reset round 0
+[508195000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2342 srcid=2 opcode=REQ_READ_NOT_SHARED_DIRTY addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[508535000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=860 srcid=4 opcode=REQ_READ_UNIQUE addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[508545000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3586 srcid=1 opcode=REQ_READ_CLEAN addr=40000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[508735000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 118 cycles (only slow, not deadlocked)
+[509065000] TOP: reset (mid-traffic reset after 300 cycles)
+[509065000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon was stuck in ST_SF_LOOKUP since 507205000
+[509065000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon was stuck in ST_SF_LOOKUP since 507545000
+[509215000] TOP: reset round 1 knobs: cr_cap=2 cr_pct=76 snp_lat=4 bubble=0 max_out=4 ack_lat=2 intlv=0 shuffle=0 snf_lat=3 snf_slow=0 hot=2/55% txid_mode=0 | retry=0% pcrd_types=6 pcrd_early=0% comp_first=0% comp_early=39% compack ro/wr=0/0 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=0%
+[509215000] TOP: start reset round 1
+[511105000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3053 srcid=3 opcode=REQ_READ_SHARED addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[511805000] TOP: reset (mid-traffic reset after 259 cycles)
+[511805000] DEADLOCK CLEARED BY RESET: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon was stuck in ST_SF_LOOKUP since 510115000
+[511955000] TOP: reset round 2 knobs: cr_cap=11 cr_pct=28 snp_lat=0 bubble=30 max_out=4 ack_lat=2 intlv=0 shuffle=0 snf_lat=7 snf_slow=0 hot=4/34% txid_mode=3 | retry=0% pcrd_types=16 pcrd_early=68% comp_first=34% comp_early=0% compack ro/wr=1/0 snp_opt_data=36% zero_be=0% nc_multi=1 unaligned=0%
+[511955000] TOP: start reset round 2
+[512985000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=4 opcode=REQ_READ_NOT_SHARED_DIRTY addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[513135000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 114 cycles (only slow, not deadlocked)
+[513295000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=0 srcid=3 opcode=REQ_READ_UNIQUE addr=80000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[513615000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 131 cycles (only slow, not deadlocked)
+[514165000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1 srcid=2 opcode=REQ_READ_UNIQUE addr=100000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[514975000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 180 cycles (only slow, not deadlocked)
+[515155000] TOP: reset (mid-traffic reset after 320 cycles)
+[515305000] TOP: reset round 3 knobs: cr_cap=13 cr_pct=100 snp_lat=7 bubble=0 max_out=4 ack_lat=5 intlv=1 shuffle=0 snf_lat=0 snf_slow=0 hot=2/42% txid_mode=0 | retry=0% pcrd_types=5 pcrd_early=54% comp_first=28% comp_early=20% compack ro/wr=0/0 snp_opt_data=33% zero_be=0% nc_multi=1 unaligned=54%
+[515305000] TOP: start reset round 3
+[516545000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2918 srcid=3 opcode=REQ_MAKE_UNIQUE addr=80000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[517305000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=3520 srcid=4 opcode=REQ_READ_ONCE addr=80000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[517425000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 187 cycles (only slow, not deadlocked)
+[517565000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 125 cycles (only slow, not deadlocked)
+[518595000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2592 srcid=3 opcode=REQ_CLEAN_UNIQUE addr=c0000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[518625000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 102 cycles (only slow, not deadlocked)
+[518755000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=229 srcid=1 opcode=REQ_READ_NOT_SHARED_DIRTY addr=70000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[518775000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 101 cycles (only slow, not deadlocked)
+[519375000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3124 srcid=4 opcode=REQ_READ_UNIQUE addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[519965000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 158 cycles (only slow, not deadlocked)
+[520035000] TOP: reset (mid-traffic reset after 473 cycles)
+[520185000] TOP: post-reset round knobs: cr_cap=6 cr_pct=100 snp_lat=8 bubble=0 max_out=3 ack_lat=3 intlv=1 shuffle=0 snf_lat=2 snf_slow=20 hot=3/37% txid_mode=0 | retry=0% pcrd_types=11 pcrd_early=0% comp_first=0% comp_early=46% compack ro/wr=1/0 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=18%
+[520185000] TOP: start random round after the mid-traffic resets
+[521215000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1489 srcid=2 opcode=REQ_READ_SHARED addr=40000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[521405000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=2255 srcid=3 opcode=REQ_MAKE_UNIQUE addr=40000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[521895000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 167 cycles (only slow, not deadlocked)
+[522155000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 174 cycles (only slow, not deadlocked)
+[522295000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=670 srcid=1 opcode=REQ_READ_SHARED addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[522525000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 122 cycles (only slow, not deadlocked)
+[522925000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=2000 srcid=2 opcode=REQ_READ_SHARED addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[522955000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 102 cycles (only slow, not deadlocked)
+[524455000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=860 srcid=1 opcode=REQ_READ_SHARED addr=50000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[525365000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3130 srcid=4 opcode=REQ_MAKE_UNIQUE addr=60000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[525665000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 220 cycles (only slow, not deadlocked)
+[526605000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 223 cycles (only slow, not deadlocked)
+[526695000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=974 srcid=1 opcode=REQ_READ_NOT_SHARED_DIRTY addr=a0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[526725000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 102 cycles (only slow, not deadlocked)
+[527755000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3820 srcid=4 opcode=REQ_READ_NOT_SHARED_DIRTY addr=70000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[527775000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 101 cycles (only slow, not deadlocked)
+[529115000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2668 srcid=3 opcode=REQ_READ_CLEAN addr=c0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[529405000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 128 cycles (only slow, not deadlocked)
+[529615000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1062 srcid=2 opcode=REQ_CLEAN_UNIQUE addr=e0000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[530435000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3608 srcid=4 opcode=REQ_READ_SHARED addr=a0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[530565000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 112 cycles (only slow, not deadlocked)
+[531025000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 240 cycles (only slow, not deadlocked)
+[533785000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2897 srcid=3 opcode=REQ_MAKE_UNIQUE addr=100000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[533855000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=3586 srcid=4 opcode=REQ_READ_CLEAN addr=100000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[534015000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 122 cycles (only slow, not deadlocked)
+[534265000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 140 cycles (only slow, not deadlocked)
+[534815000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=575 srcid=1 opcode=REQ_CLEAN_UNIQUE addr=100000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[534905000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 108 cycles (only slow, not deadlocked)
+[535045000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1234 srcid=2 opcode=REQ_READ_NOT_SHARED_DIRTY addr=80000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[535605000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 155 cycles (only slow, not deadlocked)
+[538255000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=2178 srcid=3 opcode=REQ_READ_SHARED addr=80000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[538295000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3791 srcid=4 opcode=REQ_READ_UNIQUE addr=10000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[538845000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 154 cycles (only slow, not deadlocked)
+[539855000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 259 cycles (only slow, not deadlocked)
+[539875000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=4079 srcid=4 opcode=REQ_READ_NOT_SHARED_DIRTY addr=50000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[540115000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 123 cycles (only slow, not deadlocked)
+[540915000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3867 srcid=4 opcode=REQ_READ_UNIQUE addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[541875000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 195 cycles (only slow, not deadlocked)
+[542835000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=247 srcid=1 opcode=REQ_READ_UNIQUE addr=60000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[543905000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 206 cycles (only slow, not deadlocked)
+[545515000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=914 srcid=1 opcode=REQ_READ_SHARED addr=20000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[545565000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 104 cycles (only slow, not deadlocked)
+[546265000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3853 srcid=4 opcode=REQ_READ_NOT_SHARED_DIRTY addr=100000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[546505000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 123 cycles (only slow, not deadlocked)
+[546595000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=1450 srcid=2 opcode=REQ_READ_SHARED addr=b0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[547235000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=681 srcid=1 opcode=REQ_READ_CLEAN addr=d0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[547355000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 111 cycles (only slow, not deadlocked)
+[548285000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 268 cycles (only slow, not deadlocked)
+[548535000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon stuck in ST_SF_LOOKUP for 100 cycles: waits for the snoop filter lookup port, or for a way in its set that no tracker is using
+           txnid=3295 srcid=4 opcode=REQ_READ_UNIQUE addr=90000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[549245000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[3].u_tshr_inst.u_deadlock_mon left ST_SF_LOOKUP after 170 cycles (only slow, not deadlocked)
+[550845000] TOP: done  random round after the mid-traffic resets (3066 cycles, failures so far 0)
+[550845000] TOP: snoop filter after random round after the mid-traffic resets: 1 copies held, all covered by 1 entries; 0 stale bits
+[550845000] TOP: start end-of-test flush
+[552125000] TOP: done  end-of-test flush (128 cycles, failures so far 0)
+[552125000] TOP: snoop filter after end-of-test flush: 0 copies held, all covered by 1 entries; 1 stale bits
+[557125000] TOP: snoop filter end of test: 0 copies held, all covered by 1 entries; 1 stale bits
+
+================= SCOREBOARD SUMMARY (seed=2) =================
+  requests issued     : 2705 (retries 0, PCrdGrants 0)
+  ops by kind         : RS=577 RC=152 RU=585 RO=174 WUF=215 WUP=244 WB=56 WC=36 CS=49 CI=63 MI=24 ST=235 SE=117 NRD=208 NWR=212
+                        CU=169 MU=129 EV=108 RNSD=157 WBP=3
+  reads checked       : 1591 (49 unchecked: unknown value / RespErr; 0 of those: too many writes in flight)
+  writes committed    : 577, silent stores 323
+  snoops answered     : 1485
+  SN-F errors injected: 12 (seen at RN 12)
+  resets applied      : 4
+  ---- failures ----
+  read mismatches     : 0
+  stale cached data   : 0
+  SWMR violations     : 0
+  protocol errors     : 0
+  unexpected responses: 0
+  SN-F misroutes      : 0
+  memory mismatches   : 0
+  timeouts            : 0
+  DUT state/credit/cov: 0
+  ---- coverage ----
+  hnf: 3+ RN-F REQ on the same cycle               12
+  hnf: P-credit banked with no tracker waiting     443
+  hnf: all trackers busy                           12051
+  hnf: all trackers busy (cycles)                  12051
+  hnf: both RN-F REQ on the same cycle             128
+  hnf: both RN-F REQ on the same cycle, same line  45
+  rn: CleanUnique ->UCE                            121
+  rn: CleanUnique SC->UC                           5
+  rn: CleanUnique SD->UD                           5
+  rn: CleanUnique lost its copy to a snoop         7
+  rn: CompAck delayed > 8 cycles possible          22
+  rn: CompAck on ReadOnce/ReadNoSnp                71
+  rn: CompAck on a write                           113
+  rn: Evict                                        108
+  rn: MakeUnique                                   88
+  rn: ReadNotSharedDirty                           157
+  rn: SnpRespDataPtl                               5
+  rn: WriteBackPtl                                 3
+  rn: WriteCleanFull lost its line to a snoop      8
+  rn: clean SnpRespData_I on SnpUnique RetToSrc=0  10
+  rn: partial write with BE=0                      13
+  rn: snoop on UCE                                 101
+  rn: store UCE->UDP                               9
+  rn: store UDP->UDP                               2
+  rn: takeover of a line 2+ other RN-Fs hold       22
+  rn: unaligned ReadNoSnp                          32
+  rn: unaligned WriteNoSnpPtl                      16
+  rn: unaligned WriteUniquePtl                     15
+  sb: writes in flight on one line >=2             102
+  sf: back-invalidation                            764
+  sf: back-invalidation wrote dirty data back      87
+  sf: back-invalidation, then the request itself   761
+  sf: coherent request needed no snoop             1611
+  sf: inclusion checked                            38
+  sf: lookup found every way of its set in use     19340
+  sf: one request snooped 2 RN-Fs                  19
+  sf: one request snooped 3+ RN-Fs                 9
+  sf: stale presence bit seen (silent eviction)    4
+  snf: Comp after DBIDResp, before write data      18
+  snf: Comp before DBIDResp                        18
+  snf: PCrdGrant before RetryAck                   126
+  snf: PCrdType != 0                               212
+  snf: RetryAck                                    241
+  top: reset with traffic in flight                4
+  tshr: dirty write-back after TX_CMO              13
+  tshr: dirty write-back after TX_READ             107
+  tshr: dirty write-back after TX_WRITE_UNIQUE     26
+  tshr: enter ST_ALLOC                             3238
+  tshr: enter ST_COMPACK_WAIT                      1660
+  tshr: enter ST_COMP_SEND                         1033
+  tshr: enter ST_DBIDRESP_SEND                     677
+  tshr: enter ST_DIRTY_WB_DATA_SEND                233
+  tshr: enter ST_DIRTY_WB_REQ_SEND                 256
+  tshr: enter ST_DIRTY_WB_RSP_WAIT                 256
+  tshr: enter ST_DONE                              2692
+  tshr: enter ST_HAZARD_WAIT                       535
+  tshr: enter ST_RDATA_SEND                        1566
+  tshr: enter ST_SF_LOOKUP                         2359
+  tshr: enter ST_SNOOP_PICK                        3722
+  tshr: enter ST_SNOOP_SEND                        1486
+  tshr: enter ST_SNOOP_WAIT                        1486
+  tshr: enter ST_SN_COMP_WAIT                      320
+  tshr: enter ST_SN_DATA_SEND                      651
+  tshr: enter ST_SN_REQ_SEND                       2064
+  tshr: enter ST_SN_RETRY_WAIT                     241
+  tshr: enter ST_SN_RSP_WAIT                       2064
+  tshr: enter ST_WDATA_WAIT                        677
+========================================================
+
+*** HN-F REGRESSION: ALL CHECKS PASSED (seed=2) ***
+- ../HN-F/TB/Randomized/TB_hnf_random.sv:669: Verilog $finish
+- S i m u l a t i o n   R e p o r t: Verilator 5.048 2026-04-26
+- Verilator: $finish at 557us; walltime 0.435 s; speed 1.280 ms/s
+- Verilator: cpu 0.435 s on 1 threads; allocated 10 MB

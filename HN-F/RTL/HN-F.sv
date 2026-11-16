@@ -1,10 +1,8 @@
 
 // HN_F - basic functional baseline
-// for exactly NUM_RNF==2 
-// most important limitation is that it doesnt have a snoop filter so every 
-// rnf snoops the other one
-// This is enough plumbing
-// well it should be good enough
+// any number of RN-Fs: an inclusive snoop filter (snoop_filter.sv, SF_SETS x
+// SF_WAYS entries, one presence bit per RN-F) decides which RN-Fs a tracker
+// snoops; the tracker snoops them one at a time (TSHR.sv)
 
 /*  HN-F only gives an rnf a REQ credit when a
     free tracker is not already promised to another outstanding credit
@@ -21,11 +19,14 @@ module HN_F
   parameter int AddrWidth      = 39,
   parameter int DataWidth      = 128,
   parameter int CacheLineWidth = 512,
-  parameter int TxCreditMax    = 15
+  parameter int TxCreditMax    = 15,
+  parameter int SF_SETS        = 16,     // snoop filter sets (power of 2)
+  parameter int SF_WAYS        = 4,      // snoop filter ways
+  parameter bit SF_BROADCAST   = 1'b0    // 1: snoop every other RN-F on each request (no filtering;
+                                         //    the filter still tracks lines and back-invalidates)
 ) (
   input  wire clk,
   input  wire resetn,
-  //2 rnf only like isnt it enough
   chi_req.rx rnf_req    [NUM_RNF], 
   chi_snp.tx rnf_snp    [NUM_RNF], 
   chi_rsp.rx rnf_rsp_rx [NUM_RNF], 
@@ -41,14 +42,14 @@ module HN_F
 );
 
   initial begin
-    if (NUM_RNF != 2) begin
-      $fatal(1, "HN_F basic baseline only derives a snoop target for NUM_RNF==2 (no real snoop filter yet)");
+    if (NUM_RNF < 1) begin
+      $fatal(1, "HN_F needs at least one RN-F");
     end
     if (TxCreditMax < 15) begin
       $fatal(1, "HN_F TxCreditMax (%0d) must be at least 15, the CHI maximum a receiver may grant, or credits are lost", TxCreditMax);
     end
     if (NUM_RNF > NUM_TRACKERS) begin
-      $fatal(1, "HN_F NUM_RNF (%0d) must be < NUM_TRACKERS (%0d) or some requests will starve", NUM_RNF, NUM_TRACKERS);
+      $fatal(1, "HN_F NUM_RNF (%0d) must be <= NUM_TRACKERS (%0d) or some requests will starve", NUM_RNF, NUM_TRACKERS);
     end
   end
 
@@ -132,13 +133,24 @@ module HN_F
 
 // this line is actually pretty important 
   logic [RNF_IDX_W-1:0] req_port_idx_q [NUM_TRACKERS]; // which RN-F is  requester
-  logic [RNF_IDX_W-1:0] snp_port_idx   [NUM_TRACKERS]; // which RN-F is snoop target 
+  logic [RNF_IDX_W-1:0] snp_port_idx   [NUM_TRACKERS]; // which RN-F is snoop target (driven by the tracker)
 
-  always_comb begin
-    for (int t = 0; t < NUM_TRACKERS; t++) begin
-      snp_port_idx[t] = ~req_port_idx_q[t];
-    end
-  end
+  // back-invalidation of a snoop filter victim, per tracker
+  logic                 trk_bi       [NUM_TRACKERS];
+  logic [AddrWidth-1:0] trk_bi_addr  [NUM_TRACKERS];
+
+  // snoop filter ports
+  localparam int SF_WAYW = (SF_WAYS <= 1) ? 1 : $clog2(SF_WAYS);
+  logic                 sf_lk_req    [NUM_TRACKERS];
+  logic                 sf_lk_alloc  [NUM_TRACKERS];
+  logic                 sf_lk_gnt    [NUM_TRACKERS];
+  logic                 sf_lk_hit, sf_lk_entry, sf_lk_victim;
+  logic [SF_WAYW-1:0]   sf_lk_way;
+  logic [NUM_RNF-1:0]   sf_lk_pres, sf_lk_victim_pres;
+  logic [AddrWidth-1:0] sf_lk_victim_addr;
+  logic                 sf_wr        [NUM_TRACKERS];
+  logic [SF_WAYW-1:0]   sf_wr_way    [NUM_TRACKERS];
+  logic [NUM_RNF-1:0]   sf_wr_pres   [NUM_TRACKERS];
 
   common_pkg::yn_status_e         rnf_req_flitv_flat   [NUM_RNF];
   common_pkg::yn_status_e         rnf_req_flitpend_flat[NUM_RNF];
@@ -226,18 +238,49 @@ module HN_F
     end
   end
    //HN-F records allocation order and holds tracker in the new ST_HAZARD_WAIT while an older tracker is active on the same 64B line.
+   // An older tracker that is back-invalidating a snoop filter victim also
+   // holds the victim line (trk_bi_addr) until that is done.
    // this is just a patch 
   always_comb begin
     for (int a = 0; a < NUM_TRACKERS; a++) begin
       trk_hazard[a] = 1'b0;
       for (int b = 0; b < NUM_TRACKERS; b++) begin
         if (trk_older_q[a][b] && tracker_valid[b] &&
-            (trk_addr[a][AddrWidth-1:LineOffW] == trk_addr[b][AddrWidth-1:LineOffW])) begin
+            ((trk_addr[a][AddrWidth-1:LineOffW] == trk_addr[b][AddrWidth-1:LineOffW]) ||
+             (trk_bi[b] && (trk_addr[a][AddrWidth-1:LineOffW] == trk_bi_addr[b][AddrWidth-1:LineOffW])))) begin
           trk_hazard[a] = 1'b1;
         end
       end
     end
   end
+
+  // ---- snoop filter
+  snoop_filter #(
+    .NUM_TRACKERS (NUM_TRACKERS),
+    .NUM_RNF      (NUM_RNF),
+    .SETS         (SF_SETS),
+    .WAYS         (SF_WAYS),
+    .AddrWidth    (AddrWidth),
+    .LineOffW     (LineOffW)
+  ) u_sf (
+    .clk              (clk),
+    .resetn           (resetn),
+    .trk_valid_i      (tracker_valid),
+    .trk_addr_i       (trk_addr),
+    .lk_req_i         (sf_lk_req),
+    .lk_alloc_i       (sf_lk_alloc),
+    .lk_gnt_o         (sf_lk_gnt),
+    .lk_hit_o         (sf_lk_hit),
+    .lk_entry_o       (sf_lk_entry),
+    .lk_way_o         (sf_lk_way),
+    .lk_pres_o        (sf_lk_pres),
+    .lk_victim_o      (sf_lk_victim),
+    .lk_victim_addr_o (sf_lk_victim_addr),
+    .lk_victim_pres_o (sf_lk_victim_pres),
+    .wr_i             (sf_wr),
+    .wr_way_i         (sf_wr_way),
+    .wr_pres_i        (sf_wr_pres)
+  );
 
   // P credit  pool for sn-f retry that bitchass snf better behave at the first try
   // anway it banked here  per pcrdtype and given to the waiting tracker
@@ -289,11 +332,32 @@ module HN_F
         .CacheLineWidth (CacheLineWidth),
         .TRK_ID         (i),
         .HNFID          (7'h40),
-        .SNFID          (7'h00)
+        .SNFID          (7'h00),
+        .NUM_RNF        (NUM_RNF),
+        .SF_WAYW        (SF_WAYW),
+        .SF_BROADCAST   (SF_BROADCAST)
       ) u_tshr_inst (
         .clk                 (clk),
         .resetn              (resetn),
         .ready_o             (tracker_ready[i]),
+
+        .req_port_i          (req_port_idx_q[i]),
+        .snp_port_o          (snp_port_idx[i]),
+        .bi_o                (trk_bi[i]),
+        .bi_addr_o           (trk_bi_addr[i]),
+
+        .sf_lk_req_o         (sf_lk_req[i]),
+        .sf_lk_alloc_o       (sf_lk_alloc[i]),
+        .sf_lk_gnt_i         (sf_lk_gnt[i]),
+        .sf_lk_entry_i       (sf_lk_entry),
+        .sf_lk_way_i         (sf_lk_way),
+        .sf_lk_pres_i        (sf_lk_pres),
+        .sf_lk_victim_i      (sf_lk_victim),
+        .sf_lk_victim_addr_i (sf_lk_victim_addr),
+        .sf_lk_victim_pres_i (sf_lk_victim_pres),
+        .sf_wr_o             (sf_wr[i]),
+        .sf_wr_way_o         (sf_wr_way[i]),
+        .sf_wr_pres_o        (sf_wr_pres[i]),
 
         // name tags for each tracker which gets what
         .TxnID_o             (trk_txnid[i]),

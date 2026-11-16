@@ -82,7 +82,12 @@ module Tb_HNF_Random;
   parameter int CMD_TIMEOUT_CYCLES     = 200000;   // one command (scenario / round / flush)
   parameter int OVERALL_TIMEOUT_CYCLES = 8000000;
 
-  localparam int       NRNF  = 2;
+  parameter int NRNF                   = 4;        // RN-F agents on the HN-F (1..16)
+  parameter int SF_SETS                = 4;        // HN-F snoop filter: small on purpose, the coherent
+  parameter int SF_WAYS                = 2;        // pool has 16 lines, so victims / back-invalidation happen
+  parameter bit SF_BROADCAST           = 0;        // 1: HN-F snoops every other RN-F (filter only tracks)
+  localparam int SF_ENTRIES            = SF_SETS * SF_WAYS;
+  localparam int POOL_LINES            = 16;
   localparam node_id_e HN_ID = 7'h40;              // TSHR HNFID
   localparam node_id_e SN_ID = 7'h00;              // TSHR SNFID
 
@@ -109,7 +114,10 @@ module Tb_HNF_Random;
     .AddrWidth      (39),
     .DataWidth      (128),
     .CacheLineWidth (512),
-    .TxCreditMax    (15)
+    .TxCreditMax    (15),
+    .SF_SETS        (SF_SETS),
+    .SF_WAYS        (SF_WAYS),
+    .SF_BROADCAST   (SF_BROADCAST)
   ) dut (
     .clk        (clk),
     .resetn     (resetn),
@@ -126,19 +134,55 @@ module Tb_HNF_Random;
   );
 
   // ---------------------------------------------------------------- agents
-  rnf_model #(.NODEID(7'h01), .HNID(HN_ID), .NAME("RNF0"), .IDX(0), .SEED(SEED * 7 + 1)) rnf0 (
-    .clk(clk), .resetn(resetn),
-    .req_tx(rnf_req_if[0]), .snp_rx(rnf_snp_if[0]),
-    .rsp_rx(rnf_rsp_tx_if[0]), .rsp_tx(rnf_rsp_rx_if[0]),
-    .dat_rx(rnf_dat_tx_if[0]), .dat_tx(rnf_dat_rx_if[0])
-  );
+  // RN-F i: NodeID i+1. RNF0 / RNF1 keep the seeds they had when there were
+  // only two, so NRNF=2 replays the old runs.
+  localparam string RN_NAME [16] = '{"RNF0", "RNF1", "RNF2", "RNF3", "RNF4", "RNF5", "RNF6", "RNF7",
+                                     "RNF8", "RNF9", "RNF10", "RNF11", "RNF12", "RNF13", "RNF14", "RNF15"};
 
-  rnf_model #(.NODEID(7'h02), .HNID(HN_ID), .NAME("RNF1"), .IDX(1), .SEED(SEED * 7 + 2)) rnf1 (
-    .clk(clk), .resetn(resetn),
-    .req_tx(rnf_req_if[1]), .snp_rx(rnf_snp_if[1]),
-    .rsp_rx(rnf_rsp_tx_if[1]), .rsp_tx(rnf_rsp_rx_if[1]),
-    .dat_rx(rnf_dat_tx_if[1]), .dat_tx(rnf_dat_rx_if[1])
-  );
+  // per-port values the checks below read (interface arrays and generate
+  // blocks only take constant indices, so they are copied out here)
+  bit req_v      [NRNF];
+  addr_t req_a   [NRNF];
+  int cr_hn_snp  [NRNF], cr_rn_snp  [NRNF];
+  int cr_hn_rsp  [NRNF], cr_rn_rsp  [NRNF];
+  int cr_hn_dat  [NRNF], cr_rn_dat  [NRNF];
+  int cr_hn_req  [NRNF], cr_rn_req  [NRNF];
+  int cr_hn_rrx  [NRNF], cr_rn_rrx  [NRNF];
+  int cr_hn_drx  [NRNF], cr_rn_drx  [NRNF];
+
+  for (genvar i = 0; i < NRNF; i++) begin : gen_rn
+    rnf_model #(.NODEID(7'(i + 1)), .HNID(HN_ID), .NAME(RN_NAME[i]), .IDX(i),
+                .SEED((i < 2) ? (SEED * 7 + 1 + i) : (SEED * 7 + 100 + i))) u (
+      .clk(clk), .resetn(resetn),
+      .req_tx(rnf_req_if[i]), .snp_rx(rnf_snp_if[i]),
+      .rsp_rx(rnf_rsp_tx_if[i]), .rsp_tx(rnf_rsp_rx_if[i]),
+      .dat_rx(rnf_dat_tx_if[i]), .dat_tx(rnf_dat_rx_if[i])
+    );
+
+    assign req_v[i]     = (rnf_req_if[i].flitv == Y);
+    assign req_a[i]     = rnf_req_if[i].flit.addr;
+    assign cr_hn_snp[i] = int'(dut.gen_snp_port[i].u_snp_arb.u_port_cred.credit_q);
+    assign cr_rn_snp[i] = u.snp_gr - u.snp_rc;
+    assign cr_hn_rsp[i] = int'(dut.gen_reqtgt_port[i].u_rsp_tx_arb.u_port_cred.credit_q);
+    assign cr_rn_rsp[i] = u.rsp_gr - u.rsp_rc;
+    assign cr_hn_dat[i] = int'(dut.gen_reqtgt_port[i].u_dat_tx_arb.u_port_cred.credit_q);
+    assign cr_rn_dat[i] = u.dat_gr - u.dat_rc;
+    assign cr_hn_req[i] = int'(dut.u_req_rx_arb.port_cr_q[i]);
+    assign cr_rn_req[i] = u.req_cr_in - u.req_cr_out;
+    assign cr_hn_rrx[i] = int'(dut.gen_rsp_rx_bridge[i].u_rsp_rx_cred.outstanding_q);
+    assign cr_rn_rrx[i] = u.rsp_cr_in - u.rsp_cr_out;
+    assign cr_hn_drx[i] = int'(dut.gen_dat_rx_bridge[i].u_dat_rx_cred.outstanding_q);
+    assign cr_rn_drx[i] = u.dat_cr_in - u.dat_cr_out;
+
+    // strict link layer on the HN-F TX ports towards this RN-F
+    always @(posedge clk) begin
+      if (resetn && sb != null) begin
+        chk_flitpend_one($sformatf("SNP    -> RNF%0d", i), rnf_snp_if[i].flitv,    rnf_snp_if[i].flitpend);
+        chk_flitpend_one($sformatf("RSP    -> RNF%0d", i), rnf_rsp_tx_if[i].flitv, rnf_rsp_tx_if[i].flitpend);
+        chk_flitpend_one($sformatf("DAT    -> RNF%0d", i), rnf_dat_tx_if[i].flitv, rnf_dat_tx_if[i].flitpend);
+      end
+    end
+  end
 
   snf_model #(.NAME("SNF"), .IDX(0), .NODEID(SN_ID), .SEED(SEED * 7 + 3)) snf (
     .clk(clk), .resetn(resetn),
@@ -300,6 +344,7 @@ module Tb_HNF_Random;
       apply_reset("command timeout");
     end else begin
       tb_info($sformatf("TOP: done  %s (%0d cycles, failures so far %0d)", what, t, sb.total_failures()));
+      if (sb.total_failures() == f0) check_sf_when_idle($sformatf("after %s", what));
       // a failed command can leave trackers stuck and lines locked; reset so
       // the next command is judged on its own and not on this one's wreckage
       if (ISOLATE_FAILURES && sb.total_failures() != f0 && c != CMD_FLUSH) apply_reset($sformatf("isolate the failure of %s", what));
@@ -341,23 +386,27 @@ module Tb_HNF_Random;
   endfunction
 
   function automatic void chk_flitpend();
-    chk_flitpend_one("SNP    -> RNF0", rnf_snp_if[0].flitv,    rnf_snp_if[0].flitpend);
-    chk_flitpend_one("SNP    -> RNF1", rnf_snp_if[1].flitv,    rnf_snp_if[1].flitpend);
-    chk_flitpend_one("RSP    -> RNF0", rnf_rsp_tx_if[0].flitv, rnf_rsp_tx_if[0].flitpend);
-    chk_flitpend_one("RSP    -> RNF1", rnf_rsp_tx_if[1].flitv, rnf_rsp_tx_if[1].flitpend);
-    chk_flitpend_one("DAT    -> RNF0", rnf_dat_tx_if[0].flitv, rnf_dat_tx_if[0].flitpend);
-    chk_flitpend_one("DAT    -> RNF1", rnf_dat_tx_if[1].flitv, rnf_dat_tx_if[1].flitpend);
+    // the RN-F ports are checked in gen_rn
     chk_flitpend_one("REQ    -> SNF",  snf_req_if.flitv,       snf_req_if.flitpend);
     chk_flitpend_one("WDAT   -> SNF",  snf_dat_tx_if.flitv,    snf_dat_tx_if.flitpend);
   endfunction
 
   function automatic void bool_cov();
-    bit all_busy, any_retry_wait, any_pool;
-    if (rnf_req_if[0].flitv == Y && rnf_req_if[1].flitv == Y) begin
-      sb.cov_hit("hnf: both RN-F REQ on the same cycle");
-      if (line_of(rnf_req_if[0].flit.addr) == line_of(rnf_req_if[1].flit.addr))
-        sb.cov_hit("hnf: both RN-F REQ on the same cycle, same line");
+    bit all_busy, any_retry_wait, any_pool, any_req;
+    int nreq;
+    // (names kept from the 2-RN-F days: "both" = two of them)
+    nreq = 0;
+    for (int a = 0; a < NRNF; a++) begin
+      if (req_v[a]) nreq++;
+      for (int b = a + 1; b < NRNF; b++)
+        if (req_v[a] && req_v[b]) begin
+          sb.cov_hit("hnf: both RN-F REQ on the same cycle");
+          if (line_of(req_a[a]) == line_of(req_a[b])) sb.cov_hit("hnf: both RN-F REQ on the same cycle, same line");
+        end
     end
+    if (nreq >= 3) sb.cov_hit("hnf: 3+ RN-F REQ on the same cycle");
+    any_req = (nreq != 0);
+    if (dut.u_sf.sel_v && !dut.u_sf.resolved) sb.cov_hit("sf: lookup found every way of its set in use");
     all_busy = 1; any_retry_wait = 0; any_pool = 0;
     for (int t = 0; t < NUM_TRACKERS; t++) begin
       if (dut.tracker_ready[t]) all_busy = 0;
@@ -365,7 +414,7 @@ module Tb_HNF_Random;
     end
     for (int k = 0; k < 16; k++) if (dut.pcrd_cnt_q[k] != 0) any_pool = 1;
     if (all_busy) sb.cov_hit("hnf: all trackers busy");
-    if (all_busy && rnf_req_if[0].flitv != Y && rnf_req_if[1].flitv != Y) sb.cov_hit("hnf: all trackers busy (cycles)");
+    if (all_busy && !any_req) sb.cov_hit("hnf: all trackers busy (cycles)");
     if (any_pool && !any_retry_wait) sb.cov_hit("hnf: P-credit banked with no tracker waiting");
   endfunction
 
@@ -396,27 +445,80 @@ module Tb_HNF_Random;
   // every credit counter in the HN-F must agree with the agent on the other end
   function automatic void check_credits();
     // HN-F TX ports: credits the RN-F / SN-F granted and HN-F has not spent
-    cr_eq("SNP  -> RNF0", int'(dut.gen_snp_port[0].u_snp_arb.u_port_cred.credit_q),       rnf0.snp_gr - rnf0.snp_rc);
-    cr_eq("SNP  -> RNF1", int'(dut.gen_snp_port[1].u_snp_arb.u_port_cred.credit_q),       rnf1.snp_gr - rnf1.snp_rc);
-    cr_eq("RSP  -> RNF0", int'(dut.gen_reqtgt_port[0].u_rsp_tx_arb.u_port_cred.credit_q), rnf0.rsp_gr - rnf0.rsp_rc);
-    cr_eq("RSP  -> RNF1", int'(dut.gen_reqtgt_port[1].u_rsp_tx_arb.u_port_cred.credit_q), rnf1.rsp_gr - rnf1.rsp_rc);
-    cr_eq("DAT  -> RNF0", int'(dut.gen_reqtgt_port[0].u_dat_tx_arb.u_port_cred.credit_q), rnf0.dat_gr - rnf0.dat_rc);
-    cr_eq("DAT  -> RNF1", int'(dut.gen_reqtgt_port[1].u_dat_tx_arb.u_port_cred.credit_q), rnf1.dat_gr - rnf1.dat_rc);
+    for (int i = 0; i < NRNF; i++) begin
+      cr_eq($sformatf("SNP  -> RNF%0d", i), cr_hn_snp[i], cr_rn_snp[i]);
+      cr_eq($sformatf("RSP  -> RNF%0d", i), cr_hn_rsp[i], cr_rn_rsp[i]);
+      cr_eq($sformatf("DAT  -> RNF%0d", i), cr_hn_dat[i], cr_rn_dat[i]);
+      cr_eq($sformatf("REQ  <- RNF%0d", i), cr_hn_req[i], cr_rn_req[i]);
+      cr_eq($sformatf("RSP  <- RNF%0d", i), cr_hn_rrx[i], cr_rn_rrx[i]);
+      cr_eq($sformatf("DAT  <- RNF%0d", i), cr_hn_drx[i], cr_rn_drx[i]);
+    end
     cr_eq("REQ  -> SNF ", int'(dut.u_sn_req_arb.u_port_cred.credit_q),                    snf.req_gr - snf.req_rc);
     cr_eq("DAT  -> SNF ", int'(dut.u_sn_dat_tx_arb.u_port_cred.credit_q),                 snf.wd_gr - snf.wd_rc);
     // HN-F RX ports: credits HN-F granted and the partner has not spent
-    cr_eq("REQ  <- RNF0", int'(dut.u_req_rx_arb.port_cr_q[0]),                            rnf0.req_cr_in - rnf0.req_cr_out);
-    cr_eq("REQ  <- RNF1", int'(dut.u_req_rx_arb.port_cr_q[1]),                            rnf1.req_cr_in - rnf1.req_cr_out);
-    cr_eq("RSP  <- RNF0", int'(dut.gen_rsp_rx_bridge[0].u_rsp_rx_cred.outstanding_q),     rnf0.rsp_cr_in - rnf0.rsp_cr_out);
-    cr_eq("RSP  <- RNF1", int'(dut.gen_rsp_rx_bridge[1].u_rsp_rx_cred.outstanding_q),     rnf1.rsp_cr_in - rnf1.rsp_cr_out);
-    cr_eq("DAT  <- RNF0", int'(dut.gen_dat_rx_bridge[0].u_dat_rx_cred.outstanding_q),     rnf0.dat_cr_in - rnf0.dat_cr_out);
-    cr_eq("DAT  <- RNF1", int'(dut.gen_dat_rx_bridge[1].u_dat_rx_cred.outstanding_q),     rnf1.dat_cr_in - rnf1.dat_cr_out);
     cr_eq("RSP  <- SNF ", int'(dut.u_snf_rsp_cred.outstanding_q),                         snf.rsp_cr_in - snf.rsp_cr_out);
     cr_eq("DAT  <- SNF ", int'(dut.u_snf_dat_rx_cred.outstanding_q),                      snf.dat_cr_in - snf.dat_cr_out);
   endfunction
 
+  // ---------------------------------------------------------------- snoop filter
+  // Inclusion: every RN-F that holds a line (scoreboard state != I) must have
+  // its presence bit set in a valid snoop filter entry for that line. A bit
+  // set for an RN-F that no longer holds the line is legal (silent eviction)
+  // and only counted. Run when every tracker is idle: a tracker keeps the
+  // presence vector of its line in its own registers until ST_DONE.
+  function automatic bit sf_has(addr_t la, int r);
+    for (int s = 0; s < SF_SETS; s++)
+      for (int w = 0; w < SF_WAYS; w++)
+        if (dut.u_sf.v_q[s][w] && dut.u_sf.tag_q[s][w] == la[38:6] && dut.u_sf.pres_q[s][w][r])
+          return 1;
+    return 0;
+  endfunction
+
+  function automatic void check_sf(string when);
+    int n_held, n_stale, n_ent;
+    n_held = 0; n_stale = 0; n_ent = 0;
+    foreach (sb.lines[la]) begin
+      for (int r = 0; r < NRNF; r++) begin
+        if (sb.lines[la].st[r] != ST_I) begin
+          n_held++;
+          if (!sf_has(la, r))
+            sb.err("SF_INCLUSION", $sformatf("%s: RNF%0d holds line %0h (%s) but the snoop filter has no presence bit for it",
+                                             when, r, la, sb.lines[la].st[r].name()));
+        end
+      end
+    end
+    for (int s = 0; s < SF_SETS; s++)
+      for (int w = 0; w < SF_WAYS; w++)
+        if (dut.u_sf.v_q[s][w]) begin
+          addr_t la;
+          n_ent++;
+          la = addr_t'({dut.u_sf.tag_q[s][w], 6'b0});
+          if (dut.u_sf.pres_q[s][w] == '0)
+            sb.err("SF_STATE", $sformatf("%s: snoop filter entry set %0d way %0d (line %0h) is valid with no RN-F present", when, s, w, la));
+          for (int r = 0; r < NRNF; r++)
+            if (dut.u_sf.pres_q[s][w][r] && (!sb.lines.exists(la) || sb.lines[la].st[r] == ST_I)) n_stale++;
+        end
+    sb.cov_hit("sf: inclusion checked");
+    if (n_stale != 0) sb.cov_hit("sf: stale presence bit seen (silent eviction)");
+    tb_info($sformatf("TOP: snoop filter %s: %0d copies held, all covered by %0d entries; %0d stale bits", when, n_held, n_ent, n_stale));
+  endfunction
+
+  task automatic check_sf_when_idle(string when);
+    int unsigned t;
+    bit idle;
+    t = 0;
+    do begin
+      idle = 1;
+      for (int k = 0; k < NUM_TRACKERS; k++) if (!dut.tracker_ready[k]) idle = 0;
+      if (!idle) begin @(posedge clk); t++; end
+    end while (!idle && t < 5000);
+    if (idle) check_sf(when);
+    else sb.err("DUT_STATE", $sformatf("%s: trackers still busy 5000 cycles after the command, snoop filter not checked", when));
+  endtask
+
   function automatic void check_end_state();
     check_dut_idle("end of test");
+    check_sf("end of test");
     for (int k = 0; k < 16; k++)
       if (sb.pcrd_out[k] != 0)
         sb.err("PCRD", $sformatf("end of test: SN-F granted %0d P-credit(s) of PCrdType %0d that were never used by a resend", sb.pcrd_out[k], k));
@@ -472,6 +574,17 @@ module Tb_HNF_Random;
     need(CLEAN_UNIQUE && PARTIAL_STATES, "rn: store UCE->UDP");
     need(CLEAN_UNIQUE && PARTIAL_STATES, "rn: WriteBackPtl");
     need(CLEAN_UNIQUE && PARTIAL_STATES, "rn: SnpRespDataPtl");
+    // snoop filter
+    need(1,                 "sf: inclusion checked");
+    need(1,                 "sf: coherent request needed no snoop");
+    need(NRNF >= 3,         "sf: one request snooped 2 RN-Fs");
+    need(NRNF >= 4,         "sf: one request snooped 3+ RN-Fs");
+    need(NRNF >= 3,         "rn: takeover of a line 2+ other RN-Fs hold");
+    need(NRNF >= 3,         "hnf: 3+ RN-F REQ on the same cycle");
+    need(SF_ENTRIES < POOL_LINES,               "sf: back-invalidation");
+    need(SF_ENTRIES < POOL_LINES,               "sf: back-invalidation, then the request itself");
+    need(SF_ENTRIES < POOL_LINES,               "sf: back-invalidation wrote dirty data back");
+    need(SF_ENTRIES < POOL_LINES && NUM_TRACKERS > SF_WAYS, "sf: lookup found every way of its set in use");
   endfunction
 
   function automatic void print_categories();
@@ -491,14 +604,15 @@ module Tb_HNF_Random;
     s.trng = new(SEED ^ 32'h5EED_0001);
     // coherent pool: line-aligned, small on purpose to force collisions;
     // pool[0..3] double as the hot lines / directed-scenario addresses
-    for (int i = 1; i <= 16; i++) s.pool.push_back(addr_t'(i) << 16);
+    for (int i = 1; i <= POOL_LINES; i++) s.pool.push_back(addr_t'(i) << 16);
     // non-coherent (ReadNoSnp / WriteNoSnp) lines, kept apart from the pool
     for (int i = 0; i < 4; i++)   s.nc_pool.push_back(addr_t'(39'h20_0000) + (addr_t'(i) << 16));
     sb = s;                // agents start their threads once this is non-null
     base_knobs();
 
-    $display("=== Tb_HNF_Random: SEED=%0d NUM_TRACKERS=%0d LOCK_ALL=%0b scenarios=%0b(%0d..%0d) rounds=%0d x %0d ops/RN mid_resets=%0d ===",
-             SEED, NUM_TRACKERS, LOCK_ALL, RUN_SCENARIOS, FIRST_SCENARIO, LAST_SCENARIO, NUM_ROUNDS, OPS_PER_ROUND, MID_RESETS);
+    if (NRNF < 1 || NRNF > 16) $fatal(1, "Tb_HNF_Random: NRNF (%0d) must be 1..16", NRNF);
+    $display("=== Tb_HNF_Random: NRNF=%0d SF=%0dx%0d SEED=%0d NUM_TRACKERS=%0d LOCK_ALL=%0b scenarios=%0b(%0d..%0d) rounds=%0d x %0d ops/RN mid_resets=%0d ===",
+             NRNF, SF_SETS, SF_WAYS, SEED, NUM_TRACKERS, LOCK_ALL, RUN_SCENARIOS, FIRST_SCENARIO, LAST_SCENARIO, NUM_ROUNDS, OPS_PER_ROUND, MID_RESETS);
     $display("=== features: comp_first=%0b comp_early=%0b pcrd_early=%0b compack_opt=%0b snp_opt_data=%0b zero_be=%0b nc_multi=%0b unaligned=%0b txid_collide=%0b ===",
              COMP_FIRST, COMP_EARLY, SNF_PCRD_EARLY, COMPACK_OPT, SNP_OPT_DATA, ZERO_BE, NC_MULTI, UNALIGNED, TXNID_COLLISION_STRESS);
     $display("=== requests: clean_unique=%0b make_unique=%0b evict=%0b read_nsd=%0b partial_states=%0b ===",

@@ -46,8 +46,8 @@ package chi_tb_pkg;
                  SC_DATA_INTLV = 16, SC_HOT_LINES = 17,
                  SC_SAME_CYCLE = 18, SC_WW_RACE = 19, SC_NC_PILEUP = 20, SC_EARLY_COMP = 21,
                  SC_PCRD_EARLY = 22, SC_COMPACK_LATE = 23, SC_ZERO_BE = 24, SC_DIRTY_CHAIN = 25,
-                 SC_WC_SNOOP_RACE = 26;
-  localparam int SC_LAST = 26;
+                 SC_WC_SNOOP_RACE = 26, SC_MANY_SHARERS = 27;
+  localparam int SC_LAST = 27;
 
   // Resp[2:0] / RespErr[1:0] encodings - short TB aliases of the RTL package
   // definitions (chi_pkg::RESP_* / RESPERR_*), so TB and RTL share one source

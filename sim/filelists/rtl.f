@@ -6,5 +6,6 @@
 ../HN-F/RTL/rx_port_select.sv
 ../HN-F/RTL/req_rx_arbiter.sv
 ../HN-F/RTL/tx_chain_arbiter.sv
+../HN-F/RTL/snoop_filter.sv
 ../HN-F/RTL/TSHR.sv
 ../HN-F/RTL/HN-F.sv

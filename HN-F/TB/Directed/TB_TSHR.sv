@@ -363,7 +363,8 @@ module Tb_HNF;
     .AddrWidth      (39),
     .DataWidth      (128),
     .CacheLineWidth (512),
-    .TxCreditMax    (15)
+    .TxCreditMax    (15),
+    .SF_BROADCAST   (1'b1)   // these scenarios expect the other RN-F to be snooped on every request
   ) dut (
     .clk        (clk),
     .resetn     (resetn),
@@ -902,6 +903,10 @@ task automatic scenario_concurrent_independent_trackers();
     logic [11:0]  this_txnid;
     logic [38:0]  this_addr;
     logic [11:0]  got_txnid;
+    logic [11:0]  got_txnid0;
+    dat_opcode_e  dat_op0;
+    logic [127:0] got_data0 [NUM_BEATS];
+    logic [15:0]  be0;
     int           served;
 
     $display("\n===== Scenario I: two concurrent independent transactions (multi-tracker stress) =====");
@@ -922,6 +927,8 @@ task automatic scenario_concurrent_independent_trackers();
         end
         rnf1.send_rsp(snp_txnid, RSP_SNP_RESP); 
 
+        // RNF0's CompData can arrive while RNF0 is still answering the snoop
+        // for RNF1's request, so RNF0 listens for it from here on
         fork
           rnf1.send_req(txnid_rnf1, REQ_READ_SHARED, 39'hC000, WIDTH_64, 1'b1);
           begin
@@ -932,11 +939,14 @@ task automatic scenario_concurrent_independent_trackers();
             end
             rnf0.send_rsp(snp_txnid, RSP_SNP_RESP);
           end
+          begin
+            rnf0.wait_dat(got_txnid0, dat_op0, got_data0, be0);
+          end
         join
 
         fork
           begin
-            rnf0.wait_dat(got_txnid, dat_op, got_data, be);
+            got_txnid = got_txnid0; dat_op = dat_op0; got_data = got_data0;
             if (dat_op !== DAT_COMP_DATA) begin $display("FAIL I: RNF0 expected CompData, got %s", dat_op.name()); errors++; end
             for (int b = 0; b < NUM_BEATS; b++) begin
               if (got_data[b] !== rnf0_expect[b]) begin $display("FAIL I: RNF0 beat %0d data mismatch", b); errors++; end

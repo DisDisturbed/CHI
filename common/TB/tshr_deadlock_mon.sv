@@ -67,6 +67,8 @@ module tshr_deadlock_mon
       "ST_DIRTY_WB_DATA_SEND": return "waits for a grant on the SN-F DAT port";
       "ST_SN_COMP_WAIT":       return "waits for Comp from SN-F after the write data";
       "ST_HAZARD_WAIT":        return "waits for an older tracker on the same cache line to finish";
+      "ST_SF_LOOKUP":          return "waits for the snoop filter lookup port, or for a way in its set that no tracker is using";
+      "ST_SNOOP_PICK":         return "picks the next snoop target (should never wait)";
       "ST_SN_RETRY_WAIT":      return "waits for a PCrdGrant of this type from SN-F (P-credit pool)";
       "ST_SNOOP_WAIT":         return "waits for SnpResp / SnpRespData from the snoop target with this txnid";
       "ST_WDATA_WAIT":         return "waits for write data from the requester with this txnid+srcid";

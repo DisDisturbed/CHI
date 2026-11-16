@@ -1226,7 +1226,9 @@ module rnf_model #(
     nact = (sb.num_rnf >= 2) ? 2 : 1;
     a0 = sb.pool[0]; a1 = sb.pool[1]; a2 = sb.pool[2]; a3 = sb.pool[3];
     n0 = sb.nc_pool[0]; n1 = sb.nc_pool[1];
-    if (IDX < nact) begin
+    if (id == SC_MANY_SHARERS) begin
+      many_sharers(ep);                    // every RN-F takes part, not just two
+    end else if (IDX < nact) begin
       case (id)
         SC_PRODCONS: begin
           for (int it = 0; it < 6; it++) begin
@@ -1278,6 +1280,21 @@ module rnf_model #(
             sync(nact, ep);
             do_op_f(OP_RS, a1, ep);
             sync(nact, ep);
+          end
+          // partial dirty line written back: CleanUnique from I (UCE), a store
+          // (UDP), WriteBackPtl; another RN-F then reads the merged line back
+          if (sb.partial_states) begin
+            for (int it = 0; it < 4; it++) begin
+              if (IDX == 0) begin
+                make_invalid_local(a1, ep);
+                do_op_f(OP_CU, a1, ep);
+                if (get_st(line_of(a1)) == ST_UCE) do_op_f(OP_ST, a1, ep);
+                if (get_st(line_of(a1)) == ST_UDP) do_op_f(OP_WBP, a1, ep);
+              end
+              sync(nact, ep);
+              if (IDX == nact - 1) do_op_f(OP_RS, a1, ep);
+              sync(nact, ep);
+            end
           end
         end
         SC_SNF_ERR: begin
@@ -1469,6 +1486,45 @@ module rnf_model #(
         end
         default: random_ops(sb.scn_ops, ep);   // knob-driven scenarios (see top-level apply_profile)
       endcase
+    end
+  endtask
+
+  // SC_MANY_SHARERS: every RN-F takes a copy of one line (every other
+  // iteration one of them dirty first, so the line ends SD + SCs), then one
+  // RN-F takes the line over or cleans it. The snoop filter must list every
+  // sharer and the tracker must snoop all of them, one after the other.
+  task automatic many_sharers(input int unsigned ep); /*verilator no_inline_task*/
+    int n, own, tk;
+    bit ran;
+    addr_t a;
+    opkind_e ko[6], k;
+    n = sb.num_rnf;
+    a = sb.pool[3];
+    ko[0] = OP_RU; ko[1] = OP_WUF; ko[2] = OP_CI; ko[3] = OP_MU; ko[4] = OP_CU; ko[5] = OP_CS;
+    for (int it = 0; it < 24; it++) begin
+      own = it % n;
+      tk  = (it + 1 + it / n) % n;
+      if (IDX == own && it % 2 == 0) begin do_op_f(OP_RU, a, ep); do_op_f(OP_ST, a, ep); end
+      sync(n, ep);
+      if (IDX != own || it % 2 == 1) begin
+        skew(4);
+        if (get_st(line_of(a)) == ST_I) do_op(OP_RS, a, ep, ran);
+      end
+      sync(n, ep);
+      if (IDX == tk) begin
+        k = ko[it % 6];
+        if ((k == OP_MU || k == OP_CU) && sb.w[k] == 0) k = OP_RU;
+        begin
+          line_info L;
+          int nv;
+          L  = sb.get_line(a);
+          nv = 0;
+          foreach (L.st[r]) if (r != IDX && L.st[r] != ST_I) nv++;
+          if (nv >= 2) sb.cov_hit("rn: takeover of a line 2+ other RN-Fs hold");
+        end
+        do_op_f(k, a, ep);
+      end
+      sync(n, ep);
     end
   endtask
 

@@ -1,0 +1,298 @@
+=== Tb_HNF_Random: NRNF=3 SF=4x2 SEED=3 NUM_TRACKERS=4 LOCK_ALL=0 scenarios=1(1..27) rounds=8 x 50 ops/RN mid_resets=4 ===
+=== features: comp_first=1 comp_early=1 pcrd_early=1 compack_opt=1 snp_opt_data=1 zero_be=1 nc_multi=1 unaligned=1 txid_collide=1 ===
+=== requests: clean_unique=1 make_unique=1 evict=1 read_nsd=1 partial_states=1 ===
+[145000] TOP: start scenario 1
+[6545000] TOP: done  scenario 1 (640 cycles, failures so far 0)
+[6665000] TOP: snoop filter after scenario 1: 2 copies held, all covered by 1 entries; 0 stale bits
+[6665000] TOP: start scenario 2
+[20135000] TOP: done  scenario 2 (1347 cycles, failures so far 0)
+[20145000] TOP: snoop filter after scenario 2: 1 copies held, all covered by 1 entries; 0 stale bits
+[20145000] TOP: start scenario 3
+[27785000] TOP: done  scenario 3 (764 cycles, failures so far 0)
+[27785000] TOP: snoop filter after scenario 3: 1 copies held, all covered by 1 entries; 0 stale bits
+[27785000] TOP: start scenario 4
+[33605000] TOP: done  scenario 4 (582 cycles, failures so far 0)
+[33605000] TOP: snoop filter after scenario 4: 1 copies held, all covered by 1 entries; 0 stale bits
+[33605000] TOP: start scenario 5
+[41645000] TOP: done  scenario 5 (804 cycles, failures so far 0)
+[41655000] TOP: snoop filter after scenario 5: 3 copies held, all covered by 2 entries; 0 stale bits
+[41655000] TOP: start scenario 6
+[43015000] TOP: done  scenario 6 (136 cycles, failures so far 0)
+[43015000] TOP: snoop filter after scenario 6: 4 copies held, all covered by 4 entries; 0 stale bits
+[43015000] TOP: start scenario 7
+[49435000] TOP: done  scenario 7 (642 cycles, failures so far 0)
+[49435000] TOP: snoop filter after scenario 7: 8 copies held, all covered by 8 entries; 1 stale bits
+[49435000] TOP: start scenario 8
+[56235000] TOP: done  scenario 8 (680 cycles, failures so far 0)
+[56235000] TOP: snoop filter after scenario 8: 7 copies held, all covered by 7 entries; 0 stale bits
+[56235000] TOP: start scenario 9
+[57365000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1704 srcid=2 opcode=REQ_WRITE_UNIQUE_PTL addr=10000e tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[57395000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=877 srcid=1 opcode=REQ_READ_UNIQUE addr=b0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[57655000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 125 cycles (only slow, not deadlocked)
+[57665000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[57905000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=580 srcid=1 opcode=REQ_READ_UNIQUE addr=40000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[58195000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[59355000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1174 srcid=1 opcode=REQ_READ_NO_SNOOP addr=210010 tx_type=TX_READ_NOSNP beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[59395000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=293 srcid=1 opcode=REQ_WRITE_NO_SNOOP_FULL addr=220000 tx_type=TX_WRITE_NOSNP beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[59615000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 121 cycles (only slow, not deadlocked)
+[59645000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 128 cycles (only slow, not deadlocked)
+[59775000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1125 srcid=1 opcode=REQ_READ_UNIQUE addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[59955000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 117 cycles (only slow, not deadlocked)
+[61125000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1284 srcid=1 opcode=REQ_READ_ONCE addr=b0000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[61215000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=1128 srcid=1 opcode=REQ_WRITE_UNIQUE_FULL addr=40000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[61295000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=1378 srcid=2 opcode=REQ_READ_UNIQUE addr=20000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[61355000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 122 cycles (only slow, not deadlocked)
+[61495000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 127 cycles (only slow, not deadlocked)
+[61595000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[62505000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=838 srcid=1 opcode=REQ_READ_ONCE addr=100000 tx_type=TX_READ beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[62725000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 121 cycles (only slow, not deadlocked)
+[62875000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=736 srcid=1 opcode=REQ_WRITE_UNIQUE_PTL addr=20000 tx_type=TX_WRITE_UNIQUE beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[63005000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=17 srcid=1 opcode=REQ_READ_SHARED addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[63125000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 124 cycles (only slow, not deadlocked)
+[63235000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 122 cycles (only slow, not deadlocked)
+[64445000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=2217 srcid=2 opcode=REQ_WRITE_NO_SNOOP_FULL addr=210000 tx_type=TX_WRITE_NOSNP beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[64635000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 118 cycles (only slow, not deadlocked)
+[65205000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompDBIDResp from SN-F with this txnid
+           txnid=788 srcid=1 opcode=REQ_READ_NO_SNOOP addr=230000 tx_type=TX_READ_NOSNP beat=0
+           expcompack=0 pcrd_req=0 pcrd_type=0
+[65435000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[1].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 122 cycles (only slow, not deadlocked)
+[65575000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=600 srcid=1 opcode=REQ_READ_UNIQUE addr=30000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[65845000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_HAZARD_WAIT for 100 cycles: waits for an older tracker on the same cache line to finish
+           txnid=1387 srcid=2 opcode=REQ_READ_SHARED addr=30000 tx_type=TX_CMO beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[65875000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[2].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[65995000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_HAZARD_WAIT after 114 cycles (only slow, not deadlocked)
+[68005000] DEADLOCK: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon stuck in ST_SN_RSP_WAIT for 100 cycles: waits for CompData from SN-F with this txnid
+           txnid=2141 srcid=2 opcode=REQ_READ_SHARED addr=f0000 tx_type=TX_READ beat=0
+           expcompack=1 pcrd_req=0 pcrd_type=0
+[68305000] DEADLOCK RELEASED: Tb_HNF_Random.dut.gen_tshr[0].u_tshr_inst.u_deadlock_mon left ST_SN_RSP_WAIT after 129 cycles (only slow, not deadlocked)
+[68415000] TOP: done  scenario 9 (1218 cycles, failures so far 0)
+[68415000] TOP: snoop filter after scenario 9: 6 copies held, all covered by 6 entries; 1 stale bits
+[68415000] TOP: start scenario 10
+[71165000] TOP: done  scenario 10 (275 cycles, failures so far 0)
+[71165000] TOP: snoop filter after scenario 10: 5 copies held, all covered by 6 entries; 2 stale bits
+[71165000] TOP: start scenario 11
+[76845000] TOP: done  scenario 11 (568 cycles, failures so far 0)
+[76845000] TOP: snoop filter after scenario 11: 6 copies held, all covered by 7 entries; 2 stale bits
+[76845000] TOP: start scenario 12
+[82065000] TOP: done  scenario 12 (522 cycles, failures so far 0)
+[82065000] TOP: snoop filter after scenario 12: 6 copies held, all covered by 7 entries; 2 stale bits
+[82065000] TOP: start scenario 13
+[87375000] TOP: done  scenario 13 (531 cycles, failures so far 0)
+[87385000] TOP: snoop filter after scenario 13: 7 copies held, all covered by 8 entries; 2 stale bits
+[87385000] TOP: start scenario 14
+[91725000] TOP: done  scenario 14 (434 cycles, failures so far 0)
+[91725000] TOP: snoop filter after scenario 14: 7 copies held, all covered by 8 entries; 2 stale bits
+[91725000] TOP: start scenario 15
+[109055000] TOP: done  scenario 15 (1733 cycles, failures so far 0)
+[109055000] TOP: snoop filter after scenario 15: 6 copies held, all covered by 7 entries; 2 stale bits
+[109055000] TOP: start scenario 16
+[114635000] TOP: done  scenario 16 (558 cycles, failures so far 0)
+[114635000] TOP: snoop filter after scenario 16: 6 copies held, all covered by 7 entries; 2 stale bits
+[114635000] TOP: start scenario 17
+[116805000] TOP: done  scenario 17 (217 cycles, failures so far 0)
+[116805000] TOP: snoop filter after scenario 17: 7 copies held, all covered by 8 entries; 1 stale bits
+[116805000] TOP: start scenario 18
+[142755000] TOP: done  scenario 18 (2595 cycles, failures so far 0)
+[142765000] TOP: snoop filter after scenario 18: 7 copies held, all covered by 8 entries; 1 stale bits
+[142765000] TOP: start scenario 19
+[163455000] TOP: done  scenario 19 (2069 cycles, failures so far 0)
+[163455000] TOP: snoop filter after scenario 19: 7 copies held, all covered by 8 entries; 1 stale bits
+[163455000] TOP: start scenario 20
+[177075000] TOP: done  scenario 20 (1362 cycles, failures so far 0)
+[177075000] TOP: snoop filter after scenario 20: 7 copies held, all covered by 8 entries; 1 stale bits
+[177075000] TOP: start scenario 21
+[180265000] TOP: done  scenario 21 (319 cycles, failures so far 0)
+[180265000] TOP: snoop filter after scenario 21: 7 copies held, all covered by 7 entries; 0 stale bits
+[180265000] TOP: start scenario 22
+[188495000] TOP: done  scenario 22 (823 cycles, failures so far 0)
+[188495000] TOP: snoop filter after scenario 22: 7 copies held, all covered by 7 entries; 0 stale bits
+[188495000] TOP: start scenario 23
+[191605000] TOP: done  scenario 23 (311 cycles, failures so far 0)
+[191605000] TOP: snoop filter after scenario 23: 6 copies held, all covered by 6 entries; 0 stale bits
+[191605000] TOP: start scenario 24
+[197165000] TOP: done  scenario 24 (556 cycles, failures so far 0)
+[197165000] TOP: snoop filter after scenario 24: 8 copies held, all covered by 7 entries; 0 stale bits
+[197165000] TOP: start scenario 25
+[222705000] TOP: done  scenario 25 (2554 cycles, failures so far 0)
+[222805000] TOP: snoop filter after scenario 25: 9 copies held, all covered by 7 entries; 0 stale bits
+[222805000] TOP: start scenario 26
+[249905000] TOP: done  scenario 26 (2710 cycles, failures so far 0)
+[249905000] TOP: snoop filter after scenario 26: 9 copies held, all covered by 7 entries; 0 stale bits
+[249905000] TOP: start scenario 27
+[271805000] TOP: done  scenario 27 (2190 cycles, failures so far 0)
+[271805000] TOP: snoop filter after scenario 27: 10 copies held, all covered by 7 entries; 1 stale bits
+[271805000] TOP: round 0 knobs: cr_cap=13 cr_pct=100 snp_lat=10 bubble=21 max_out=4 ack_lat=4 intlv=0 shuffle=1 snf_lat=5 snf_slow=0 hot=1/49% txid_mode=0 | retry=33% pcrd_types=13 pcrd_early=0% comp_first=29% comp_early=0% compack ro/wr=1/1 snp_opt_data=24% zero_be=27% nc_multi=0 unaligned=42%
+[271805000] TOP: start random round 0
+[280255000] TOP: done  random round 0 (845 cycles, failures so far 0)
+[280255000] TOP: snoop filter after random round 0: 9 copies held, all covered by 8 entries; 0 stale bits
+[280255000] TOP: round 1 knobs: cr_cap=15 cr_pct=100 snp_lat=10 bubble=0 max_out=3 ack_lat=4 intlv=0 shuffle=0 snf_lat=1 snf_slow=0 hot=1/61% txid_mode=3 | retry=0% pcrd_types=7 pcrd_early=0% comp_first=21% comp_early=0% compack ro/wr=1/0 snp_opt_data=0% zero_be=24% nc_multi=1 unaligned=0%
+[280255000] TOP: start random round 1
+[281875000] TOP: done  random round 1 (162 cycles, failures so far 0)
+[281875000] TOP: snoop filter after random round 1: 8 copies held, all covered by 8 entries; 1 stale bits
+[281875000] TOP: round 2 knobs: cr_cap=12 cr_pct=100 snp_lat=9 bubble=0 max_out=1 ack_lat=0 intlv=1 shuffle=1 snf_lat=5 snf_slow=0 hot=4/68% txid_mode=3 | retry=0% pcrd_types=15 pcrd_early=0% comp_first=22% comp_early=0% compack ro/wr=0/1 snp_opt_data=0% zero_be=0% nc_multi=1 unaligned=0%
+[281875000] TOP: start random round 2
+[296125000] TOP: done  random round 2 (1425 cycles, failures so far 0)
+[296125000] TOP: snoop filter after random round 2: 6 copies held, all covered by 6 entries; 0 stale bits
+[296125000] TOP: round 3 knobs: cr_cap=13 cr_pct=41 snp_lat=3 bubble=21 max_out=2 ack_lat=9 intlv=0 shuffle=0 snf_lat=7 snf_slow=0 hot=1/90% txid_mode=0 | retry=0% pcrd_types=14 pcrd_early=69% comp_first=37% comp_early=0% compack ro/wr=1/1 snp_opt_data=0% zero_be=16% nc_multi=1 unaligned=0%
+[296125000] TOP: start random round 3
+[302065000] TOP: done  random round 3 (594 cycles, failures so far 0)
+[302065000] TOP: snoop filter after random round 3: 7 copies held, all covered by 6 entries; 0 stale bits
+[302065000] TOP: round 4 knobs: cr_cap=9 cr_pct=41 snp_lat=1 bubble=26 max_out=3 ack_lat=1 intlv=0 shuffle=0 snf_lat=7 snf_slow=0 hot=4/24% txid_mode=2 | retry=0% pcrd_types=5 pcrd_early=28% comp_first=0% comp_early=0% compack ro/wr=0/0 snp_opt_data=0% zero_be=30% nc_multi=0 unaligned=0%
+[302065000] TOP: start random round 4
+[310165000] TOP: done  random round 4 (810 cycles, failures so far 0)
+[310165000] TOP: snoop filter after random round 4: 7 copies held, all covered by 7 entries; 0 stale bits
+[310165000] TOP: round 5 knobs: cr_cap=4 cr_pct=100 snp_lat=0 bubble=0 max_out=4 ack_lat=22 intlv=0 shuffle=0 snf_lat=6 snf_slow=0 hot=3/35% txid_mode=3 | retry=18% pcrd_types=8 pcrd_early=42% comp_first=0% comp_early=0% compack ro/wr=1/0 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=13%
+[310165000] TOP: start random round 5
+[312475000] TOP: done  random round 5 (231 cycles, failures so far 0)
+[312475000] TOP: snoop filter after random round 5: 9 copies held, all covered by 8 entries; 0 stale bits
+[312475000] TOP: round 6 knobs: cr_cap=7 cr_pct=100 snp_lat=9 bubble=17 max_out=1 ack_lat=1 intlv=0 shuffle=0 snf_lat=0 snf_slow=0 hot=1/42% txid_mode=0 | retry=0% pcrd_types=4 pcrd_early=0% comp_first=10% comp_early=55% compack ro/wr=1/0 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=0%
+[312475000] TOP: start random round 6
+[326455000] TOP: done  random round 6 (1398 cycles, failures so far 0)
+[326455000] TOP: snoop filter after random round 6: 8 copies held, all covered by 8 entries; 0 stale bits
+[326455000] TOP: round 7 knobs: cr_cap=11 cr_pct=100 snp_lat=7 bubble=0 max_out=3 ack_lat=0 intlv=0 shuffle=1 snf_lat=2 snf_slow=21 hot=4/27% txid_mode=2 | retry=0% pcrd_types=13 pcrd_early=11% comp_first=0% comp_early=0% compack ro/wr=0/0 snp_opt_data=15% zero_be=10% nc_multi=0 unaligned=43%
+[326455000] TOP: start random round 7
+[337285000] TOP: done  random round 7 (1083 cycles, failures so far 0)
+[337285000] TOP: snoop filter after random round 7: 8 copies held, all covered by 7 entries; 0 stale bits
+[337285000] TOP: reset round 0 knobs: cr_cap=6 cr_pct=100 snp_lat=10 bubble=0 max_out=1 ack_lat=9 intlv=0 shuffle=0 snf_lat=4 snf_slow=17 hot=1/63% txid_mode=0 | retry=34% pcrd_types=5 pcrd_early=0% comp_first=0% comp_early=14% compack ro/wr=0/1 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=35%
+[337285000] TOP: start reset round 0
+[340135000] TOP: reset (mid-traffic reset after 285 cycles)
+[340285000] TOP: reset round 1 knobs: cr_cap=15 cr_pct=100 snp_lat=7 bubble=13 max_out=3 ack_lat=0 intlv=0 shuffle=0 snf_lat=0 snf_slow=0 hot=1/47% txid_mode=3 | retry=0% pcrd_types=16 pcrd_early=0% comp_first=40% comp_early=32% compack ro/wr=0/1 snp_opt_data=0% zero_be=0% nc_multi=0 unaligned=0%
+[340285000] TOP: start reset round 1
+[341965000] TOP: reset (mid-traffic reset after 168 cycles)
+[342115000] TOP: reset round 2 knobs: cr_cap=9 cr_pct=100 snp_lat=5 bubble=29 max_out=4 ack_lat=2 intlv=0 shuffle=0 snf_lat=0 snf_slow=0 hot=4/50% txid_mode=1 | retry=0% pcrd_types=9 pcrd_early=15% comp_first=0% comp_early=0% compack ro/wr=0/1 snp_opt_data=0% zero_be=19% nc_multi=1 unaligned=44%
+[342115000] TOP: start reset round 2
+[345295000] TOP: reset (mid-traffic reset after 318 cycles)
+[345445000] TOP: reset round 3 knobs: cr_cap=8 cr_pct=100 snp_lat=7 bubble=0 max_out=2 ack_lat=4 intlv=0 shuffle=1 snf_lat=1 snf_slow=25 hot=1/83% txid_mode=0 | retry=0% pcrd_types=16 pcrd_early=69% comp_first=0% comp_early=0% compack ro/wr=1/0 snp_opt_data=0% zero_be=18% nc_multi=1 unaligned=0%
+[345445000] TOP: start reset round 3
+[349935000] TOP: reset (mid-traffic reset after 449 cycles)
+[350085000] TOP: post-reset round knobs: cr_cap=5 cr_pct=100 snp_lat=2 bubble=25 max_out=2 ack_lat=3 intlv=0 shuffle=0 snf_lat=1 snf_slow=0 hot=1/90% txid_mode=3 | retry=11% pcrd_types=2 pcrd_early=0% comp_first=0% comp_early=54% compack ro/wr=1/1 snp_opt_data=0% zero_be=0% nc_multi=1 unaligned=0%
+[350085000] TOP: start random round after the mid-traffic resets
+[354285000] TOP: done  random round after the mid-traffic resets (420 cycles, failures so far 0)
+[354285000] TOP: snoop filter after random round after the mid-traffic resets: 8 copies held, all covered by 7 entries; 0 stale bits
+[354285000] TOP: start end-of-test flush
+[355375000] TOP: done  end-of-test flush (109 cycles, failures so far 0)
+[355375000] TOP: snoop filter after end-of-test flush: 0 copies held, all covered by 6 entries; 6 stale bits
+[360375000] TOP: snoop filter end of test: 0 copies held, all covered by 6 entries; 6 stale bits
+
+================= SCOREBOARD SUMMARY (seed=3) =================
+  requests issued     : 2507 (retries 0, PCrdGrants 0)
+  ops by kind         : RS=451 RC=137 RU=534 RO=119 WUF=161 WUP=211 WB=87 WC=41 CS=37 CI=65 MI=24 ST=280 SE=150 NRD=220 NWR=217
+                        CU=126 MU=89 EV=160 RNSD=96 WBP=2
+  reads checked       : 1391 (37 unchecked: unknown value / RespErr; 2 of those: too many writes in flight)
+  writes committed    : 537, silent stores 353
+  snoops answered     : 1103
+  SN-F errors injected: 11 (seen at RN 11)
+  resets applied      : 4
+  ---- failures ----
+  read mismatches     : 0
+  stale cached data   : 0
+  SWMR violations     : 0
+  protocol errors     : 0
+  unexpected responses: 0
+  SN-F misroutes      : 0
+  memory mismatches   : 0
+  timeouts            : 0
+  DUT state/credit/cov: 0
+  ---- coverage ----
+  hnf: 3+ RN-F REQ on the same cycle               10
+  hnf: P-credit banked with no tracker waiting     79
+  hnf: all trackers busy                           2726
+  hnf: all trackers busy (cycles)                  2726
+  hnf: both RN-F REQ on the same cycle             150
+  hnf: both RN-F REQ on the same cycle, same line  76
+  rn: CleanUnique ->UCE                            85
+  rn: CleanUnique SC->UC                           20
+  rn: CleanUnique SD->UD                           5
+  rn: CleanUnique lost its copy to a snoop         7
+  rn: CompAck delayed > 8 cycles possible          67
+  rn: CompAck on ReadOnce/ReadNoSnp                86
+  rn: CompAck on a write                           106
+  rn: Evict                                        155
+  rn: MakeUnique                                   73
+  rn: ReadNotSharedDirty                           96
+  rn: SnpRespDataPtl                               7
+  rn: WriteBackPtl                                 2
+  rn: WriteCleanFull lost its line to a snoop      5
+  rn: clean SnpRespData_I on SnpUnique RetToSrc=0  6
+  rn: partial write with BE=0                      36
+  rn: snoop on UCE                                 57
+  rn: store UCE->UDP                               11
+  rn: store UDP->UDP                               1
+  rn: takeover of a line 2+ other RN-Fs hold       16
+  rn: unaligned ReadNoSnp                          28
+  rn: unaligned WriteNoSnpPtl                      18
+  rn: unaligned WriteUniquePtl                     14
+  sb: writes in flight on one line >=2             87
+  sf: back-invalidation                            252
+  sf: back-invalidation wrote dirty data back      37
+  sf: back-invalidation, then the request itself   251
+  sf: coherent request needed no snoop             1200
+  sf: inclusion checked                            38
+  sf: lookup found every way of its set in use     179
+  sf: one request snooped 2 RN-Fs                  36
+  sf: stale presence bit seen (silent eviction)    17
+  snf: Comp after DBIDResp, before write data      9
+  snf: Comp before DBIDResp                        13
+  snf: PCrdGrant before RetryAck                   31
+  snf: PCrdType != 0                               95
+  snf: RetryAck                                    99
+  top: reset with traffic in flight                3
+  tshr: dirty write-back after TX_CMO              19
+  tshr: dirty write-back after TX_READ             110
+  tshr: dirty write-back after TX_WRITE_UNIQUE     31
+  tshr: enter ST_ALLOC                             3112
+  tshr: enter ST_COMPACK_WAIT                      1464
+  tshr: enter ST_COMP_SEND                         995
+  tshr: enter ST_DBIDRESP_SEND                     666
+  tshr: enter ST_DIRTY_WB_DATA_SEND                197
+  tshr: enter ST_DIRTY_WB_REQ_SEND                 203
+  tshr: enter ST_DIRTY_WB_RSP_WAIT                 203
+  tshr: enter ST_DONE                              2496
+  tshr: enter ST_HAZARD_WAIT                       607
+  tshr: enter ST_RDATA_SEND                        1378
+  tshr: enter ST_SF_LOOKUP                         2120
+  tshr: enter ST_SNOOP_PICK                        2979
+  tshr: enter ST_SNOOP_SEND                        1104
+  tshr: enter ST_SNOOP_WAIT                        1104
+  tshr: enter ST_SN_COMP_WAIT                      287
+  tshr: enter ST_SN_DATA_SEND                      645
+  tshr: enter ST_SN_REQ_SEND                       1671
+  tshr: enter ST_SN_RETRY_WAIT                     99
+  tshr: enter ST_SN_RSP_WAIT                       1671
+  tshr: enter ST_WDATA_WAIT                        666
+========================================================
+
+*** HN-F REGRESSION: ALL CHECKS PASSED (seed=3) ***
+- ../HN-F/TB/Randomized/TB_hnf_random.sv:669: Verilog $finish
+- S i m u l a t i o n   R e p o r t: Verilator 5.048 2026-04-26
+- Verilator: $finish at 360us; walltime 0.294 s; speed 1.224 ms/s
+- Verilator: cpu 0.294 s on 1 threads; allocated 10 MB

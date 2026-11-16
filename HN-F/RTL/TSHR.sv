@@ -5,14 +5,28 @@
 // this is the simplest possible or lets say "dumbest" tracker module i could think of
 // it only knows one transaction at time so HN-F node should be handle it
 // it has no idea about the interfaceses or RN-F port counts
-// it only see 2 things one requester and one snoop target snf is not a snoop target it is just a dumb slave
+// it sees one requester and one snoop target at a time snf is not a snoop target it is just a dumb slave
 // top module should instantiate this module multiple times to track multiple outstanding requests at one
 // HN-F also need to track which TSHR is free to give request to them
 // HN-F also need to know which port RN-F plugs
-// HN-F also need its own snoop filter it doesnt have one
 // HN-F also need address hazard detection to detect which tracker is safe to give
 //
-// NONE OF THAT ROUTING AND ARBITRATION LIVES INSIDE THIS FILE.
+// Snoop filter (snoop_filter.sv, owned by the HN-F)
+//   ST_SF_LOOKUP reads the entry of this line once (presence bit per RN-F).
+//   The snoops then go out one RN-F at a time (ST_SNOOP_PICK -> ST_SNOOP_SEND ->
+//   ST_SNOOP_WAIT, snp_port_o names the target), only to RN-Fs whose bit is set,
+//   never to the requester. Reads that only need one copy stop at the first
+//   data; ReadUnique / WriteUnique / CMOs snoop every set bit.
+//   Each SnpResp* with final state I clears that bit in sfpres_q; ST_DONE writes
+//   the final vector back (plus the requester bit: set when it now caches the
+//   line, cleared on WriteBack / Evict).
+//   A lookup that needs a new entry may take over a victim entry: the tracker
+//   then back-invalidates the victim line first (bi_q, SnpCleanInvalid to every
+//   present RN-F, dirty data written to the SN-F) and only then starts its own
+//   transaction. bi_o / bi_addr_o let the HN-F hazard logic hold younger
+//   requests to the victim line meanwhile.
+//
+// NONE OF THE ROUTING AND ARBITRATION LIVES INSIDE THIS FILE.
 
 
 module TSHR
@@ -28,11 +42,37 @@ module TSHR
   parameter int CacheLineWidth = 512,
   parameter int TRK_ID         = 0,
   parameter chi_pkg::node_id_e HNFID = 7'h40,
-  parameter chi_pkg::node_id_e SNFID = 7'h00
+  parameter chi_pkg::node_id_e SNFID = 7'h00,
+  parameter int NUM_RNF        = 2,
+  parameter int SF_WAYW        = 1,
+  parameter bit SF_BROADCAST   = 1'b0,   // 1: snoop every other RN-F, ignore the filter's presence bits
+  localparam int RNF_IDX_W     = (NUM_RNF <= 1) ? 1 : $clog2(NUM_RNF)
 ) (
   input  wire clk,
   input  wire resetn,
   output logic ready_o,
+
+  // ---- RN-F ports: which one is the requester, which one gets the current snoop
+  input  logic [RNF_IDX_W-1:0] req_port_i,
+  output logic [RNF_IDX_W-1:0] snp_port_o,
+
+  // ---- back-invalidation of a snoop filter victim (for the HN-F hazard logic)
+  output logic                 bi_o,
+  output logic [AddrWidth-1:0] bi_addr_o,
+
+  // ---- snoop filter lookup (ST_SF_LOOKUP) and final write (ST_DONE)
+  output logic                 sf_lk_req_o,
+  output logic                 sf_lk_alloc_o,
+  input  logic                 sf_lk_gnt_i,
+  input  logic                 sf_lk_entry_i,
+  input  logic [SF_WAYW-1:0]   sf_lk_way_i,
+  input  logic [NUM_RNF-1:0]   sf_lk_pres_i,
+  input  logic                 sf_lk_victim_i,
+  input  logic [AddrWidth-1:0] sf_lk_victim_addr_i,
+  input  logic [NUM_RNF-1:0]   sf_lk_victim_pres_i,
+  output logic                 sf_wr_o,
+  output logic [SF_WAYW-1:0]   sf_wr_way_o,
+  output logic [NUM_RNF-1:0]   sf_wr_pres_o,
 
 
 
@@ -152,7 +192,9 @@ module TSHR
     ST_DIRTY_WB_DATA_SEND,
     ST_SN_COMP_WAIT,
     ST_SN_RETRY_WAIT,
-    ST_HAZARD_WAIT
+    ST_HAZARD_WAIT,
+    ST_SF_LOOKUP,
+    ST_SNOOP_PICK
   } state_e;
 
   state_e state_q, state_d;
@@ -181,6 +223,19 @@ module TSHR
   common_pkg::yn_status_e   allowretry_q, allowretry_d;
   logic [3:0]               pcrdtype_q, pcrdtype_d;
   state_e                   retry_ret_q, retry_ret_d;
+
+  // snoop filter / snoop loop
+  logic                     sf_entry_q, sf_entry_d;   // this tracker owns an SF entry for its line
+  logic [SF_WAYW-1:0]       sf_way_q,   sf_way_d;
+  logic [NUM_RNF-1:0]       sfpres_q,   sfpres_d;     // presence vector of this line, updated by the snoop responses
+  logic [NUM_RNF-1:0]       snp_mask_q, snp_mask_d;   // RN-Fs still to be snooped
+  logic [RNF_IDX_W-1:0]     snp_tgt_q,  snp_tgt_d;    // RN-F of the snoop in flight
+  logic                     got_data_q, got_data_d;   // a snoop returned data for this transaction
+  logic                     bi_q,       bi_d;         // back-invalidating the SF victim
+  logic [AddrWidth-1:0]     bi_addr_q,  bi_addr_d;
+  logic [NUM_RNF-1:0]       req_bit;
+
+  assign req_bit = NUM_RNF'(1) << req_port_i;
 
   logic [BeatCntW:0]        req_beats;
   logic [BeatCntW-1:0]      first_beat;
@@ -260,6 +315,20 @@ module TSHR
     allowretry_d   = allowretry_q;
     pcrdtype_d     = pcrdtype_q;
     retry_ret_d    = retry_ret_q;
+    sf_entry_d     = sf_entry_q;
+    sf_way_d       = sf_way_q;
+    sfpres_d       = sfpres_q;
+    snp_mask_d     = snp_mask_q;
+    snp_tgt_d      = snp_tgt_q;
+    got_data_d     = got_data_q;
+    bi_d           = bi_q;
+    bi_addr_d      = bi_addr_q;
+
+    sf_lk_req_o    = 1'b0;
+    sf_lk_alloc_o  = 1'b0;
+    sf_wr_o        = 1'b0;
+    sf_wr_way_o    = sf_way_q;
+    sf_wr_pres_o   = sfpres_q;
 
     // you lazy interfaceses just sleep for now
     snp_flitv    = N; snp_flitpend    = N; snp_flit    = '0;
@@ -317,11 +386,49 @@ module TSHR
     end
   endfunction
 
+  // the requester will hold the line afterwards, so the snoop filter needs an entry for it
+  function automatic logic sf_alloc_op();
+    return (tx_type_q == TX_READ && opcode_q != REQ_READ_ONCE) ||
+           opcode_q == REQ_CLEAN_UNIQUE || opcode_q == REQ_MAKE_UNIQUE;
+  endfunction
+
+  // the snoop filter part is done (lookup, maybe back-invalidation): start the
+  // request itself. WriteBack / WriteClean / Evict need no snoop; everything
+  // else snoops every RN-F the filter lists, except the requester.
+  function automatic void start_main(logic [NUM_RNF-1:0] pres);
+    got_data_d = 1'b0;
+    if (tx_type_q == TX_WRITE_BACK) begin
+      state_d = ST_DBIDRESP_SEND;
+    end else if (opcode_q == REQ_EVICT) begin
+      state_d = ST_COMP_SEND;
+    end else begin
+      snp_mask_d = (SF_BROADCAST ? {NUM_RNF{1'b1}} : pres) & ~req_bit;
+      state_d    = ST_SNOOP_PICK;
+    end
+  endfunction
+
+  // back-invalidation finished (victim line gone from every RN-F, dirty data in memory)
+  function automatic void bi_done();
+    bi_d        = 1'b0;
+    dirty_hit_d = 1'b0;
+    ptl_d       = 1'b0;
+    wb_chain_d  = 1'b0;
+    beat_cnt_d  = '0;
+    resperr_d   = '0;     // a write error on the victim line is not this request's error
+    for (int i = 0; i < NumBeats; i++) begin
+      data_d[i] = '0;
+      be_d[i]   = '0;
+    end
+    start_main(sfpres_q);
+  endfunction
+
   function automatic void goto_after_dirty_wb();
     wb_chain_d  = 1'b0;
     dirty_hit_d = 1'b0;
     ptl_d       = 1'b0;
-    if (tx_type_q == TX_READ && ptl_q) begin
+    if (bi_q) begin
+      bi_done();
+    end else if (tx_type_q == TX_READ && ptl_q) begin
       // the partial snoop is in the memory so get that little boy
       state_d = ST_SN_REQ_SEND;
     end else if (tx_type_q == TX_WRITE_UNIQUE) begin
@@ -352,6 +459,11 @@ module TSHR
     ptl_d          = 1'b0;
     allowretry_d   = Y;
     pcrdtype_d     = '0;
+    sf_entry_d     = 1'b0;
+    sfpres_d       = '0;
+    snp_mask_d     = '0;
+    got_data_d     = 1'b0;
+    bi_d           = 1'b0;
     if (req_flitv == Y) begin
       addr_d       = req_flit.addr;
       srcid_d      = req_flit.srcid;
@@ -373,30 +485,76 @@ module TSHR
   function automatic void st_alloc(); 
     if (hazard_i) begin // HAZARD EXIST freak the fuck out and panic sell everything right now
       state_d = ST_HAZARD_WAIT;
-    end else if (opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_CLEAN_FULL || opcode_q == REQ_WRITE_BACK_PTL) begin 
+    end else if (opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_CLEAN_FULL || opcode_q == REQ_WRITE_BACK_PTL) begin
       tx_type_d = TX_WRITE_BACK;
-      state_d   = ST_DBIDRESP_SEND; // Skip snoop
+      state_d   = ST_SF_LOOKUP;     // no snoop, but the SF entry is updated at the end
     end else if (opcode_q == REQ_WRITE_UNIQUE_PTL || opcode_q == REQ_WRITE_UNIQUE_FULL) begin
       tx_type_d = TX_WRITE_UNIQUE;
-      state_d   = ST_SNOOP_SEND; 
+      state_d   = ST_SF_LOOKUP;
     end else if (opcode_q == REQ_WRITE_NO_SNOOP_PTL || opcode_q == REQ_WRITE_NO_SNOOP_FULL) begin
       tx_type_d = TX_WRITE_NOSNP;
-      state_d   = ST_DBIDRESP_SEND;
+      state_d   = ST_DBIDRESP_SEND; // non-coherent: the snoop filter is not involved
     end else if (opcode_q == REQ_READ_NO_SNOOP) begin
       tx_type_d = TX_READ_NOSNP;
       state_d   = ST_SN_REQ_SEND;
     end else if (opcode_q == REQ_CLEAN_SHARED || opcode_q == REQ_CLEAN_INVALID || opcode_q == REQ_MAKE_INVALID || opcode_q == REQ_CLEAN_UNIQUE || opcode_q == REQ_MAKE_UNIQUE) begin
       tx_type_d = TX_CMO;
-      state_d   = ST_SNOOP_SEND;
+      state_d   = ST_SF_LOOKUP;
     end
     else if (opcode_q == REQ_EVICT) begin
-       tx_type_d = TX_CMO; state_d = ST_COMP_SEND; 
+       tx_type_d = TX_CMO; state_d = ST_SF_LOOKUP;
     end else begin
       tx_type_d = TX_READ;
-      state_d   = ST_SNOOP_SEND;
+      state_d   = ST_SF_LOOKUP;
       if (opcode_q !=  REQ_READ_SHARED && opcode_q != REQ_READ_CLEAN && opcode_q != REQ_READ_ONCE && opcode_q != REQ_READ_NOT_SHARED_DIRTY && opcode_q != REQ_READ_UNIQUE) begin
       $display("might be a problem: opcode %0d is not handled in TSHR", opcode_q);
       end
+    end
+  endfunction
+
+  // one snoop filter lookup. A victim with RN-Fs present is back-invalidated
+  // before the request itself starts.
+  function automatic void st_sf_lookup();
+    sf_lk_req_o   = 1'b1;
+    sf_lk_alloc_o = sf_alloc_op();
+    if (sf_lk_gnt_i) begin
+      sf_entry_d = sf_lk_entry_i;
+      sf_way_d   = sf_lk_way_i;
+      sfpres_d   = sf_lk_pres_i;
+      if (sf_lk_victim_i && (sf_lk_victim_pres_i != '0)) begin
+        bi_d       = 1'b1;
+        bi_addr_d  = sf_lk_victim_addr_i;
+        snp_mask_d = sf_lk_victim_pres_i;
+        state_d    = ST_SNOOP_PICK;
+      end else begin
+        sfpres_d = sf_lk_pres_i;
+        start_main(sf_lk_pres_i);
+      end
+    end
+  endfunction
+
+  // next snoop target = lowest RN-F still in snp_mask_q. None left: decide
+  // from what the snoops returned (same decisions as the old single snoop)
+  function automatic void st_snoop_pick();
+    if (snp_mask_q != '0) begin
+      for (int r = NUM_RNF - 1; r >= 0; r--)
+        if (snp_mask_q[r]) snp_tgt_d = RNF_IDX_W'(r);
+      state_d = ST_SNOOP_SEND;
+    end else if (bi_q) begin
+      if (dirty_hit_q || ptl_q) state_d = ST_DIRTY_WB_REQ_SEND;   // victim data to memory
+      else                      bi_done();
+    end else if (tx_type_q == TX_READ) begin
+      if (!got_data_q)  state_d = ST_SN_REQ_SEND;                 // nobody had it: memory
+      else if (ptl_q)   state_d = ST_DIRTY_WB_REQ_SEND;           // partial data: merge in memory, read back
+      else              state_d = ST_RDATA_SEND;
+    end else if (dirty_hit_q && (opcode_q != REQ_MAKE_INVALID)) begin
+      state_d = ST_DIRTY_WB_REQ_SEND;
+    end else if (tx_type_q == TX_CMO) begin
+      dirty_hit_d = 1'b0;
+      state_d     = ST_COMP_SEND;
+    end else begin
+      dirty_hit_d = 1'b0;
+      state_d     = ST_DBIDRESP_SEND;
     end
   endfunction
 
@@ -410,10 +568,15 @@ module TSHR
     snp_flit.txnid     = HN_TXNID;
     snp_flit.fwdnid    = '0;
     snp_flit.fwdtxnid  = '0;
-    snp_flit.addr      = addr_q;
+    snp_flit.addr      = bi_q ? bi_addr_q : addr_q;
 
-    if (tx_type_q == TX_READ) begin
-      snp_flit.rettosrc = 1'b1;
+    if (bi_q) begin
+      // back-invalidation: the line leaves every cache, dirty data comes back
+      snp_flit.opcode   = SNP_CLEAN_INVALID;
+      snp_flit.rettosrc = 1'b0;
+    end else if (tx_type_q == TX_READ) begin
+      // one copy is enough: after the first data, later snoops (ReadUnique) only invalidate
+      snp_flit.rettosrc = !got_data_q;
 
       if (opcode_q == REQ_READ_UNIQUE) begin
         snp_flit.opcode = SNP_UNIQUE;
@@ -449,18 +612,24 @@ module TSHR
   endfunction
 
   // waiting for the response of the snoop it means that response are waiting from the destination
-  // snoop-target identity is implicitly guaranteed by the top module
-  // fixed physical wiring for the transaction lifetime
+  // the HN-F routes the RX channels of RN-F snp_port_o (= snp_tgt_q) here; it does
+  // not change while the snoop is in flight
+  // A finished response (SnpResp, or the last beat of SnpRespData*) clears the
+  // target from snp_mask_q; final state I clears its presence bit too. The
+  // decision what to do next is taken in ST_SNOOP_PICK when no target is left:
+  //   SnpRespDataPtl -> partial bytes: write them to memory, read the line back
+  //   dirty data on a write / CMO -> write back first (not for MakeInvalid)
   function automatic void st_snoop_wait();
     logic [BeatCntW-1:0] idx;
-    logic                dirty;
-    idx   = BeatCntW'(rx_dat_flit_snp.dataid >> DidShift);
-    dirty = dirty_hit_q;
+    logic                done_one, fin_i, got;
+    idx      = BeatCntW'(rx_dat_flit_snp.dataid >> DidShift);
+    done_one = 1'b0;
+    fin_i    = 1'b0;
+    got      = got_data_q;
     if ((rx_dat_flitv_snp == Y) && (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA ||rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA_PTL ) && (rx_dat_flit_snp.txnid == HN_TXNID)) begin
       data_d[idx] = rx_dat_flit_snp.data;
       be_d[idx]   = rx_dat_flit_snp.be;
       if (rx_dat_flit_snp.resp[2]) begin
-        dirty       = 1'b1;
         dirty_hit_d = 1'b1;
       end
       if (rx_dat_flit_snp.opcode == DAT_SNP_RESP_DATA_PTL) begin
@@ -471,35 +640,22 @@ module TSHR
         beat_cnt_d = beat_cnt_q + 1'b1;
       end else begin
         beat_cnt_d = '0;
-        if (tx_type_q == TX_READ && (ptl_q || ptl_d)) begin
-          // SnpRespDataPtl holds only some bytes of the line so it cannot be forwarded as CompData
-          // write those bytes to memory then read the merged line back and yea it is slow
-          // SnpRespDataPtl_UD has no PD bit but takes the same path memory gets bytes the owner still holds dirty
-          state_d = ST_DIRTY_WB_REQ_SEND;
-        end else if (tx_type_q == TX_READ) begin
-          state_d = ST_RDATA_SEND;
-        end else if (dirty && (opcode_q != REQ_MAKE_INVALID)) begin
-          state_d = ST_DIRTY_WB_REQ_SEND;
-        end else if (tx_type_q == TX_CMO) begin
-          dirty_hit_d = 1'b0;
-          state_d     = ST_COMP_SEND;
-        end else begin
-          dirty_hit_d = 1'b0;
-          state_d     = ST_DBIDRESP_SEND;
-        end
+        done_one   = 1'b1;
+        got        = 1'b1;
+        fin_i      = (rx_dat_flit_snp.resp[1:0] == 2'b00);
       end
     end
     else if ((rx_rsp_flitv_snp == Y) && (rx_rsp_flit_snp.opcode == RSP_SNP_RESP) && (rx_rsp_flit_snp.txnid == HN_TXNID)) begin // also correct for snpresp_i
-      if (tx_type_q == TX_READ) begin
-        // read miss target doesnt have the line
-        state_d = ST_SN_REQ_SEND;
-      end else if (tx_type_q == TX_CMO) begin
-        state_d = ST_COMP_SEND;
-      
-      end else begin
-        // wait for invalidate
-        state_d = ST_DBIDRESP_SEND;
-      end
+      done_one = 1'b1;
+      fin_i    = (rx_rsp_flit_snp.resp[1:0] == 2'b00);
+    end
+    if (done_one) begin
+      got_data_d            = got;
+      snp_mask_d[snp_tgt_q] = 1'b0;
+      if (!bi_q && fin_i) sfpres_d[snp_tgt_q] = 1'b0;
+      // a read that does not take ownership needs only one copy
+      if (!bi_q && tx_type_q == TX_READ && opcode_q != REQ_READ_UNIQUE && got) snp_mask_d = '0;
+      state_d = ST_SNOOP_PICK;
     end
   endfunction
 
@@ -511,7 +667,8 @@ module TSHR
     sn_req_flit.srcid      = HNFID;
     sn_req_flit.txnid      = HN_TXNID;
     sn_req_flit.size       = WIDTH_64;
-    sn_req_flit.addr       = {addr_q[AddrWidth-1:LineOffW], LineOffW'(0)};
+    sn_req_flit.addr       = bi_q ? {bi_addr_q[AddrWidth-1:LineOffW], LineOffW'(0)}
+                                  : {addr_q[AddrWidth-1:LineOffW], LineOffW'(0)};
     sn_req_flit.allowretry = allowretry_q;
     sn_req_flit.pcrdttype  = (allowretry_q == Y) ? 4'h0 : pcrdtype_q;
     sn_req_flit.memattr    = '0;
@@ -806,7 +963,18 @@ module TSHR
     end
   endfunction
 
+  // write the final presence vector of this line back to the snoop filter.
+  // Requester bit: set when it caches the line now, cleared when it gave it up
+  // (WriteBack / Evict). Everything else keeps its bit (a stale bit is safe).
   function automatic void st_done();
+    logic [NUM_RNF-1:0] p;
+    p = sfpres_q;
+    if (sf_alloc_op()) p = p | req_bit;
+    if (opcode_q == REQ_EVICT || opcode_q == REQ_WRITE_BACK_FULL || opcode_q == REQ_WRITE_BACK_PTL)
+      p = p & ~req_bit;
+    sf_wr_o      = sf_entry_q;
+    sf_wr_way_o  = sf_way_q;
+    sf_wr_pres_o = p;
     state_d = ST_IDLE;
   endfunction
 
@@ -820,6 +988,8 @@ module TSHR
       ST_IDLE:               st_idle();
       ST_ALLOC:              st_alloc();
       ST_HAZARD_WAIT:        st_hazard_wait();
+      ST_SF_LOOKUP:          st_sf_lookup();
+      ST_SNOOP_PICK:         st_snoop_pick();
       ST_SNOOP_SEND:         st_snoop_send();
       ST_SNOOP_WAIT:         st_snoop_wait();
       ST_DIRTY_WB_REQ_SEND:  st_dirty_wb_req_send();
@@ -868,7 +1038,23 @@ module TSHR
       allowretry_q   <= Y;
       pcrdtype_q     <= '0;
       retry_ret_q    <= ST_IDLE;
+      sf_entry_q     <= 1'b0;
+      sf_way_q       <= '0;
+      sfpres_q       <= '0;
+      snp_mask_q     <= '0;
+      snp_tgt_q      <= '0;
+      got_data_q     <= 1'b0;
+      bi_q           <= 1'b0;
+      bi_addr_q      <= '0;
     end else begin
+      sf_entry_q     <= sf_entry_d;
+      sf_way_q       <= sf_way_d;
+      sfpres_q       <= sfpres_d;
+      snp_mask_q     <= snp_mask_d;
+      snp_tgt_q      <= snp_tgt_d;
+      got_data_q     <= got_data_d;
+      bi_q           <= bi_d;
+      bi_addr_q      <= bi_addr_d;
       state_q       <= state_d;
       if (tx_type_d == TX_READ || tx_type_d == TX_WRITE_UNIQUE || tx_type_d == TX_WRITE_BACK ||
           tx_type_d == TX_READ_NOSNP || tx_type_d == TX_WRITE_NOSNP || tx_type_d == TX_CMO) begin
@@ -906,5 +1092,8 @@ module TSHR
   assign TxnID_o = txnid_q;
   assign SrcID_o = srcid_q;
   assign Addr_o  = addr_q;
+  assign snp_port_o = snp_tgt_q;
+  assign bi_o       = bi_q;
+  assign bi_addr_o  = bi_addr_q;
 
 endmodule
