@@ -318,6 +318,13 @@ module Tb_RNF;
         sb.set_state(0, a, to_cstate(dut.tag_st));
         sb.check_swmr(a, "RNF0", {"dcache line -> ", dut.tag_st.name()});
       end
+      // port A: a store hit in the pipeline turns UC into UD
+      if (dut.pa_st_we) begin
+        addr_t a;
+        a = addr_t'({dut.pa_tag[dut.pa_st_way], dut.pa_st_set, 6'b0});
+        sb.set_state(0, a, ST_UD);
+        sb.check_swmr(a, "RNF0", "dcache line -> CS_UD (store hit, pipeline)");
+      end
       c_hit      += dut.perf_hit;      c_miss     += dut.perf_miss;
       c_evict    += dut.perf_evict;    c_wb       += dut.perf_wb;
       c_snp_hit  += dut.perf_snp_hit;  c_snp_data += dut.perf_snp_data;
@@ -376,6 +383,16 @@ module Tb_RNF;
       end
     end
     if (dut.u_snp_rx.cnt_q >= 2) sb.cov_hit("dc snoop: two or more snoops queued");
+
+    // the hit pipeline (P2): every hit it answers, op x the line's state
+    if (dut.p2_hit) begin
+      st = dut.p2_lk.hst;
+      if (dut.p2_q.op == rnf_pkg::MEM_OP_STORE) opn = "store"; else opn = "load";
+      sb.cov_hit($sformatf("dc core: %s hit on %s", opn, st.name()));
+      sb.cov_hit("dc pipe: hit answered by the pipeline");
+    end
+    if (dut.p2_v_q && !dut.p2_hit && dut.p2_dep) sb.cov_hit("dc pipe: request waited for an MSHR on its set");
+    if (dut.p2_v_q && dut.issue_w) sb.cov_hit("dc pipe: back-to-back issue");
 
     // the MSHR holding the RAM port: op x what its lookup found
     if (dut.own_v) begin
@@ -439,6 +456,8 @@ module Tb_RNF;
         sb.err("DUT_STATE", $sformatf("end of test: dcache MSHR %0d is not idle (state %0d)", k, dut.m_q[k].state));
     if (int'(dut.s_q.state) != 0)                                    // 0 = S_IDLE
       sb.err("DUT_STATE", $sformatf("end of test: dcache snoop FSM is not idle (state %0d)", dut.s_q.state));
+    if (dut.fq_cnt_q != 0 || dut.p2_v_q)
+      sb.err("DUT_STATE", $sformatf("end of test: dcache hit pipeline is not empty (%0d in the FIFO, P2 %0b)", dut.fq_cnt_q, dut.p2_v_q));
   endfunction
 
   function automatic void need(string k);
@@ -528,6 +547,7 @@ module Tb_RNF;
     need("drv: sub-word stores to one line issued while another is in flight");
     need("drv: request waited 8+ cycles for ready");
     need("core: request accepted the cycle after a response");
+    need("dc pipe: hit answered by the pipeline");
     need("core: rsp.err on nc load");
     // sub-word merging, checked byte-exact
     need("merge: load returned the bytes of 2+ sub-word stores (exact)");
@@ -554,6 +574,8 @@ module Tb_RNF;
       need("dc mshr: 2+ CHI transactions in flight");
       need("dc mshr: hit under an open miss");
       need("dc mshr: request waited for an older MSHR on its set");
+      need("dc pipe: back-to-back issue");
+      need("dc pipe: request waited for an MSHR on its set");
     end
   endfunction
 

@@ -41,37 +41,48 @@ endpackage : rnf_dcache_pkg
 // =============================================================================
 // rnf_dcache - CHI RN-F data cache with NUM_MSHR miss status holding registers
 //
-//  Core side : rnf_core_if. Up to NUM_MSHR requests open at once, answered by
-//              idx in any order (a hit is answered under an older miss).
+//  Core side : rnf_core_if. Requests go into a 2-entry FIFO (ready = a flop),
+//              answers come from one output register (rsp_q), by idx, in any
+//              order. No request address reaches a RAM in its accept cycle and
+//              no RAM output reaches the core in the cycle it is read (timing).
 //  CHI side  : REQ / RSP / DAT transmit, SNP / RSP / DAT receive.
 //
-//  Cache     : SETS x WAYS lines of 64 bytes. The tag entry holds the CHI line
-//              state (I / SC / UC / UD / SD). Replacement uses an Invalid way
-//              first, otherwise one round-robin pointer per set.
+//  Cache     : SETS x WAYS lines of 64 bytes. Tags + CHI line states (I / SC /
+//              UC / UD / SD) in flops; data in one dual-port RAM per way.
+//              Replacement uses an Invalid way first, otherwise one round-robin
+//              pointer per set.
 //
-//  MSHRs     : every accepted core request gets an MSHR and lives in it until
-//              it is answered: lookup, victim Evict / WriteBackFull, the read,
-//              RetryAck / PCrdGrant, fill, re-lookup, CompAck, response. Each
-//              MSHR runs the same per-request FSM (r-states); they share
-//                * the single tag / data RAM port (with the snoop FSM),
+//  Hit pipeline (port A, see "hit pipeline"): one request issued per cycle
+//              from the FIFO; tags + the request's beat of every way are read,
+//              P2 compares and answers a hit into rsp_q (3 cycles after
+//              accept), a store hit writes its bytes (UC -> UD) on port A.
+//              Everything else is handed to an MSHR.
+//
+//  MSHRs     : misses, upgrades (store on a Shared line), non-cacheable
+//              accesses and requests to a set with an open MSHR. An MSHR runs
+//              the per-request FSM (r-states): lookup, victim Evict /
+//              WriteBackFull, the read, RetryAck / PCrdGrant, fill, re-lookup,
+//              CompAck, response (through rsp_q when P2 does not use it).
+//              The MSHRs share
+//                * port B of the tags / data (with the snoop FSM),
 //                * the REQ, RSP (CompAck) and DAT (write data) TX channels,
-//                * the PCrdGrant counters and the core response.
+//                * the PCrdGrant counters.
 //              The TxnID of an MSHR's transaction is {sequence, MSHR index},
 //              so responses on RSP / DAT are routed by TxnID.
 //
-//  Ordering  : a request is accepted while an MSHR is free. If an older MSHR
-//              is open on the same SET, the new one waits in R_DEP until all
-//              of those finish, so per set (and so per line) requests are
-//              handled in order and two MSHRs never race for one set's victim.
+//  Ordering  : per set, requests are answered in order: the pipeline never
+//              issues next to an older request to the same set, and a request
+//              to a set with an open MSHR becomes an MSHR waiting in R_DEP until
+//              the older ones finish (two MSHRs never race for a set's victim).
 //              Requests to other sets overtake freely (hit under miss, miss
 //              under miss). Non-cacheable requests follow the same rule.
 //
-//  RAM port  : one agent at a time. An agent that read the tags / data keeps
+//  RAM port B: one agent at a time. An agent that read the tags / data keeps
 //              the port while it acts on what it read (r-states LOOKUP,
 //              FILL_SEL, WB_CMP, WB_RD; snoop S_CMP, S_DATA). Otherwise the
-//              snoop FSM goes first, then the MSHRs in rotating order, then a
-//              new request's first tag read (done in its accept cycle when the
-//              port is free, so a hit costs no extra cycle).
+//              snoop FSM goes first (but not on a set the pipeline holds), then
+//              the MSHRs in rotating order. The pipeline does not issue on the
+//              set the snoop FSM is working on.
 //
 //  Requests  : load miss            ReadShared
 //              store miss / store on a Shared line   ReadUnique
@@ -226,19 +237,62 @@ module rnf_dcache
   logic [WAYS-1:0][TAG_W-1:0] rd_tag;
   cache_state_e [WAYS-1:0]    rd_st;
 
+  // port A of the tags / data: the hit pipeline (see "hit pipeline" below)
+  logic                       pa_tag_re;
+  logic [SET_W-1:0]           pa_set;
+  logic [WAYS-1:0][TAG_W-1:0] pa_tag;          // P2: the tags of the P1 set
+  cache_state_e [WAYS-1:0]    pa_st;
+  logic                       pa_st_we;        // P2: store hit on UC -> UD
+  logic [SET_W-1:0]           pa_st_set;
+  logic [WAY_W-1:0]           pa_st_way;
+  logic                       pa_dat_re;       // P1: the request's beat of every way
+  logic [1:0]                 pa_beat;
+  logic [WAYS-1:0]            pa_dat_we;       // P2: store hit write (hit way)
+  logic [SET_W-1:0]           pa_wset;
+  logic [1:0]                 pa_wbeat;
+  logic [15:0]                pa_be;
+  logic [127:0]               pa_wdata;
+  logic [WAYS-1:0][127:0]     pa_rdata;        // P2: the beat of every way
+
   rnf_tag_ram #(.SETS(SETS), .WAYS(WAYS), .TAG_W(TAG_W)) u_tag_ram (
     .clk(clk), .resetn(resetn), .set_i(tag_set), .re_i(tag_re), .we_i(tag_we),
-    .way_i(tag_way), .tag_i(tag_tag), .state_i(tag_st), .tag_o(rd_tag), .state_o(rd_st));
+    .way_i(tag_way), .tag_i(tag_tag), .state_i(tag_st), .tag_o(rd_tag), .state_o(rd_st),
+    .set_a_i(pa_set), .re_a_i(pa_tag_re), .tag_a_o(pa_tag), .state_a_o(pa_st),
+    .we_a_i(pa_st_we), .wset_a_i(pa_st_set), .way_a_i(pa_st_way), .state_a_i(CS_UD));
 
+  // data: one dual-port RAM per way. Port B (MSHRs, snoop FSM) addresses one
+  // way; its read data is the way read last (same view as the old single RAM)
   wire                         ram_re   = s_port ? s_dat_re : r_dat_re;
   wire                         ram_we   = s_port ? 1'b0     : r_dat_we;
-  wire [SET_W+WAY_W+2-1:0]     ram_addr = s_port ? {s_dat_set, s_dat_way, s_dat_beat}
-                                                 : {r_dat_set, r_dat_way, r_dat_beat};
+  wire [WAY_W-1:0]             ram_way  = s_port ? s_dat_way : r_dat_way;
+  wire [SET_W+2-1:0]           ram_addr = s_port ? {s_dat_set, s_dat_beat}
+                                                 : {r_dat_set, r_dat_beat};
+  logic [WAYS-1:0][127:0]      ram_rdata_w;
+  logic [WAY_W-1:0]            ram_rway_q;     // way of the last port B read
   logic [127:0]                ram_rdata;
+  assign ram_rdata = ram_rdata_w[ram_rway_q];
 
-  rnf_data_ram #(.DEPTH(SETS * WAYS * 4)) u_data_ram (
-    .clk(clk), .addr_i(ram_addr), .re_i(ram_re), .we_i(ram_we), .be_i(r_dat_be),
-    .wdata_i(r_dat_wdata), .rdata_o(ram_rdata));
+  always_ff @(posedge clk or negedge resetn) begin
+    if (!resetn)     ram_rway_q <= '0;
+    else if (ram_re) ram_rway_q <= ram_way;
+  end
+
+  for (genvar w = 0; w < WAYS; w++) begin : gen_way_ram
+    rnf_data_ram #(.DEPTH(SETS * 4)) u_data_ram (
+      .clk       (clk),
+      .a_addr_i  (pa_dat_we[w] ? {pa_wset, pa_wbeat} : {pa_set, pa_beat}),
+      .a_re_i    (pa_dat_re),
+      .a_we_i    (pa_dat_we[w]),
+      .a_be_i    (pa_be),
+      .a_wdata_i (pa_wdata),
+      .a_rdata_o (pa_rdata[w]),
+      .b_addr_i  (ram_addr),
+      .b_re_i    (ram_re && ram_way == WAY_W'(w)),
+      .b_we_i    (ram_we && ram_way == WAY_W'(w)),
+      .b_be_i    (r_dat_be),
+      .b_wdata_i (r_dat_wdata),
+      .b_rdata_o (ram_rdata_w[w]));
+  end
 
   // ------------------------------------------------------------------ MSHR state
   typedef logic [NUM_MSHR-1:0] mvec_t;
@@ -523,6 +577,132 @@ module rnf_dcache
       end
   end
 
+  // ------------------------------------------------------------------ hit pipeline
+  // (timing) Every core request goes through a 2-entry FIFO, so no request
+  // address reaches a RAM in its accept cycle, and every response leaves
+  // through one output register (rsp_q), so no RAM output reaches the core
+  // in the same cycle. core.ready comes from the FIFO count (a flop).
+  //
+  //   accept : request -> FIFO
+  //   issue  : the FIFO head reads its set's tags and its beat of every way
+  //            on port A (registered); the request moves into P2
+  //   P2     : compare, way select, lane extract. Then one of:
+  //              hit             -> rsp_q (store: write the bytes on port A,
+  //                                 UC -> UD on the tag state)
+  //              miss / upgrade  -> a free MSHR, from R_TAG_RD: it does the
+  //                                 old flow on port B (lookup again, victim,
+  //                                 CHI read, fill, CompAck, answer)
+  //              non-cacheable   -> a free MSHR, starts ReadNoSnp / WriteNoSnpPtl
+  //              set has an open MSHR -> a free MSHR in R_DEP (per-set order)
+  //   rsp_q  : the core sees the answer 3 cycles after accept for a hit;
+  //            MSHR answers use rsp_q when P2 does not.
+  // One request can be issued per cycle. An issue waits when:
+  //   - P2 holds a request to the same set (order, and P2 may write it)
+  //   - P2 holds a store (port A is written in P2)
+  //   - the snoop FSM is working on the head's set (S_WANT .. S_DATA)
+  //   - fewer MSHRs are free than P2 might need (P2 never waits for one)
+  // and a snoop does not start on a set the pipeline holds (see the arbiter).
+  typedef struct packed {
+    mem_op_e                    op;
+    logic [AddrSize-1:0]        addr;
+    width_e                     width;
+    logic [MaxAccessWidth-1:0]  data;
+    logic [ReqIdxWidth-1:0]     idx;
+    mem_unit_e                  src;
+    logic                       cach;
+  } preq_t;
+
+  preq_t        fq_mem [2];
+  logic         fq_rd_q, fq_wr_q;
+  logic [1:0]   fq_cnt_q;
+  preq_t        head;
+  logic         head_v, accept_w, issue_w;
+  preq_t        p2_q;
+  logic         p2_v_q;
+
+  assign head     = fq_mem[fq_rd_q];
+  assign head_v   = (fq_cnt_q != 2'd0);
+  assign accept_w = (core.req.valid == Y) && (fq_cnt_q != 2'd2);
+
+  // MSHRs: how many are free now (registered states)
+  logic [$clog2(NUM_MSHR+1)-1:0] free_cnt;
+  always_comb begin
+    free_cnt = '0;
+    for (int k = 0; k < NUM_MSHR; k++) free_cnt += (m_q[k].state == R_IDLE);
+  end
+
+  logic snp_on_head_set;
+  assign snp_on_head_set = (s_q.state == S_WANT || s_q.state == S_CMP || s_q.state == S_DATA) &&
+                           (sn_set == set_of(head.addr));
+
+  assign issue_w = head_v &&
+                   !(p2_v_q && (set_of(p2_q.addr) == set_of(head.addr) || p2_q.op == MEM_OP_STORE)) &&
+                   !snp_on_head_set &&
+                   (free_cnt > ($bits(free_cnt))'(p2_v_q));
+
+  logic pipe_on_snp_set;
+  assign pipe_on_snp_set = (p2_v_q  && set_of(p2_q.addr) == sn_set) ||
+                           (issue_w && set_of(head.addr) == sn_set);
+
+  // port A reads in the issue cycle (address from the FIFO, a flop)
+  assign pa_tag_re = issue_w;
+  assign pa_dat_re = issue_w && head.cach;
+  assign pa_set    = set_of(head.addr);
+  assign pa_beat   = head.addr[5:4];
+
+  // ---- P2 decision
+  lk_t               p2_lk;
+  logic              p2_store, p2_dep, p2_hit;
+  logic              p2_rsp_v;            // P2 answers the core (uses rsp_q this cycle)
+  logic              p2_alloc;            // P2 hands the request to a free MSHR
+  logic [MaxAccessWidth-1:0] p2_rdata;
+  mvec_t             p2_dep_vec;
+
+  always_comb begin
+    p2_store = (p2_q.op == MEM_OP_STORE);
+    p2_lk    = '0;
+    p2_lk.hst = CS_I;
+    for (int w = WAYS - 1; w >= 0; w--) begin
+      if (pa_st[w] != CS_I && pa_tag[w] == tag_of(p2_q.addr)) begin
+        p2_lk.hit = 1'b1; p2_lk.hway = WAY_W'(w); p2_lk.hst = pa_st[w];
+      end
+    end
+    for (int k = 0; k < NUM_MSHR; k++)
+      p2_dep_vec[k] = (m_q[k].state != R_IDLE) && (set_of(m_q[k].addr) == set_of(p2_q.addr));
+    p2_dep   = (p2_dep_vec != '0);
+    p2_hit   = p2_v_q && p2_q.cach && !p2_dep && p2_lk.hit &&
+               (!p2_store || p2_lk.hst == CS_UC || p2_lk.hst == CS_UD);
+    p2_rsp_v = p2_hit;
+    p2_alloc = p2_v_q && !p2_hit;
+    p2_rdata = load_of(pa_rdata[p2_lk.hway], p2_q.width, p2_q.addr[3:0]);
+
+    // store hit: the bytes on port A, UC -> UD
+    pa_dat_we = '0;
+    pa_wset   = set_of(p2_q.addr);
+    pa_wbeat  = p2_q.addr[5:4];
+    pa_be     = be_of(p2_q.width, p2_q.addr[3:0]);
+    pa_wdata  = 128'(p2_q.data) << {p2_q.addr[3:0], 3'b000};
+    pa_st_we  = 1'b0;
+    pa_st_set = set_of(p2_q.addr);
+    pa_st_way = p2_lk.hway;
+    if (p2_hit && p2_store) begin
+      pa_dat_we[p2_lk.hway] = 1'b1;
+      pa_st_we              = (p2_lk.hst == CS_UC);
+    end
+  end
+
+  // ---- response register (the only thing the core sees)
+  typedef struct packed {
+    logic                       valid;
+    mem_op_e                    op;
+    logic [MaxAccessWidth-1:0]  data;
+    logic [ReqIdxWidth-1:0]     idx;
+    mem_unit_e                  src;
+    logic                       err;
+    cache_state_e               st;
+  } prsp_t;
+  prsp_t rsp_q, rsp_d;
+
   // ------------------------------------------------------------------ RAM port arbiter
   // CompData at the head of the DAT FIFO, per MSHR
   mvec_t rxd_mine;
@@ -564,7 +744,9 @@ module rnf_dcache
         port_lock = 1'b1;
       end
     if (!port_lock) begin
-      if (s_q.state == S_WANT) begin
+      // a snoop only starts on a set the hit pipeline is not working on (the
+      // pipeline read that set's tags / data and may still write it in P2)
+      if (s_q.state == S_WANT && !pipe_on_snp_set) begin
         s_grant = 1'b1;
       end else begin
         for (int k = 0; k < NUM_MSHR; k++) begin
@@ -580,7 +762,9 @@ module rnf_dcache
   end
 
   // ------------------------------------------------------------------ perf / debug
-  logic perf_hit, perf_miss, perf_evict, perf_snp, perf_snp_hit, perf_snp_data;
+  logic perf_hit_m, perf_miss, perf_evict, perf_snp, perf_snp_hit, perf_snp_data;
+  logic [1:0] perf_hit;                      // hits this cycle: an MSHR lookup + the hit pipeline (P2)
+  assign perf_hit = 2'(perf_hit_m) + 2'(p2_hit);
   logic [4:0] perf_wb, perf_retry;           // can happen in several MSHRs in one cycle
 
   // the MSHR doing a lookup this cycle and what it found (for testbench coverage)
@@ -668,7 +852,7 @@ module rnf_dcache
     wdat_c  = '0;
     rxd_pop = rxd_v && !(|rxd_mine);           // a DAT flit nobody waits for is dropped
 
-    perf_hit = 1'b0; perf_miss = 1'b0; perf_evict = 1'b0; perf_wb = '0; perf_retry = '0;
+    perf_hit_m = 1'b0; perf_miss = 1'b0; perf_evict = 1'b0; perf_wb = '0; perf_retry = '0;
 
     // ---- responses on the RSP channel are taken as they arrive
     rxr_pop = rxr_v;
@@ -677,7 +861,7 @@ module rnf_dcache
     req_taken  = 1'b0;
     dat_taken  = s_dat_v;                       // the snoop FSM goes first on RSP / DAT
     ack_taken  = s_rsp_v;
-    rsp_taken  = 1'b0;
+    rsp_taken  = p2_rsp_v;                   // P2 (a hit) owns rsp_q this cycle
     pcrd_taken = 1'b0;
 
     for (int k = 0; k < NUM_MSHR; k++) begin
@@ -731,7 +915,7 @@ module rnf_dcache
         R_LOOKUP: begin
           n.first = 1'b0;
           if (lk.hit && (!q_store || lk.hst == CS_UC || lk.hst == CS_UD)) begin
-            perf_hit   = e.first;
+            perf_hit_m = e.first;
             n.acc_done = 1'b1;
             r_dat_set  = q_set;
             r_dat_way  = lk.hway;
@@ -1027,26 +1211,25 @@ module rnf_dcache
     end
     for (int k = 0; k < NUM_MSHR; k++) m_d[k].dep = m_d[k].dep & ~freed;
 
-    // ---- accept a new core request into a free MSHR
+    // ---- a request P2 does not answer goes into a free MSHR (one is always
+    // free: the issue rule reserves it)
     free_found = 1'b0;
     free_i     = '0;
     for (int k = NUM_MSHR - 1; k >= 0; k--)
       if (!active[k]) begin free_found = 1'b1; free_i = MW'(k); end
     c_ready = free_found;
 
-    dep_now = '0; 
-    for (int k = 0; k < NUM_MSHR; k++)
-      dep_now[k] = active[k] && (set_of(m_q[k].addr) == set_of(core.req.addr));
+    dep_now = p2_dep_vec;                   // older MSHRs on the same set (registered)
 
-    if (core.req.valid == Y && c_ready) begin
+    if (p2_alloc && free_found) begin
       n          = m_q[free_i];
-      n.op       = core.req.op;
-      n.addr     = core.req.addr;
-      n.width    = core.req.width;
-      n.data     = core.req.data;
-      n.idx      = core.req.idx;
-      n.src      = core.req.src;
-      n.cach     = (core.req.cacheable == Y);
+      n.op       = p2_q.op;
+      n.addr     = p2_q.addr;
+      n.width    = p2_q.width;
+      n.data     = p2_q.data;
+      n.idx      = p2_q.idx;
+      n.src      = p2_q.src;
+      n.cach     = p2_q.cach;
       n.dep      = dep_now & ~freed;
       n.first    = 1'b1;
       n.acc_done = 1'b0;
@@ -1055,18 +1238,34 @@ module rnf_dcache
       n.rst      = CS_I;
       n.ack_pend = 1'b0;
       n.rd_act   = 1'b0;
-      if (dep_now != '0) begin //((dep_no & ~freed) != '0); might save a 1 cycle bubble
-        n.state = R_DEP;
+      if (dep_now != '0) begin
+        n.state = R_DEP;                    // per-set order: after the older MSHRs
       end else if (!n.cach) begin
-        n = start_txn(n, (core.req.op == MEM_OP_STORE) ? T_NCWR : T_NCRD, int'(free_i));
-      end else if (a_grant) begin
-        r_tag_re  = 1'b1;                        // first tag read in the accept cycle
-        r_tag_set = set_of(core.req.addr);
-        n.state   = R_LOOKUP;
+        n = start_txn(n, (p2_q.op == MEM_OP_STORE) ? T_NCWR : T_NCRD, int'(free_i));
       end else begin
-        n.state = R_TAG_RD;
+        n.state = R_TAG_RD;                 // miss / upgrade: the MSHR flow on port B
       end
       m_d[free_i] = n;
+    end
+
+    // ---- the response register: P2 first, else the MSHR that answered
+    rsp_d = '0;
+    if (p2_rsp_v) begin
+      rsp_d.valid = 1'b1;
+      rsp_d.op    = p2_q.op;
+      rsp_d.data  = p2_store ? '0 : p2_rdata;
+      rsp_d.idx   = p2_q.idx;
+      rsp_d.src   = p2_q.src;
+      rsp_d.err   = 1'b0;
+      rsp_d.st    = p2_store ? CS_UD : p2_lk.hst;
+    end else if (c_rsp_v) begin
+      rsp_d.valid = 1'b1;
+      rsp_d.op    = c_rsp_op;
+      rsp_d.data  = c_rsp_data;
+      rsp_d.idx   = c_rsp_idx;
+      rsp_d.src   = c_rsp_src;
+      rsp_d.err   = c_rsp_err;
+      rsp_d.st    = c_rsp_st;
     end
   end
 
@@ -1221,15 +1420,16 @@ module rnf_dcache
 
   // ------------------------------------------------------------------ core response
   always_comb begin
-    core.ready         = c_ready ? Y : N;
+    // ready from the FIFO count, the answer from rsp_q: both flops
+    core.ready         = (fq_cnt_q != 2'd2) ? Y : N;
     core.rsp           = '0;
-    core.rsp.valid     = c_rsp_v ? Y : N;
-    core.rsp.op        = c_rsp_op;
-    core.rsp.data      = c_rsp_data;
-    core.rsp.idx       = c_rsp_idx;
-    core.rsp.src       = c_rsp_src;
-    core.rsp.err       = c_rsp_err ? Y : N;
-    core.rsp.chr_state = c_rsp_st;
+    core.rsp.valid     = rsp_q.valid ? Y : N;
+    core.rsp.op        = rsp_q.op;
+    core.rsp.data      = rsp_q.data;
+    core.rsp.idx       = rsp_q.idx;
+    core.rsp.src       = rsp_q.src;
+    core.rsp.err       = rsp_q.err ? Y : N;
+    core.rsp.chr_state = rsp_q.st;
   end
 
   // ------------------------------------------------------------------ registers
@@ -1247,6 +1447,12 @@ module rnf_dcache
       s_q       <= '0;
       s_q.state <= S_IDLE;
       rot_q     <= '0;
+      fq_rd_q   <= 1'b0;
+      fq_wr_q   <= 1'b0;
+      fq_cnt_q  <= 2'd0;
+      p2_v_q    <= 1'b0;
+      p2_q      <= '0;
+      rsp_q     <= '0;
       for (int s = 0; s < SETS; s++) rr_q[s] <= '0;
       for (int k = 0; k < 16; k++)   pcrd_q[k] <= '0;
       perf_hits_r       <= '0;
@@ -1261,6 +1467,19 @@ module rnf_dcache
       for (int k = 0; k < NUM_MSHR; k++) m_q[k] <= m_d[k];
       s_q   <= s_d;
       rot_q <= rot_idx(rot_q, 1);
+
+      // hit pipeline: request FIFO -> P2 -> response register
+      if (accept_w) begin
+        fq_mem[fq_wr_q] <= '{op: core.req.op, addr: core.req.addr, width: core.req.width,
+                               data: core.req.data, idx: core.req.idx, src: core.req.src,
+                               cach: (core.req.cacheable == Y)};
+        fq_wr_q <= ~fq_wr_q;
+      end
+      if (issue_w) fq_rd_q <= ~fq_rd_q;
+      fq_cnt_q <= fq_cnt_q + 2'(accept_w) - 2'(issue_w);
+      p2_v_q   <= issue_w;
+      if (issue_w) p2_q <= head;
+      rsp_q    <= rsp_d;
       if (rr_inc) rr_q[rr_set] <= rr_q[rr_set] + 1'b1;
 
       if (pcrd_inc && pcrd_dec && rxr.pcrdttype == pcrd_dec_type) begin
@@ -1270,7 +1489,7 @@ module rnf_dcache
         if (pcrd_dec)                                pcrd_q[pcrd_dec_type] <= pcrd_q[pcrd_dec_type] - 1'b1;
       end
 
-      if (perf_hit)      perf_hits_r       <= perf_hits_r + 1;
+      perf_hits_r       <= perf_hits_r + 32'(perf_hit);
       if (perf_miss)     perf_misses_r     <= perf_misses_r + 1;
       if (perf_evict)    perf_evictions_r  <= perf_evictions_r + 1;
       perf_writebacks_r <= perf_writebacks_r + 32'(perf_wb);
@@ -1289,6 +1508,10 @@ module rnf_dcache
         $error("rnf_dcache: %0d MSHRs own the RAM port in one cycle (%b)", $countones(e_port), e_port);
       if (s_grant && e_port != '0)
         $error("rnf_dcache: snoop FSM and MSHR(s) %b own the RAM port in one cycle", e_port);
+      if (p2_alloc && !c_ready)
+        $error("rnf_dcache: P2 has a request for an MSHR but none is free (the issue rule should prevent this)");
+      if (pa_dat_re && pa_dat_we != '0)
+        $error("rnf_dcache: port A read and store-hit write in one cycle");
     end
   end
   // synthesis translate_on
