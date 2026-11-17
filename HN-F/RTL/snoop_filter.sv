@@ -31,8 +31,11 @@
 // Write port (any number of trackers per cycle: they own different entries)
 //   the final presence vector; an all-zero vector frees the entry.
 //
-// The set index is an XOR fold of the line address, so lines that differ only
-// in high address bits still spread over the sets.
+// The set index is the low line-address bits (direct, like the RN-F caches).
+// Sized SETS = RN-F sets and WAYS = NUM_RNF * RN-F ways, a set mirrors that
+// cache set in every RN-F, so it never back-invalidates for capacity. (An XOR
+// fold of the whole line address scattered lines that sit in different RN-F
+// sets into the same filter set: back-invalidations, up to 40x the misses.)
 module snoop_filter #(
   parameter int NUM_TRACKERS = 4,
   parameter int NUM_RNF      = 2,
@@ -94,8 +97,7 @@ module snoop_filter #(
     la = line_of(a);
     h  = '0;
     if (SETS > 1)
-      for (int i = 0; i < LAW; i += IDXW)
-        h ^= IDXW'(la >> i);
+      h = la[IDXW-1:0];
     return h;
   endfunction
 

@@ -1,10 +1,11 @@
 `timescale 1ns/1ps
 // rnf_tag_ram - tags + CHI line states of the RN-F dcache
 //
-// Distributed-RAM (LUTRAM) style: no block RAM, no wide flop muxes.
-//   tags   : one array per way, written only from port B (fills / evictions)
-//   states : one array per way, ONE write port shared by port B and port A
-//            (the dcache never lets both write in one cycle; A wins if it does)
+// Distributed-RAM (LUTRAM) style: one tag array and one state array PER WAY
+// (generate), each indexed by set only, so synthesis maps them to LUTRAM:
+//   tags   : written only from port B (fills / evictions)
+//   states : ONE write port shared by port B and port A (the dcache never lets
+//            both write in one cycle; A wins if it happens)
 //   valid  : one flop per (set, way), cleared at reset (LUTRAM has no reset):
 //            an entry reads CS_I until it is written with a state other than I
 // Two registered read ports, each returns the whole set:
@@ -40,45 +41,43 @@ module rnf_tag_ram #(
   import chi_pkg::*;
 
   localparam int SW = $bits(cache_state_e);
-
-  (* ram_style = "distributed" *) logic [TAG_W-1:0] tag_mem [WAYS][SETS];
-  (* ram_style = "distributed" *) logic [SW-1:0]    st_mem  [WAYS][SETS];
-  logic [SETS-1:0][WAYS-1:0] valid_q;
+  localparam int SB = $clog2(SETS);
 
   // the state write port: A (store hit) or B
-  wire                    st_we   = we_a_i | we_i;
-  wire [$clog2(SETS)-1:0] st_set  = we_a_i ? wset_a_i  : set_i;
-  wire [$clog2(WAYS)-1:0] st_way  = we_a_i ? way_a_i   : way_i;
-  wire [SW-1:0]           st_val  = we_a_i ? SW'(state_a_i) : SW'(state_i);
+  wire          st_we  = we_a_i | we_i;
+  wire [SB-1:0] st_set = we_a_i ? wset_a_i : set_i;
+  wire [$clog2(WAYS)-1:0] st_way = we_a_i ? way_a_i : way_i;
+  wire [SW-1:0] st_val = we_a_i ? SW'(state_a_i) : SW'(state_i);
 
-  always_ff @(posedge clk) begin
-    if (we_i)  tag_mem[way_i][set_i]  <= tag_i;
-    if (st_we) st_mem[st_way][st_set] <= st_val;
-  end
+  logic [SETS-1:0][WAYS-1:0] valid_q;
 
   always_ff @(posedge clk or negedge resetn) begin
     if (!resetn) valid_q <= '0;
     else if (st_we) valid_q[st_set][st_way] <= (cache_state_e'(st_val) != CS_I);
   end
 
-  // registered reads (the whole set, both ports)
-  always_ff @(posedge clk) begin
-    for (int w = 0; w < WAYS; w++) begin
-      if (re_i)   tag_o[w]   <= tag_mem[w][set_i];
-      if (re_a_i) tag_a_o[w] <= tag_mem[w][set_a_i];
-    end
-  end
+  for (genvar w = 0; w < WAYS; w++) begin : gen_way
+    (* ram_style = "distributed" *) logic [TAG_W-1:0] tag_mem [SETS];
+    (* ram_style = "distributed" *) logic [SW-1:0]    st_mem  [SETS];
 
-  always_ff @(posedge clk or negedge resetn) begin
-    if (!resetn) begin
-      for (int w = 0; w < WAYS; w++) begin
+    always_ff @(posedge clk) begin
+      if (we_i && way_i == w)   tag_mem[set_i]  <= tag_i;
+      if (st_we && st_way == w) st_mem[st_set]  <= st_val;
+    end
+
+    // registered reads
+    always_ff @(posedge clk) begin
+      if (re_i)   tag_o[w]   <= tag_mem[set_i];
+      if (re_a_i) tag_a_o[w] <= tag_mem[set_a_i];
+    end
+
+    always_ff @(posedge clk or negedge resetn) begin
+      if (!resetn) begin
         state_o[w]   <= CS_I;
         state_a_o[w] <= CS_I;
-      end
-    end else begin
-      for (int w = 0; w < WAYS; w++) begin
-        if (re_i)   state_o[w]   <= valid_q[set_i][w]   ? cache_state_e'(st_mem[w][set_i])   : CS_I;
-        if (re_a_i) state_a_o[w] <= valid_q[set_a_i][w] ? cache_state_e'(st_mem[w][set_a_i]) : CS_I;
+      end else begin
+        if (re_i)   state_o[w]   <= valid_q[set_i][w]   ? cache_state_e'(st_mem[set_i])   : CS_I;
+        if (re_a_i) state_a_o[w] <= valid_q[set_a_i][w] ? cache_state_e'(st_mem[set_a_i]) : CS_I;
       end
     end
   end

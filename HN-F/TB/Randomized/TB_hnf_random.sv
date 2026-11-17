@@ -633,7 +633,7 @@ module Tb_HNF_Random;
     s.trng = new(SEED ^ 32'h5EED_0001);
     // coherent pool: line-aligned, small on purpose to force collisions;
     // pool[0..3] double as the hot lines / directed-scenario addresses
-    for (int i = 1; i <= POOL_LINES; i++) s.pool.push_back(addr_t'(i) << 16);
+    for (int i = 1; i <= POOL_LINES; i++) s.pool.push_back((addr_t'(i) << 16) | (addr_t'(i) << 6));   // low bits: every SF set (direct index)
     // non-coherent (ReadNoSnp / WriteNoSnp) lines, kept apart from the pool
     for (int i = 0; i < 4; i++)   s.nc_pool.push_back(addr_t'(39'h20_0000) + (addr_t'(i) << 16));
     sb = s;                // agents start their threads once this is non-null

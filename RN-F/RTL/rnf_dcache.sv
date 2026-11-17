@@ -816,15 +816,80 @@ module rnf_dcache
 
   mvec_t active, freed;
 
+  // ---- shared resources: one-hot grants (rotating priority over the MSHRs),
+  // computed from flop-level "wants" before the per-MSHR logic, so every
+  // shared datapath (flit builders, data shifters) exists once and only
+  // selects the winner's fields (no per-MSHR copies, no rotation of entries)
+  function automatic mvec_t rr_pick(mvec_t req, logic [MW-1:0] base);
+    mvec_t g;
+    logic  done;
+    g    = '0;
+    done = 1'b0;
+    for (int k = 0; k < NUM_MSHR; k++) begin
+      if (!done && req[rot_idx(base, k)]) begin
+        g[rot_idx(base, k)] = 1'b1;
+        done = 1'b1;
+      end
+    end
+    return g;
+  endfunction
+
+  mvec_t want_req, want_dat, want_ack, want_rsp, want_pcrd;
+  mvec_t g_req, g_dat, g_ack, g_rsp, g_pcrd;
+  mvec_t in_load, in_lookup, nc_mine;
+
   always_comb begin
-    logic             req_taken, dat_taken, ack_taken, rsp_taken, pcrd_taken;
+    for (int k = 0; k < NUM_MSHR; k++) begin
+      want_req[k]  = (m_q[k].state == R_REQ);
+      want_dat[k]  = (m_q[k].state == R_WDAT);
+      want_ack[k]  = (m_q[k].state == R_ACK);
+      want_rsp[k]  = (m_q[k].state == R_RESP) || (m_q[k].state == R_LOAD && !m_q[k].ack_pend);
+      want_pcrd[k] = (m_q[k].state == R_RETRY) && (pcrd_q[m_q[k].pcrd_type] != '0);
+      in_load[k]   = (m_q[k].state == R_LOAD);
+      in_lookup[k] = (m_q[k].state == R_LOOKUP);
+      nc_mine[k]   = (m_q[k].state == R_WAIT) && (m_q[k].txn == T_NCRD) && !m_q[k].got_retry && rxd_mine[k];
+    end
+    g_req  = rr_pick(want_req, rot_q);
+    g_dat  = s_dat_v  ? '0 : rr_pick(want_dat, rot_q);    // the snoop FSM goes first on DAT
+    g_ack  = s_rsp_v  ? '0 : rr_pick(want_ack, rot_q);    // ... and on RSP
+    g_rsp  = p2_rsp_v ? '0 : rr_pick(want_rsp, rot_q);    // P2 (a hit) owns rsp_q this cycle
+    g_pcrd = rr_pick(want_pcrd, rot_q);
+  end
+
+  // the selected entry of each shared resource (at most one bit set)
+  rreg_t e_req, e_dat, e_ack, e_rsp, e_ld, e_lu, e_nc, e_pc;
+  always_comb begin
+    e_req = '0; e_dat = '0; e_ack = '0; e_rsp = '0; e_ld = '0; e_lu = '0; e_nc = '0; e_pc = '0;
+    for (int k = 0; k < NUM_MSHR; k++) begin
+      if (g_req[k])     e_req = m_q[k];
+      if (g_dat[k])     e_dat = m_q[k];
+      if (g_ack[k])     e_ack = m_q[k];
+      if (g_rsp[k])     e_rsp = m_q[k];
+      if (in_load[k])   e_ld  = m_q[k];     // one at a time (it follows the port owner's LOOKUP)
+      if (in_lookup[k]) e_lu  = m_q[k];     // one at a time (it owns port B)
+      if (nc_mine[k])   e_nc  = m_q[k];     // the DAT flit at the head belongs to one MSHR
+      if (g_pcrd[k])    e_pc  = m_q[k];
+    end
+  end
+
+  // shared datapaths, once each
+  logic [MaxAccessWidth-1:0] ld_data, nc_data;
+  logic [127:0]              lu_wdata;
+  logic [15:0]               lu_be;
+  always_comb begin
+    ld_data  = load_of(ram_rdata, e_ld.width, e_ld.addr[3:0]);        // R_LOAD: port B read data
+    nc_data  = load_of(rxd.data,  e_nc.width, e_nc.addr[3:0]);        // ReadNoSnp data
+    lu_wdata = 128'(e_lu.data) << {e_lu.addr[3:0], 3'b000};          // R_LOOKUP store hit
+    lu_be    = be_of(e_lu.width, e_lu.addr[3:0]);
+  end
+
+  always_comb begin
     logic [MW-1:0]    i;
     rreg_t            e, n;
     lk_t              lk;
     logic [SET_W-1:0] q_set;
     logic [TAG_W-1:0] q_tag;
     logic [1:0]       q_beat;
-    logic [3:0]       q_off;
     logic             q_store;
     logic [WAY_W-1:0] rrw;
     logic             free_found;
@@ -835,17 +900,18 @@ module rnf_dcache
     rr_inc        = 1'b0;
     rr_set        = '0;
     pcrd_inc      = 1'b0;
-    pcrd_dec      = 1'b0;
-    pcrd_dec_type = '0;
+    pcrd_dec      = (g_pcrd != '0);
+    pcrd_dec_type = e_pc.pcrd_type;
 
     c_ready    = 1'b0;
-    c_rsp_v    = 1'b0;
-    c_rsp_data = '0;
-    c_rsp_err  = 1'b0;
-    c_rsp_st   = CS_I;
-    c_rsp_op   = MEM_OP_LOAD;
-    c_rsp_idx  = '0;
-    c_rsp_src  = MEM_UNIT_LOAD;
+    // the core answer of an MSHR (granted R_RESP / R_LOAD): one selected entry
+    c_rsp_v    = (g_rsp != '0);
+    c_rsp_data = (e_rsp.state == R_LOAD) ? ld_data : e_rsp.rdata;
+    c_rsp_err  = e_rsp.err;
+    c_rsp_st   = e_rsp.rst;
+    c_rsp_op   = e_rsp.op;
+    c_rsp_idx  = e_rsp.idx;
+    c_rsp_src  = e_rsp.src;
 
     r_tag_re    = 1'b0;
     r_tag_we    = 1'b0;
@@ -861,12 +927,13 @@ module rnf_dcache
     r_dat_be    = '1;
     r_dat_wdata = rxd.data;
 
-    req_v   = 1'b0;
-    r_ack_v = 1'b0;
-    r_dat_v = 1'b0;
-    req_c   = '0;
-    ack_c   = '0;
-    wdat_c  = '0;
+    // TX channels: one flit each, from the granted entry
+    req_v   = (g_req != '0);
+    req_c   = mk_req(e_req);
+    r_ack_v = (g_ack != '0);
+    ack_c   = mk_ack(e_ack);
+    r_dat_v = (g_dat != '0);
+    wdat_c  = mk_wdat(e_dat);
     rxd_pop = rxd_v && !(|rxd_mine);           // a DAT flit nobody waits for is dropped
 
     perf_hit_m = 1'b0; perf_miss = 1'b0; perf_evict = 1'b0; perf_wb = '0; perf_retry = '0;
@@ -875,23 +942,16 @@ module rnf_dcache
     rxr_pop = rxr_v;
     if (rxr_v && rxr.opcode == RSP_PCR_GRANT_ACK) pcrd_inc = 1'b1;
 
-    req_taken  = 1'b0;
-    dat_taken  = s_dat_v;                       // the snoop FSM goes first on RSP / DAT
-    ack_taken  = s_rsp_v;
-    rsp_taken  = p2_rsp_v;                   // P2 (a hit) owns rsp_q this cycle
-    pcrd_taken = 1'b0;
-
     for (int k = 0; k < NUM_MSHR; k++) begin
-      i       = rot_idx(rot_q, k);
-      e       = m_q[i];
-      n       = m_q[i];
+      i       = MW'(k);
+      e       = m_q[k];
+      n       = m_q[k];
       q_set   = set_of(e.addr);
       q_tag   = tag_of(e.addr);
       q_beat  = e.addr[5:4];
-      q_off   = e.addr[3:0];
       q_store = (e.op == MEM_OP_STORE);
-      lk      = lookup(q_tag);
-      rrw     = rr_q[q_set];
+      lk      = own_lk;                         // valid for the port B owner (LOOKUP / FILL_SEL)
+      rrw     = own_rr_way;
 
       if (rxr_v && rxr.opcode != RSP_PCR_GRANT_ACK && e.state != R_IDLE && rxr.txnid == e.txnid) begin
         unique case (rxr.opcode)
@@ -943,8 +1003,8 @@ module rnf_dcache
               n.state  = R_LOAD;
             end else begin
               r_dat_we    = 1'b1;
-              r_dat_be    = be_of(e.width, q_off);
-              r_dat_wdata = 128'(e.data) << {q_off, 3'b000};
+              r_dat_be    = lu_be;
+              r_dat_wdata = lu_wdata;
               n.rst       = CS_UD;
               if (lk.hst == CS_UC) begin
                 r_tag_we  = 1'b1;
@@ -982,21 +1042,14 @@ module rnf_dcache
         end
 
         R_LOAD: begin
-          n.rdata = load_of(ram_rdata, e.width, q_off);
           if (e.ack_pend) begin
+            n.rdata = ld_data;
             n.state = R_ACK;
-          end else if (!rsp_taken) begin
-            rsp_taken  = 1'b1;
-            c_rsp_v    = 1'b1;
-            c_rsp_data = load_of(ram_rdata, e.width, q_off);
-            c_rsp_err  = e.err;
-            c_rsp_st   = e.rst;
-            c_rsp_op   = e.op;
-            c_rsp_idx  = e.idx;
-            c_rsp_src  = e.src;
-            n.state    = R_IDLE;
+          end else if (g_rsp[k]) begin
+            n.state = R_IDLE;                    // answered from ld_data this cycle
           end else begin
-            n.state = R_RESP;                    // another MSHR answers the core this cycle
+            n.rdata = ld_data;
+            n.state = R_RESP;                    // P2 or another MSHR answers the core this cycle
           end
         end
 
@@ -1010,12 +1063,7 @@ module rnf_dcache
 
         // ---------------------------------------------------------- request / first response
         R_REQ: begin
-          if (!req_taken) begin
-            req_taken = 1'b1;
-            req_v     = 1'b1;
-            req_c     = mk_req(e);
-            if (req_rdy) n.state = R_WAIT;
-          end
+          if (g_req[k] && req_rdy) n.state = R_WAIT;
         end
 
         R_WAIT: begin
@@ -1029,7 +1077,7 @@ module rnf_dcache
               T_NCRD: begin
                 if (rxd_mine[i]) begin
                   rxd_pop    = 1'b1;
-                  n.rdata    = load_of(rxd.data, e.width, q_off);
+                  n.rdata    = nc_data;
                   n.err      = rxd.resperr[1];
                   n.acc_done = 1'b1;
                   n.rd_act   = 1'b0;
@@ -1049,10 +1097,7 @@ module rnf_dcache
         end
 
         R_RETRY: begin
-          if (!pcrd_taken && pcrd_q[e.pcrd_type] != '0) begin
-            pcrd_taken    = 1'b1;
-            pcrd_dec      = 1'b1;
-            pcrd_dec_type = e.pcrd_type;
+          if (g_pcrd[k]) begin
             n.allow_retry = 1'b0;
             n.state       = R_REQ;
           end
@@ -1164,14 +1209,9 @@ module rnf_dcache
         end
 
         R_WDAT: begin
-          if (!dat_taken) begin
-            dat_taken = 1'b1;
-            r_dat_v   = 1'b1;
-            wdat_c    = mk_wdat(e);
-            if (dat_rdy) begin
-              if (e.txn != T_WB || e.cnt == 2'd3) n.state = R_WCOMP;
-              else                                n.cnt   = e.cnt + 2'd1;
-            end
+          if (g_dat[k] && dat_rdy) begin
+            if (e.txn != T_WB || e.cnt == 2'd3) n.state = R_WCOMP;
+            else                                n.cnt   = e.cnt + 2'd1;
           end
         end
 
@@ -1190,35 +1230,20 @@ module rnf_dcache
 
         // ---------------------------------------------------------- finish
         R_ACK: begin
-          if (!ack_taken) begin
-            ack_taken = 1'b1;
-            r_ack_v   = 1'b1;
-            ack_c     = mk_ack(e);
-            if (rsp_rdy) begin
-              n.ack_pend = 1'b0;
-              n.state    = e.acc_done ? R_RESP : R_TAG_RD;
-            end
+          if (g_ack[k] && rsp_rdy) begin
+            n.ack_pend = 1'b0;
+            n.state    = e.acc_done ? R_RESP : R_TAG_RD;
           end
         end
 
         R_RESP: begin
-          if (!rsp_taken) begin
-            rsp_taken  = 1'b1;
-            c_rsp_v    = 1'b1;
-            c_rsp_data = e.rdata;
-            c_rsp_err  = e.err;
-            c_rsp_st   = e.rst;
-            c_rsp_op   = e.op;
-            c_rsp_idx  = e.idx;
-            c_rsp_src  = e.src;
-            n.state    = R_IDLE;
-          end
+          if (g_rsp[k]) n.state = R_IDLE;
         end
 
         default: n.state = R_IDLE;
       endcase
 
-      m_d[i] = n;
+      m_d[k] = n;
     end
 
     // ---- MSHRs that finished this cycle release the requests waiting on them
