@@ -448,7 +448,7 @@ module Tb_RNF;
     n = 0;
     for (int s = 0; s < SETS; s++)
       for (int w = 0; w < WAYS; w++)
-        if (dut.u_tag_ram.state_mem[s][w] != CS_I) n++;
+        if (dut.u_tag_ram.valid_q[s][w]) n++;          // valid = state other than I
     if (n != 0)
       sb.err("DUT_STATE", $sformatf("end of test: dcache still holds %0d valid line(s) after every line got CleanInvalid", n));
     for (int k = 0; k < NUM_MSHR; k++)

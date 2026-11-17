@@ -719,6 +719,22 @@ module rnf_dcache
            (e.state == R_FILL_DONE) || (e.state == R_FILL && mine && !e.keep);
   endfunction
 
+  // Write port (the tag-state and data arrays are LUTRAM: one write port each).
+  // Port B writes either in the act cycle after a grant (LOOKUP, WB_CMP, snoop
+  // S_CMP) or right away (FILL beat, FILL_DONE tag). A store hit writes in P2.
+  // They never meet: no port B sequence starts in the cycle a store issues
+  // (its act cycle is that store's P2), and no immediate port B write happens
+  // while a store is in P2. Both conditions come from flops.
+  logic st_issue, p2_store_v;
+  assign st_issue   = issue_w && (head.op == MEM_OP_STORE);
+  assign p2_store_v = p2_v_q && (p2_q.op == MEM_OP_STORE);
+
+  function automatic logic wport_ok(rstate_e s);
+    if (st_issue   && (s == R_TAG_RD || s == R_WB_TAG))   return 1'b0;
+    if (p2_store_v && (s == R_FILL   || s == R_FILL_DONE)) return 1'b0;
+    return 1'b1;
+  endfunction
+
   mvec_t e_port;          // MSHR i owns the port this cycle
   logic  s_grant;         // snoop FSM owns the port this cycle
   logic  a_grant;         // a new request may do its first tag read in its accept cycle
@@ -745,13 +761,14 @@ module rnf_dcache
       end
     if (!port_lock) begin
       // a snoop only starts on a set the hit pipeline is not working on (the
-      // pipeline read that set's tags / data and may still write it in P2)
-      if (s_q.state == S_WANT && !pipe_on_snp_set) begin
+      // pipeline read that set's tags / data and may still write it in P2),
+      // and not when its act cycle would meet a store in P2 (write port)
+      if (s_q.state == S_WANT && !pipe_on_snp_set && !st_issue) begin
         s_grant = 1'b1;
       end else begin
         for (int k = 0; k < NUM_MSHR; k++) begin
           i = rot_idx(rot_q, k);
-          if (!found && wants_port(m_q[i], rxd_mine[i])) begin
+          if (!found && wants_port(m_q[i], rxd_mine[i]) && wport_ok(m_q[i].state)) begin
             e_port[i] = 1'b1;
             found     = 1'b1;
           end
