@@ -1,170 +1,170 @@
 
 ===== Scenario A: WriteUniquePtl (RNF0 -> snoop RNF1 -> SN), 4-beat data =====
 [78000] RNF0: REQ  txnid=161 opcode=REQ_WRITE_UNIQUE_PTL addr=1000
-[120000] RNF1: SNP  txnid=0 opcode=SNP_UNIQUE rettosrc=0
-[128000] RNF1: RSP  txnid=0 opcode=RSP_SNP_RESP
-[150000] RNF0: got RSP txnid=161 opcode=RSP_DBID_RESP
-[158000] RNF0: DAT  txnid=161 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=deadbeef0000000000000000cafef00d
-[168000] RNF0: DAT  txnid=161 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=11111111222222223333333344444444
-[178000] RNF0: DAT  txnid=161 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=55555555666666667777777788888888
-[188000] RNF0: DAT  txnid=161 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=99999999aaaaaaaabbbbbbbbcccccccc
-[200000] SNF: got REQ txnid=0 opcode=REQ_WRITE_NO_SNOOP_PTL addr=1000
-[208000] SNF: RSP  txnid=0 opcode=RSP_COMP_DBID_RESP dbid=1445
-[220000] SNF: got DAT txnid=1445 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=deadbeef0000000000000000cafef00d dbid=1445
-[230000] SNF: got DAT txnid=1445 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=11111111222222223333333344444444 dbid=1445
-[240000] SNF: got DAT txnid=1445 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=55555555666666667777777788888888 dbid=1445
-[250000] SNF: got DAT txnid=1445 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=99999999aaaaaaaabbbbbbbbcccccccc dbid=1445
-[260000] RNF0: got RSP txnid=161 opcode=RSP_COMP
-[268000] RNF0: RSP  txnid=161 opcode=RSP_COMP_ACK
+[110000] RNF1: SNP  txnid=0 opcode=SNP_UNIQUE rettosrc=0
+[118000] RNF1: RSP  txnid=0 opcode=RSP_SNP_RESP
+[140000] RNF0: got RSP txnid=161 opcode=RSP_DBID_RESP
+[148000] RNF0: DAT  txnid=161 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=deadbeef0000000000000000cafef00d
+[158000] RNF0: DAT  txnid=161 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=11111111222222223333333344444444
+[168000] RNF0: DAT  txnid=161 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=55555555666666667777777788888888
+[178000] RNF0: DAT  txnid=161 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=99999999aaaaaaaabbbbbbbbcccccccc
+[190000] SNF: got REQ txnid=0 opcode=REQ_WRITE_NO_SNOOP_PTL addr=1000
+[198000] SNF: RSP  txnid=0 opcode=RSP_COMP_DBID_RESP dbid=1445
+[210000] SNF: got DAT txnid=1445 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=deadbeef0000000000000000cafef00d dbid=1445
+[220000] SNF: got DAT txnid=1445 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=11111111222222223333333344444444 dbid=1445
+[230000] SNF: got DAT txnid=1445 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=55555555666666667777777788888888 dbid=1445
+[240000] SNF: got DAT txnid=1445 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=99999999aaaaaaaabbbbbbbbcccccccc dbid=1445
+[250000] RNF0: got RSP txnid=161 opcode=RSP_COMP
+[258000] RNF0: RSP  txnid=161 opcode=RSP_COMP_ACK
 Scenario A done.
 
 ===== Scenario B: ReadShared, RNF1 cache HIT (clean) =====
-[368000] RNF0: REQ  txnid=178 opcode=REQ_READ_SHARED addr=2000
-[410000] RNF1: SNP  txnid=0 opcode=SNP_SHARED rettosrc=1
-[418000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=0/3 data=11112222333344445555666677778888
-[428000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=1/3 data=11112222333344445555666677778888
-[438000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=2/3 data=11112222333344445555666677778888
-[448000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=3/3 data=11112222333344445555666677778888
-[470000] RNF0: got DAT txnid=178 opcode=DAT_COMP_DATA beat=0/3 data=11112222333344445555666677778888
-[480000] RNF0: got DAT txnid=178 opcode=DAT_COMP_DATA beat=1/3 data=11112222333344445555666677778888
-[490000] RNF0: got DAT txnid=178 opcode=DAT_COMP_DATA beat=2/3 data=11112222333344445555666677778888
-[500000] RNF0: got DAT txnid=178 opcode=DAT_COMP_DATA beat=3/3 data=11112222333344445555666677778888
-[508000] RNF0: RSP  txnid=178 opcode=RSP_COMP_ACK
+[358000] RNF0: REQ  txnid=178 opcode=REQ_READ_SHARED addr=2000
+[400000] RNF1: SNP  txnid=0 opcode=SNP_SHARED rettosrc=1
+[408000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=0/3 data=11112222333344445555666677778888
+[418000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=1/3 data=11112222333344445555666677778888
+[428000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=2/3 data=11112222333344445555666677778888
+[438000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=3/3 data=11112222333344445555666677778888
+[460000] RNF0: got DAT txnid=178 opcode=DAT_COMP_DATA beat=0/3 data=11112222333344445555666677778888
+[470000] RNF0: got DAT txnid=178 opcode=DAT_COMP_DATA beat=1/3 data=11112222333344445555666677778888
+[480000] RNF0: got DAT txnid=178 opcode=DAT_COMP_DATA beat=2/3 data=11112222333344445555666677778888
+[490000] RNF0: got DAT txnid=178 opcode=DAT_COMP_DATA beat=3/3 data=11112222333344445555666677778888
+[498000] RNF0: RSP  txnid=178 opcode=RSP_COMP_ACK
 Scenario B done.
 
 ===== Scenario C: ReadShared, RNF0 cache MISS -> read from SN =====
-[608000] RNF1: REQ  txnid=195 opcode=REQ_READ_SHARED addr=3000
-[650000] RNF0: SNP  txnid=0 opcode=SNP_SHARED rettosrc=1
-[658000] RNF0: RSP  txnid=0 opcode=RSP_SNP_RESP
-[680000] SNF: got REQ txnid=0 opcode=REQ_READ_NO_SNOOP addr=3000
-[688000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=0/3 data=aaaabbbbccccddddeeeeffff00001111
-[698000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=1/3 data=aaaabbbbccccddddeeeeffff00001111
-[708000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=2/3 data=aaaabbbbccccddddeeeeffff00001111
-[718000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=3/3 data=aaaabbbbccccddddeeeeffff00001111
-[730000] RNF1: got DAT txnid=195 opcode=DAT_COMP_DATA beat=0/3 data=aaaabbbbccccddddeeeeffff00001111
-[740000] RNF1: got DAT txnid=195 opcode=DAT_COMP_DATA beat=1/3 data=aaaabbbbccccddddeeeeffff00001111
-[750000] RNF1: got DAT txnid=195 opcode=DAT_COMP_DATA beat=2/3 data=aaaabbbbccccddddeeeeffff00001111
-[760000] RNF1: got DAT txnid=195 opcode=DAT_COMP_DATA beat=3/3 data=aaaabbbbccccddddeeeeffff00001111
-[768000] RNF1: RSP  txnid=195 opcode=RSP_COMP_ACK
+[598000] RNF1: REQ  txnid=195 opcode=REQ_READ_SHARED addr=3000
+[640000] RNF0: SNP  txnid=0 opcode=SNP_SHARED rettosrc=1
+[648000] RNF0: RSP  txnid=0 opcode=RSP_SNP_RESP
+[670000] SNF: got REQ txnid=0 opcode=REQ_READ_NO_SNOOP addr=3000
+[678000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=0/3 data=aaaabbbbccccddddeeeeffff00001111
+[688000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=1/3 data=aaaabbbbccccddddeeeeffff00001111
+[698000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=2/3 data=aaaabbbbccccddddeeeeffff00001111
+[708000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=3/3 data=aaaabbbbccccddddeeeeffff00001111
+[720000] RNF1: got DAT txnid=195 opcode=DAT_COMP_DATA beat=0/3 data=aaaabbbbccccddddeeeeffff00001111
+[730000] RNF1: got DAT txnid=195 opcode=DAT_COMP_DATA beat=1/3 data=aaaabbbbccccddddeeeeffff00001111
+[740000] RNF1: got DAT txnid=195 opcode=DAT_COMP_DATA beat=2/3 data=aaaabbbbccccddddeeeeffff00001111
+[750000] RNF1: got DAT txnid=195 opcode=DAT_COMP_DATA beat=3/3 data=aaaabbbbccccddddeeeeffff00001111
+[758000] RNF1: RSP  txnid=195 opcode=RSP_COMP_ACK
 Scenario C done.
 
 ===== Scenario D: WriteBackFull (no snoop, no CompAck) =====
-[868000] RNF0: REQ  txnid=212 opcode=REQ_WRITE_BACK_FULL addr=4000
-[900000] RNF0: got RSP txnid=212 opcode=RSP_COMP_DBID_RESP
-[908000] RNF0: DAT  txnid=212 opcode=DAT_COPY_BACK_WR_DATA beat=0/3 data=badf00d0badf00d0badf00d0badf00d
-[918000] RNF0: DAT  txnid=212 opcode=DAT_COPY_BACK_WR_DATA beat=1/3 data=badf00d0badf00d0badf00d0badf00d
-[928000] RNF0: DAT  txnid=212 opcode=DAT_COPY_BACK_WR_DATA beat=2/3 data=badf00d0badf00d0badf00d0badf00d
-[938000] RNF0: DAT  txnid=212 opcode=DAT_COPY_BACK_WR_DATA beat=3/3 data=badf00d0badf00d0badf00d0badf00d
-[950000] SNF: got REQ txnid=0 opcode=REQ_WRITE_NO_SNOOP_FULL addr=4000
-[958000] SNF: RSP  txnid=0 opcode=RSP_COMP_DBID_RESP dbid=291
-[970000] SNF: got DAT txnid=291 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=badf00d0badf00d0badf00d0badf00d dbid=291
-[980000] SNF: got DAT txnid=291 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=badf00d0badf00d0badf00d0badf00d dbid=291
-[990000] SNF: got DAT txnid=291 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=badf00d0badf00d0badf00d0badf00d dbid=291
-[1000000] SNF: got DAT txnid=291 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=badf00d0badf00d0badf00d0badf00d dbid=291
+[858000] RNF0: REQ  txnid=212 opcode=REQ_WRITE_BACK_FULL addr=4000
+[890000] RNF0: got RSP txnid=212 opcode=RSP_COMP_DBID_RESP
+[898000] RNF0: DAT  txnid=212 opcode=DAT_COPY_BACK_WR_DATA beat=0/3 data=badf00d0badf00d0badf00d0badf00d
+[908000] RNF0: DAT  txnid=212 opcode=DAT_COPY_BACK_WR_DATA beat=1/3 data=badf00d0badf00d0badf00d0badf00d
+[918000] RNF0: DAT  txnid=212 opcode=DAT_COPY_BACK_WR_DATA beat=2/3 data=badf00d0badf00d0badf00d0badf00d
+[928000] RNF0: DAT  txnid=212 opcode=DAT_COPY_BACK_WR_DATA beat=3/3 data=badf00d0badf00d0badf00d0badf00d
+[940000] SNF: got REQ txnid=0 opcode=REQ_WRITE_NO_SNOOP_FULL addr=4000
+[948000] SNF: RSP  txnid=0 opcode=RSP_COMP_DBID_RESP dbid=291
+[960000] SNF: got DAT txnid=291 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=badf00d0badf00d0badf00d0badf00d dbid=291
+[970000] SNF: got DAT txnid=291 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=badf00d0badf00d0badf00d0badf00d dbid=291
+[980000] SNF: got DAT txnid=291 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=badf00d0badf00d0badf00d0badf00d dbid=291
+[990000] SNF: got DAT txnid=291 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=badf00d0badf00d0badf00d0badf00d dbid=291
 Scenario D done.
 
 ===== Scenario E: WriteUniquePtl hits MODIFIED line in RNF1 (writeback-then-overwrite, no combine) =====
-[1108000] RNF0: REQ  txnid=229 opcode=REQ_WRITE_UNIQUE_PTL addr=5000
-[1150000] RNF1: SNP  txnid=0 opcode=SNP_UNIQUE rettosrc=0
-[1158000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=0/3 data=feedface0000000000000000d00d1234
-[1168000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=1/3 data=feedface0000000000000000d00d1234
-[1178000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=2/3 data=feedface0000000000000000d00d1234
-[1188000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=3/3 data=feedface0000000000000000d00d1234
-[1210000] SNF: got REQ txnid=0 opcode=REQ_WRITE_NO_SNOOP_FULL addr=5000
-[1218000] SNF: RSP  txnid=0 opcode=RSP_COMP_DBID_RESP dbid=1792
-[1230000] SNF: got DAT txnid=1792 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=feedface0000000000000000d00d1234 dbid=1792
-[1240000] SNF: got DAT txnid=1792 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=feedface0000000000000000d00d1234 dbid=1792
-[1250000] SNF: got DAT txnid=1792 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=feedface0000000000000000d00d1234 dbid=1792
-[1260000] SNF: got DAT txnid=1792 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=feedface0000000000000000d00d1234 dbid=1792
-[1270000] RNF0: got RSP txnid=229 opcode=RSP_DBID_RESP
-[1278000] RNF0: DAT  txnid=229 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=deaddead0000000000000000cafecafe
-[1288000] RNF0: DAT  txnid=229 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=deaddead0000000000000000cafecafe
-[1298000] RNF0: DAT  txnid=229 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=deaddead0000000000000000cafecafe
-[1308000] RNF0: DAT  txnid=229 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=deaddead0000000000000000cafecafe
-[1320000] SNF: got REQ txnid=0 opcode=REQ_WRITE_NO_SNOOP_PTL addr=5000
-[1328000] SNF: RSP  txnid=0 opcode=RSP_COMP_DBID_RESP dbid=1793
-[1340000] SNF: got DAT txnid=1793 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=deaddead0000000000000000cafecafe dbid=1793
-[1350000] SNF: got DAT txnid=1793 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=deaddead0000000000000000cafecafe dbid=1793
-[1360000] SNF: got DAT txnid=1793 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=deaddead0000000000000000cafecafe dbid=1793
-[1370000] SNF: got DAT txnid=1793 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=deaddead0000000000000000cafecafe dbid=1793
-[1380000] RNF0: got RSP txnid=229 opcode=RSP_COMP
-[1388000] RNF0: RSP  txnid=229 opcode=RSP_COMP_ACK
+[1098000] RNF0: REQ  txnid=229 opcode=REQ_WRITE_UNIQUE_PTL addr=5000
+[1130000] RNF1: SNP  txnid=0 opcode=SNP_UNIQUE rettosrc=0
+[1138000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=0/3 data=feedface0000000000000000d00d1234
+[1148000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=1/3 data=feedface0000000000000000d00d1234
+[1158000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=2/3 data=feedface0000000000000000d00d1234
+[1168000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=3/3 data=feedface0000000000000000d00d1234
+[1190000] SNF: got REQ txnid=0 opcode=REQ_WRITE_NO_SNOOP_FULL addr=5000
+[1198000] SNF: RSP  txnid=0 opcode=RSP_COMP_DBID_RESP dbid=1792
+[1210000] SNF: got DAT txnid=1792 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=feedface0000000000000000d00d1234 dbid=1792
+[1220000] SNF: got DAT txnid=1792 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=feedface0000000000000000d00d1234 dbid=1792
+[1230000] SNF: got DAT txnid=1792 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=feedface0000000000000000d00d1234 dbid=1792
+[1240000] SNF: got DAT txnid=1792 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=feedface0000000000000000d00d1234 dbid=1792
+[1250000] RNF0: got RSP txnid=229 opcode=RSP_DBID_RESP
+[1258000] RNF0: DAT  txnid=229 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=deaddead0000000000000000cafecafe
+[1268000] RNF0: DAT  txnid=229 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=deaddead0000000000000000cafecafe
+[1278000] RNF0: DAT  txnid=229 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=deaddead0000000000000000cafecafe
+[1288000] RNF0: DAT  txnid=229 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=deaddead0000000000000000cafecafe
+[1300000] SNF: got REQ txnid=0 opcode=REQ_WRITE_NO_SNOOP_PTL addr=5000
+[1308000] SNF: RSP  txnid=0 opcode=RSP_COMP_DBID_RESP dbid=1793
+[1320000] SNF: got DAT txnid=1793 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=deaddead0000000000000000cafecafe dbid=1793
+[1330000] SNF: got DAT txnid=1793 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=deaddead0000000000000000cafecafe dbid=1793
+[1340000] SNF: got DAT txnid=1793 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=deaddead0000000000000000cafecafe dbid=1793
+[1350000] SNF: got DAT txnid=1793 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=deaddead0000000000000000cafecafe dbid=1793
+[1360000] RNF0: got RSP txnid=229 opcode=RSP_COMP
+[1368000] RNF0: RSP  txnid=229 opcode=RSP_COMP_ACK
 Scenario E done.
 
 ===== Scenario F: ReadUnique hits MODIFIED line in RNF1 (memory writeback expected) =====
-[1488000] RNF0: REQ  txnid=246 opcode=REQ_READ_UNIQUE addr=6000
-[1530000] RNF1: SNP  txnid=0 opcode=SNP_UNIQUE rettosrc=1
-[1538000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=0/3 data=b16b00b50000000000000000dead10cc
-[1548000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=1/3 data=b16b00b50000000000000000dead10cc
-[1558000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=2/3 data=b16b00b50000000000000000dead10cc
-[1568000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=3/3 data=b16b00b50000000000000000dead10cc
-[1590000] RNF0: got DAT txnid=246 opcode=DAT_COMP_DATA beat=0/3 data=b16b00b50000000000000000dead10cc
-[1600000] RNF0: got DAT txnid=246 opcode=DAT_COMP_DATA beat=1/3 data=b16b00b50000000000000000dead10cc
-[1610000] RNF0: got DAT txnid=246 opcode=DAT_COMP_DATA beat=2/3 data=b16b00b50000000000000000dead10cc
-[1620000] RNF0: got DAT txnid=246 opcode=DAT_COMP_DATA beat=3/3 data=b16b00b50000000000000000dead10cc
-[1628000] RNF0: RSP  txnid=246 opcode=RSP_COMP_ACK
-[1640000] SNF: got REQ txnid=0 opcode=REQ_WRITE_NO_SNOOP_FULL addr=6000
-[1648000] SNF: RSP  txnid=0 opcode=RSP_COMP_DBID_RESP dbid=2032
-[1660000] SNF: got DAT txnid=2032 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=b16b00b50000000000000000dead10cc dbid=2032
-[1670000] SNF: got DAT txnid=2032 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=b16b00b50000000000000000dead10cc dbid=2032
-[1680000] SNF: got DAT txnid=2032 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=b16b00b50000000000000000dead10cc dbid=2032
-[1690000] SNF: got DAT txnid=2032 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=b16b00b50000000000000000dead10cc dbid=2032
+[1468000] RNF0: REQ  txnid=246 opcode=REQ_READ_UNIQUE addr=6000
+[1500000] RNF1: SNP  txnid=0 opcode=SNP_UNIQUE rettosrc=1
+[1508000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=0/3 data=b16b00b50000000000000000dead10cc
+[1518000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=1/3 data=b16b00b50000000000000000dead10cc
+[1528000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=2/3 data=b16b00b50000000000000000dead10cc
+[1538000] RNF1: DAT  txnid=0 opcode=DAT_SNP_RESP_DATA beat=3/3 data=b16b00b50000000000000000dead10cc
+[1560000] RNF0: got DAT txnid=246 opcode=DAT_COMP_DATA beat=0/3 data=b16b00b50000000000000000dead10cc
+[1570000] RNF0: got DAT txnid=246 opcode=DAT_COMP_DATA beat=1/3 data=b16b00b50000000000000000dead10cc
+[1580000] RNF0: got DAT txnid=246 opcode=DAT_COMP_DATA beat=2/3 data=b16b00b50000000000000000dead10cc
+[1590000] RNF0: got DAT txnid=246 opcode=DAT_COMP_DATA beat=3/3 data=b16b00b50000000000000000dead10cc
+[1598000] RNF0: RSP  txnid=246 opcode=RSP_COMP_ACK
+[1610000] SNF: got REQ txnid=0 opcode=REQ_WRITE_NO_SNOOP_FULL addr=6000
+[1618000] SNF: RSP  txnid=0 opcode=RSP_COMP_DBID_RESP dbid=2032
+[1630000] SNF: got DAT txnid=2032 opcode=DAT_NON_COPY_BACK_WR_DATA beat=0/3 data=b16b00b50000000000000000dead10cc dbid=2032
+[1640000] SNF: got DAT txnid=2032 opcode=DAT_NON_COPY_BACK_WR_DATA beat=1/3 data=b16b00b50000000000000000dead10cc dbid=2032
+[1650000] SNF: got DAT txnid=2032 opcode=DAT_NON_COPY_BACK_WR_DATA beat=2/3 data=b16b00b50000000000000000dead10cc dbid=2032
+[1660000] SNF: got DAT txnid=2032 opcode=DAT_NON_COPY_BACK_WR_DATA beat=3/3 data=b16b00b50000000000000000dead10cc dbid=2032
 Scenario F done.
 
 ===== Scenario G1: ReadShared -> expect SnpShared/rettosrc=1 =====
-[1778000] RNF0: REQ  txnid=113 opcode=REQ_READ_SHARED addr=7000
-[1820000] RNF1: SNP  txnid=0 opcode=SNP_SHARED rettosrc=1
-[1828000] RNF1: RSP  txnid=0 opcode=RSP_SNP_RESP
+[1748000] RNF0: REQ  txnid=113 opcode=REQ_READ_SHARED addr=7000
+[1790000] RNF1: SNP  txnid=0 opcode=SNP_SHARED rettosrc=1
+[1798000] RNF1: RSP  txnid=0 opcode=RSP_SNP_RESP
 Scenario G1 done.
 
 ===== Scenario G2: ReadUnique -> expect SnpUnique/rettosrc=1 (NOT SnpShared) =====
-[1898000] RNF0: REQ  txnid=114 opcode=REQ_READ_UNIQUE addr=8000
-[1940000] RNF1: SNP  txnid=0 opcode=SNP_UNIQUE rettosrc=1
-[1948000] RNF1: RSP  txnid=0 opcode=RSP_SNP_RESP
+[1868000] RNF0: REQ  txnid=114 opcode=REQ_READ_UNIQUE addr=8000
+[1900000] RNF1: SNP  txnid=0 opcode=SNP_UNIQUE rettosrc=1
+[1908000] RNF1: RSP  txnid=0 opcode=RSP_SNP_RESP
 Scenario G2 done.
 
 ===== Scenario H: simultaneous RNF0+RNF1 requests (arbitration / silent-drop check) =====
-[2018000] RNF0: REQ  txnid=2720 opcode=REQ_READ_ONCE addr=9000
-[2018000] RNF1: REQ  txnid=2992 opcode=REQ_READ_ONCE addr=a000
-[2060000] RNF1: SNP  txnid=0 opcode=SNP_ONCE rettosrc=1
-[2068000] RNF1: RSP  txnid=0 opcode=RSP_SNP_RESP
-[2070000] RNF0: SNP  txnid=1 opcode=SNP_ONCE rettosrc=1
-[2078000] RNF0: RSP  txnid=1 opcode=RSP_SNP_RESP
+[1978000] RNF0: REQ  txnid=2720 opcode=REQ_READ_ONCE addr=9000
+[1978000] RNF1: REQ  txnid=2992 opcode=REQ_READ_ONCE addr=a000
+[2020000] RNF1: SNP  txnid=0 opcode=SNP_ONCE rettosrc=1
+[2028000] RNF1: RSP  txnid=0 opcode=RSP_SNP_RESP
+[2030000] RNF0: SNP  txnid=1 opcode=SNP_ONCE rettosrc=1
+[2038000] RNF0: RSP  txnid=1 opcode=RSP_SNP_RESP
 Scenario H done - both simultaneous requests were accepted.
-fail scenario started here                2335
+fail scenario started here                2295
 
 ===== Scenario I: two concurrent independent transactions (multi-tracker stress) =====
-[2348000] RNF0: REQ  txnid=2304 opcode=REQ_READ_SHARED addr=b000
-rnf0 send at time 2357000
-[2390000] RNF1: SNP  txnid=0 opcode=SNP_SHARED rettosrc=1
-[2398000] RNF1: RSP  txnid=0 opcode=RSP_SNP_RESP
-[2418000] RNF1: REQ  txnid=2560 opcode=REQ_READ_SHARED addr=c000
-[2420000] SNF: got REQ txnid=0 opcode=REQ_READ_NO_SNOOP addr=b000
-[2428000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=0/3 data=b0000000000000000000000000000001
-[2438000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=1/3 data=b0000000000000000000000000000001
-[2448000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=2/3 data=b0000000000000000000000000000001
-[2458000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=3/3 data=b0000000000000000000000000000001
-[2460000] RNF0: SNP  txnid=1 opcode=SNP_SHARED rettosrc=1
-[2468000] RNF0: RSP  txnid=1 opcode=RSP_SNP_RESP
-[2470000] RNF0: got DAT txnid=2304 opcode=DAT_COMP_DATA beat=0/3 data=b0000000000000000000000000000001
-[2480000] RNF0: got DAT txnid=2304 opcode=DAT_COMP_DATA beat=1/3 data=b0000000000000000000000000000001
-[2490000] RNF0: got DAT txnid=2304 opcode=DAT_COMP_DATA beat=2/3 data=b0000000000000000000000000000001
-[2490000] SNF: got REQ txnid=1 opcode=REQ_READ_NO_SNOOP addr=c000
-[2498000] SNF: DAT  txnid=1 opcode=DAT_COMP_DATA beat=0/3 data=c0000000000000000000000000000002
-[2500000] RNF0: got DAT txnid=2304 opcode=DAT_COMP_DATA beat=3/3 data=b0000000000000000000000000000001
-[2508000] SNF: DAT  txnid=1 opcode=DAT_COMP_DATA beat=1/3 data=c0000000000000000000000000000002
-[2508000] RNF0: RSP  txnid=2304 opcode=RSP_COMP_ACK
-[2518000] SNF: DAT  txnid=1 opcode=DAT_COMP_DATA beat=2/3 data=c0000000000000000000000000000002
-[2528000] SNF: DAT  txnid=1 opcode=DAT_COMP_DATA beat=3/3 data=c0000000000000000000000000000002
-[2540000] RNF1: got DAT txnid=2560 opcode=DAT_COMP_DATA beat=0/3 data=c0000000000000000000000000000002
-[2550000] RNF1: got DAT txnid=2560 opcode=DAT_COMP_DATA beat=1/3 data=c0000000000000000000000000000002
-[2560000] RNF1: got DAT txnid=2560 opcode=DAT_COMP_DATA beat=2/3 data=c0000000000000000000000000000002
-[2570000] RNF1: got DAT txnid=2560 opcode=DAT_COMP_DATA beat=3/3 data=c0000000000000000000000000000002
-[2578000] RNF1: RSP  txnid=2560 opcode=RSP_COMP_ACK
+[2308000] RNF0: REQ  txnid=2304 opcode=REQ_READ_SHARED addr=b000
+rnf0 send at time 2317000
+[2350000] RNF1: SNP  txnid=0 opcode=SNP_SHARED rettosrc=1
+[2358000] RNF1: RSP  txnid=0 opcode=RSP_SNP_RESP
+[2378000] RNF1: REQ  txnid=2560 opcode=REQ_READ_SHARED addr=c000
+[2380000] SNF: got REQ txnid=0 opcode=REQ_READ_NO_SNOOP addr=b000
+[2388000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=0/3 data=b0000000000000000000000000000001
+[2398000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=1/3 data=b0000000000000000000000000000001
+[2408000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=2/3 data=b0000000000000000000000000000001
+[2418000] SNF: DAT  txnid=0 opcode=DAT_COMP_DATA beat=3/3 data=b0000000000000000000000000000001
+[2420000] RNF0: SNP  txnid=1 opcode=SNP_SHARED rettosrc=1
+[2428000] RNF0: RSP  txnid=1 opcode=RSP_SNP_RESP
+[2430000] RNF0: got DAT txnid=2304 opcode=DAT_COMP_DATA beat=0/3 data=b0000000000000000000000000000001
+[2440000] RNF0: got DAT txnid=2304 opcode=DAT_COMP_DATA beat=1/3 data=b0000000000000000000000000000001
+[2450000] RNF0: got DAT txnid=2304 opcode=DAT_COMP_DATA beat=2/3 data=b0000000000000000000000000000001
+[2450000] SNF: got REQ txnid=1 opcode=REQ_READ_NO_SNOOP addr=c000
+[2458000] SNF: DAT  txnid=1 opcode=DAT_COMP_DATA beat=0/3 data=c0000000000000000000000000000002
+[2460000] RNF0: got DAT txnid=2304 opcode=DAT_COMP_DATA beat=3/3 data=b0000000000000000000000000000001
+[2468000] SNF: DAT  txnid=1 opcode=DAT_COMP_DATA beat=1/3 data=c0000000000000000000000000000002
+[2468000] RNF0: RSP  txnid=2304 opcode=RSP_COMP_ACK
+[2478000] SNF: DAT  txnid=1 opcode=DAT_COMP_DATA beat=2/3 data=c0000000000000000000000000000002
+[2488000] SNF: DAT  txnid=1 opcode=DAT_COMP_DATA beat=3/3 data=c0000000000000000000000000000002
+[2500000] RNF1: got DAT txnid=2560 opcode=DAT_COMP_DATA beat=0/3 data=c0000000000000000000000000000002
+[2510000] RNF1: got DAT txnid=2560 opcode=DAT_COMP_DATA beat=1/3 data=c0000000000000000000000000000002
+[2520000] RNF1: got DAT txnid=2560 opcode=DAT_COMP_DATA beat=2/3 data=c0000000000000000000000000000002
+[2530000] RNF1: got DAT txnid=2560 opcode=DAT_COMP_DATA beat=3/3 data=c0000000000000000000000000000002
+[2538000] RNF1: RSP  txnid=2560 opcode=RSP_COMP_ACK
 Scenario I done - both concurrent transactions completed independently and correctly.
 
 *** ALL SCENARIOS PASSED ***
-- ../HN-F/TB/Directed/TB_TSHR.sv:1025: Verilog $finish
+- ../HN-F/TB/Directed\TB_TSHR.sv:1025: Verilog $finish
 - S i m u l a t i o n   R e p o r t: Verilator 5.048 2026-04-26
-- Verilator: $finish at 3us; walltime 0.001 s; speed 2.586 ms/s
-- Verilator: cpu 0.001 s on 1 threads; allocated 8 MB
+- Verilator: $finish at 3us; walltime 0.002 s; speed 0.000 s/s
+- Verilator: cpu 0.000 s on 1 threads; allocated 5 MB

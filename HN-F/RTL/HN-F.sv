@@ -89,9 +89,11 @@ module HN_F
   tshr_flit_pkg::local_rsp_flit_t trk_rsp_rx_req_flit    [NUM_TRACKERS];
 
   //RSP channel from the target
-  common_pkg::yn_status_e         trk_rsp_rx_snp_flitv   [NUM_TRACKERS];
-  common_pkg::yn_status_e         trk_rsp_rx_snp_flitpend[NUM_TRACKERS];
-  tshr_flit_pkg::local_rsp_flit_t trk_rsp_rx_snp_flit    [NUM_TRACKERS];
+  // snoop responses: every tracker sees every RN-F port (it keeps what carries
+  // its own TxnID), so a tracker with several snoops open takes them all
+  common_pkg::yn_status_e         trk_rsp_rx_snp_flitv   [NUM_TRACKERS][NUM_RNF];
+  common_pkg::yn_status_e         trk_rsp_rx_snp_flitpend[NUM_TRACKERS][NUM_RNF];
+  tshr_flit_pkg::local_rsp_flit_t trk_rsp_rx_snp_flit    [NUM_TRACKERS][NUM_RNF];
 
   // DATA channel tx
   common_pkg::yn_status_e         trk_dat_tx_flitv   [NUM_TRACKERS];
@@ -105,9 +107,9 @@ module HN_F
   tshr_flit_pkg::local_dat_flit_t trk_dat_rx_req_flit    [NUM_TRACKERS];
 
   //DATa channel from the target
-  common_pkg::yn_status_e         trk_dat_rx_snp_flitv   [NUM_TRACKERS];
-  common_pkg::yn_status_e         trk_dat_rx_snp_flitpend[NUM_TRACKERS];
-  tshr_flit_pkg::local_dat_flit_t trk_dat_rx_snp_flit    [NUM_TRACKERS];
+  common_pkg::yn_status_e         trk_dat_rx_snp_flitv   [NUM_TRACKERS][NUM_RNF];
+  common_pkg::yn_status_e         trk_dat_rx_snp_flitpend[NUM_TRACKERS][NUM_RNF];
+  tshr_flit_pkg::local_dat_flit_t trk_dat_rx_snp_flit    [NUM_TRACKERS][NUM_RNF];
 
   //SNF req channel 
   common_pkg::yn_status_e         trk_sn_req_flitv   [NUM_TRACKERS];
@@ -661,20 +663,17 @@ module HN_F
     .trk_flit          (trk_rsp_rx_req_flit)
   );
 
-  rx_port_select #(
-    .NUM_TRACKERS (NUM_TRACKERS),
-    .NUM_PORTS    (NUM_RNF),
-    .flit_t       (local_rsp_flit_t)
-  ) u_rsp_rx_snp_sel (
-    .phy_flitv         (rnf_rsp_rx_flitv_flat),
-    .phy_flitpend      (rnf_rsp_rx_flitpend_flat),
-    .phy_flit          (rnf_rsp_rx_flit_flat),
-    .trk_target_idx    (snp_port_idx),
-    .trk_target_valid  (tracker_valid),
-    .trk_flitv         (trk_rsp_rx_snp_flitv),
-    .trk_flitpend      (trk_rsp_rx_snp_flitpend),
-    .trk_flit          (trk_rsp_rx_snp_flit)
-  );
+  // snoop responses (SnpResp*): broadcast, every tracker sees every port and
+  // takes the flits with its own TxnID (several snoops of one tracker can be
+  // open on different ports, see TSHR ST_SNOOP_PAR)
+  always_comb begin
+    for (int t = 0; t < NUM_TRACKERS; t++)
+      for (int p = 0; p < NUM_RNF; p++) begin
+        trk_rsp_rx_snp_flitv[t][p]    = rnf_rsp_rx_flitv_flat[p];
+        trk_rsp_rx_snp_flitpend[t][p] = rnf_rsp_rx_flitpend_flat[p];
+        trk_rsp_rx_snp_flit[t][p]     = rnf_rsp_rx_flit_flat[p];
+      end
+  end
 
   common_pkg::yn_status_e rnf_dat_rx_flitv_flat   [NUM_RNF];
   common_pkg::yn_status_e rnf_dat_rx_flitpend_flat[NUM_RNF];
@@ -710,20 +709,15 @@ module HN_F
     .trk_flit          (trk_dat_rx_req_flit)
   );
 
-  rx_port_select #(
-    .NUM_TRACKERS (NUM_TRACKERS),
-    .NUM_PORTS    (NUM_RNF),
-    .flit_t       (local_dat_flit_t)
-  ) u_dat_rx_snp_sel (
-    .phy_flitv         (rnf_dat_rx_flitv_flat),
-    .phy_flitpend      (rnf_dat_rx_flitpend_flat),
-    .phy_flit          (rnf_dat_rx_flit_flat),
-    .trk_target_idx    (snp_port_idx),
-    .trk_target_valid  (tracker_valid),
-    .trk_flitv         (trk_dat_rx_snp_flitv),
-    .trk_flitpend      (trk_dat_rx_snp_flitpend),
-    .trk_flit          (trk_dat_rx_snp_flit)
-  );
+  // snoop data (SnpRespData*): broadcast like the snoop responses above
+  always_comb begin
+    for (int t = 0; t < NUM_TRACKERS; t++)
+      for (int p = 0; p < NUM_RNF; p++) begin
+        trk_dat_rx_snp_flitv[t][p]    = rnf_dat_rx_flitv_flat[p];
+        trk_dat_rx_snp_flitpend[t][p] = rnf_dat_rx_flitpend_flat[p];
+        trk_dat_rx_snp_flit[t][p]     = rnf_dat_rx_flit_flat[p];
+      end
+  end
 
 
   common_pkg::yn_status_e snf_rsp_flitv_flat, snf_rsp_flitpend_flat;

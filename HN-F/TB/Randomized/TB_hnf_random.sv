@@ -566,6 +566,8 @@ module Tb_HNF_Random;
       return;
     end
     need(1,                 "tshr: enter ST_SNOOP_WAIT");
+    need(1,                 "tshr: enter ST_SNOOP_PAR");
+    need(NRNF >= 3,         "perf: snoop phases with 2 snoops");     // parallel issue with 2+ snoops open
     need(SNF_IS_MODEL,      "tshr: enter ST_SN_RETRY_WAIT");
     need(1,                 "tshr: enter ST_SN_COMP_WAIT");
     need(1,                 "tshr: enter ST_DIRTY_WB_DATA_SEND");

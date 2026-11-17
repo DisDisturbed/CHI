@@ -71,6 +71,7 @@ module tshr_deadlock_mon
       "ST_SNOOP_PICK":         return "picks the next snoop target (should never wait)";
       "ST_SN_RETRY_WAIT":      return "waits for a PCrdGrant of this type from SN-F (P-credit pool)";
       "ST_SNOOP_WAIT":         return "waits for SnpResp / SnpRespData from the snoop target with this txnid";
+      "ST_SNOOP_PAR":          return "issues its snoops (SNP port grants) and waits for SnpResp / SnpRespData from every target with this txnid";
       "ST_WDATA_WAIT":         return "waits for write data from the requester with this txnid+srcid";
       "ST_SN_RSP_WAIT":        return (tx_type_q.name() == "TX_READ")
                                       ? "waits for CompData from SN-F with this txnid"

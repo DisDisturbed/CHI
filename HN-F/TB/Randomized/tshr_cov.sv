@@ -24,6 +24,42 @@ module tshr_cov
   int     n_snp;                 // snoops of the request itself (not the back-invalidation)
   bit     did_bi;
 
+  // snoop phase timing (keys "perf: ..."): from the first cycle in a snoop
+  // state to the first cycle after it, with the number of snoops it sent.
+  // Summed into sb.cov so the final report shows cycles and phase counts.
+  function automatic bit in_snoop(state_t s);
+    return s.name() == "ST_SNOOP_PICK" || s.name() == "ST_SNOOP_SEND" ||
+           s.name() == "ST_SNOOP_WAIT" || s.name() == "ST_SNOOP_PAR";
+  endfunction
+  function automatic void perf_add(string k, int n);
+    sb.cov[k] = sb.cov_get(k) + n;
+  endfunction
+  bit ph_on;
+  int ph_cyc, ph_snp;
+  always @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      ph_on <= 0; ph_cyc <= 0; ph_snp <= 0;
+    end else if (sb != null) begin
+      if (in_snoop(state_q)) begin
+        ph_on  <= 1;
+        ph_cyc <= ph_on ? ph_cyc + 1 : 1;
+        ph_snp <= (ph_on ? ph_snp : 0) + int'(snp_gnt);
+      end else if (ph_on) begin
+        ph_on <= 0;
+        if (ph_snp >= 3) begin
+          perf_add("perf: snoop phases with 3+ snoops", 1);
+          perf_add("perf: snoop phase cycles, 3+ snoops", ph_cyc);
+        end else if (ph_snp == 2) begin
+          perf_add("perf: snoop phases with 2 snoops", 1);
+          perf_add("perf: snoop phase cycles, 2 snoops", ph_cyc);
+        end else if (ph_snp == 1) begin
+          perf_add("perf: snoop phases with 1 snoop", 1);
+          perf_add("perf: snoop phase cycles, 1 snoop", ph_cyc);
+        end
+      end
+    end
+  end
+
   always @(posedge clk or negedge resetn) begin
     if (!resetn) begin
       last_state <= state_q;
@@ -38,7 +74,7 @@ module tshr_cov
         if (state_q.name() == "ST_DIRTY_WB_REQ_SEND" && last_state.name() != "ST_SN_RETRY_WAIT")
           sb.cov_hit(bi_q ? "sf: back-invalidation wrote dirty data back"
                           : {"tshr: dirty write-back after ", tx_type_q.name()});
-        if (state_q.name() == "ST_SNOOP_PICK" && last_state.name() == "ST_SF_LOOKUP" && bi_q)
+        if ((state_q.name() == "ST_SNOOP_PICK" || state_q.name() == "ST_SNOOP_PAR") && last_state.name() == "ST_SF_LOOKUP" && bi_q)
           sb.cov_hit("sf: back-invalidation");
       end
       // end of a transaction: how many RN-Fs did it snoop
