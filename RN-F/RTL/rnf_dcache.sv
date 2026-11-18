@@ -58,6 +58,11 @@ endpackage : rnf_dcache_pkg
 //              accept), a store hit writes its bytes (UC -> UD) on port A.
 //              Everything else is handed to an MSHR.
 //
+//  Fast loads (FAST_LD): a cacheable load the core shows on core.la (from
+//              its flops) is looked up in that cycle on port A and answered
+//              on core.fast the next cycle (1 cycle instead of 3 after req).
+//              On a miss the core sends it on req as usual. See "fast load path".
+//
 //  MSHRs     : misses, upgrades (store on a Shared line), non-cacheable
 //              accesses and requests to a set with an open MSHR. An MSHR runs
 //              the per-request FSM (r-states): lookup, victim Evict /
@@ -112,7 +117,9 @@ module rnf_dcache
   parameter int       WAYS           = 4,
   parameter int       RX_FIFO_DEPTH  = 4,
   parameter int       TX_CREDIT_MAX  = 15,
-  parameter int       NUM_MSHR       = 4
+  parameter int       NUM_MSHR       = 4,
+  parameter bit       FAST_LD        = 0,    // fast load path (core.la / core.fast), see "fast load path"
+  parameter bit       ISIDE          = 0     // I-side port for rnf_icache (rnf_node), see "I-side"
 ) (
   input wire clk,
   input wire resetn,
@@ -124,7 +131,19 @@ module rnf_dcache
   chi_rsp.rx rsp_rx,
   chi_rsp.tx rsp_tx,
   chi_dat.rx dat_rx,
-  chi_dat.tx dat_tx
+  chi_dat.tx dat_tx,
+
+  // I-side (ISIDE): rnf_icache's line fills go out through this node's link as
+  // ReadOnce (no CompAck), TxnID {1, 0.., id}; this cache's own TxnIDs keep bit 11 = 0
+  input  wire                 is_req_v_i,      // fill buffer is_req_id_i wants line is_req_addr_i
+  input  wire                 is_req_id_i,
+  input  wire  [AddrSize-1:0] is_req_addr_i,
+  output logic                is_req_ack_o,    // taken (sent, retried and resent from here)
+  output logic                is_dat_v_o,      // a CompData beat of an I-side fill
+  output logic                is_dat_id_o,
+  output logic [1:0]          is_dat_beat_o,
+  output logic [127:0]        is_dat_o,
+  output logic                is_dat_err_o
 );
 
   localparam int SET_W  = $clog2(SETS);
@@ -253,11 +272,16 @@ module rnf_dcache
   logic [15:0]                pa_be;
   logic [127:0]               pa_wdata;
   logic [WAYS-1:0][127:0]     pa_rdata;        // P2: the beat of every way
+  // fast load path: port A read in the same cycle (no register)
+  logic [WAYS-1:0][TAG_W-1:0] pf_tag;
+  cache_state_e [WAYS-1:0]    pf_st;
+  logic [WAYS-1:0][127:0]     pf_rdata;
 
   rnf_tag_ram #(.SETS(SETS), .WAYS(WAYS), .TAG_W(TAG_W)) u_tag_ram (
     .clk(clk), .resetn(resetn), .set_i(tag_set), .re_i(tag_re), .we_i(tag_we),
     .way_i(tag_way), .tag_i(tag_tag), .state_i(tag_st), .tag_o(rd_tag), .state_o(rd_st),
     .set_a_i(pa_set), .re_a_i(pa_tag_re), .tag_a_o(pa_tag), .state_a_o(pa_st),
+    .tag_af_o(pf_tag), .state_af_o(pf_st),
     .we_a_i(pa_st_we), .wset_a_i(pa_st_set), .way_a_i(pa_st_way), .state_a_i(CS_UD));
 
   // data: one dual-port RAM per way. Port B (MSHRs, snoop FSM) addresses one
@@ -286,6 +310,7 @@ module rnf_dcache
       .a_be_i    (pa_be),
       .a_wdata_i (pa_wdata),
       .a_rdata_o (pa_rdata[w]),
+      .a_rdata_f_o (pf_rdata[w]),
       .b_addr_i  (ram_addr),
       .b_re_i    (ram_re && ram_way == WAY_W'(w)),
       .b_we_i    (ram_we && ram_way == WAY_W'(w)),
@@ -469,8 +494,8 @@ module rnf_dcache
     n             = e;
     n.state       = R_REQ;
     n.txn         = kind;
-    if (NUM_MSHR == 1) n.txnid = e.txnid + 12'd1;
-    else               n.txnid = {e.txnid[11:MW] + 1'b1, MW'(i)};
+    if (NUM_MSHR == 1) n.txnid = {1'b0, 11'(e.txnid[10:0] + 11'd1)};          // bit 11: I-side
+    else               n.txnid = {1'b0, (e.txnid[10:MW] + 1'b1), MW'(i)};
     n.allow_retry = 1'b1;
     n.pcrd_type   = '0;
     n.got_retry   = 1'b0;
@@ -635,7 +660,62 @@ module rnf_dcache
   assign snp_on_head_set = (s_q.state == S_WANT || s_q.state == S_CMP || s_q.state == S_DATA) &&
                            (sn_set == set_of(head.addr));
 
-  assign issue_w = head_v &&
+  // ---- fast load path (FAST_LD)
+  // C0: the core's lookahead (core.la, from its flops) takes port A: tags,
+  //     states and its beat of every way are read without the register,
+  //     compared and the load's bytes extracted, all in C0, into fast_q.
+  // C1: fast_q is core.fast. On a hit the core is done with the load; on a
+  //     miss it sends it on req (the normal pipeline).
+  // Port A: the lookahead wins, the FIFO does not issue in C0. Not tried
+  // while P2 holds a store (port A carries its write address in that cycle).
+  // A hit only counts when nothing can be changing that set's RAM contents:
+  //   - no MSHR open on the set (a fill writes its beats over several cycles,
+  //     the victim's tag / state may be on the way out)
+  //   - the snoop FSM is not working on the set (S_WANT .. S_DATA)
+  //   - P2 does not hold a request to the set
+  // The other writes are on those agents' own sets: an MSHR only writes its
+  // set, the snoop FSM only in S_CMP, port A only in a store's P2. So every
+  // condition is a flop compare, in parallel with the RAM read.
+  // Ordering: like req, the core never has a store in flight to the bytes a
+  // lookahead reads (rnf_core_if), so reading in C0 is the load's order point.
+  logic             fl_go;                    // a lookahead uses port A in C0
+  logic [SET_W-1:0] fl_set;
+  logic             fl_hit, fl_way_hit;
+  logic [WAY_W-1:0] fl_way;
+  logic             fl_blk;
+  logic [MaxAccessWidth-1:0] fl_data;
+  logic             fast_v_q;
+  logic [MaxAccessWidth-1:0] fast_d_q;
+
+  assign fl_go  = FAST_LD && (core.la.valid == Y) && !(p2_v_q && p2_q.op == MEM_OP_STORE);
+  assign fl_set = set_of(core.la.addr);
+
+  always_comb begin
+    fl_way_hit = 1'b0;
+    fl_way     = '0;
+    for (int w = WAYS - 1; w >= 0; w--)
+      if (pf_st[w] != CS_I && pf_tag[w] == tag_of(core.la.addr)) begin
+        fl_way_hit = 1'b1; fl_way = WAY_W'(w);
+      end
+    fl_blk = (p2_v_q && set_of(p2_q.addr) == fl_set) ||
+             ((s_q.state == S_WANT || s_q.state == S_CMP || s_q.state == S_DATA) && sn_set == fl_set);
+    for (int k = 0; k < NUM_MSHR; k++)
+      if (m_q[k].state != R_IDLE && set_of(m_q[k].addr) == fl_set) fl_blk = 1'b1;
+    fl_hit  = fl_go && fl_way_hit && !fl_blk;
+    fl_data = load_of(pf_rdata[fl_way], core.la.width, core.la.addr[3:0]);
+  end
+
+  always_ff @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      fast_v_q <= 1'b0;
+      fast_d_q <= '0;
+    end else begin
+      fast_v_q <= fl_hit;
+      if (fl_hit) fast_d_q <= fl_data;
+    end
+  end
+
+  assign issue_w = head_v && !fl_go &&
                    !(p2_v_q && (set_of(p2_q.addr) == set_of(head.addr) || p2_q.op == MEM_OP_STORE)) &&
                    !snp_on_head_set &&
                    (free_cnt > ($bits(free_cnt))'(p2_v_q));
@@ -644,11 +724,12 @@ module rnf_dcache
   assign pipe_on_snp_set = (p2_v_q  && set_of(p2_q.addr) == sn_set) ||
                            (issue_w && set_of(head.addr) == sn_set);
 
-  // port A reads in the issue cycle (address from the FIFO, a flop)
+  // port A reads in the issue cycle (address from the FIFO, a flop), or the
+  // lookahead's set / beat (fast load path, also from flops)
   assign pa_tag_re = issue_w;
   assign pa_dat_re = issue_w && head.cach;
-  assign pa_set    = set_of(head.addr);
-  assign pa_beat   = head.addr[5:4];
+  assign pa_set    = fl_go ? fl_set : set_of(head.addr);
+  assign pa_beat   = fl_go ? core.la.addr[5:4] : head.addr[5:4];
 
   // ---- P2 decision
   lk_t               p2_lk;
@@ -702,6 +783,163 @@ module rnf_dcache
     cache_state_e               st;
   } prsp_t;
   prsp_t rsp_q, rsp_d;
+
+  // ------------------------------------------------------------------ I-side
+  // Two entries (rnf_icache's fill buffers).
+  //   PROBE : first this node's own D-cache: the line may be here, even dirty
+  //           (code just written, before a FENCE.I), and the HN-F never snoops
+  //           the requesting node. Port B, lowest priority, only while no MSHR
+  //           and not the snoop FSM work on that set (no half-filled line).
+  //   PCMP  : tags valid (the port stays locked): hit -> PREAD, miss -> REQ
+  //   PREAD : the 4 beats from the data RAM to the I-cache, port locked
+  //   REQ   : ReadOnce to send -> WAIT (CompData beats on DAT) -> IDLE after the
+  //           4th; a RetryAck -> RETRY until a PCrdGrant of its type is there ->
+  //           REQ again with AllowRetry = 0.
+  // They go before the MSHRs on REQ and on the PCrdGrant counters.
+  typedef enum logic [2:0] { I_IDLE, I_PROBE, I_PCMP, I_PREAD, I_REQ, I_WAIT, I_RETRY } istate_e;
+  typedef struct packed {
+    istate_e             st;
+    logic [AddrSize-1:0] addr;
+    logic                allow_retry;
+    logic [3:0]          pcrd_type;
+    logic                got_retry;
+    logic [1:0]          beats;
+    logic [WAY_W-1:0]    way;        // PREAD: the way holding the line
+  } ireg_t;
+  ireg_t i_q [2], i_d [2];
+  logic  i_req_win, i_req_sel, i_pcrd_win, i_pcrd_sel;
+  logic  i_pgrant, i_psel;           // a PROBE gets port B this cycle (arbiter)
+  logic  i_lock;                     // a PCMP / PREAD entry keeps port B
+  logic  i_pdel, i_pdel_id;          // a PREAD entry hands a beat to the I-cache
+  logic  i_pcmp_v, i_pcmp_id;        // the entry in PCMP (at most one: the port)
+  lk_t   i_lk;                       // its lookup
+  logic [1:0] i_probe_ok;            // no MSHR / snoop on that set
+
+  function automatic logic [11:0] i_txnid(logic id);
+    return {1'b1, 10'd0, id};
+  endfunction
+
+  function automatic local_req_flit_t mk_ireq(ireg_t e, logic id);
+    local_req_flit_t f;
+    f            = '0;
+    f.tgtid      = HNID;
+    f.srcid      = NODEID;
+    f.txnid      = i_txnid(id);
+    f.opcode     = REQ_READ_ONCE;
+    f.expcompack = 1'b0;
+    f.allowretry = e.allow_retry ? Y : N;
+    f.pcrdttype  = e.pcrd_type;
+    f.size       = WIDTH_64;
+    f.memattr    = MEMATTR_NORMAL_WB;
+    f.addr       = TSHR_ADDR_WIDTH'({e.addr[AddrSize-1:6], 6'b0});
+    return f;
+  endfunction
+
+  logic i_pc0, i_pc1;
+  always_comb begin
+    i_req_win  = ISIDE && (i_q[0].st == I_REQ || i_q[1].st == I_REQ);
+    i_req_sel  = (i_q[0].st == I_REQ) ? 1'b0 : 1'b1;
+    i_pc0      = (i_q[0].st == I_RETRY) && (pcrd_q[i_q[0].pcrd_type] != '0);
+    i_pc1      = (i_q[1].st == I_RETRY) && (pcrd_q[i_q[1].pcrd_type] != '0);
+    i_pcrd_win = ISIDE && (i_pc0 || i_pc1);
+    i_pcrd_sel = i_pc0 ? 1'b0 : 1'b1;
+
+    is_req_ack_o  = ISIDE && is_req_v_i && (i_q[is_req_id_i].st == I_IDLE);
+
+    // the probe: which entry compares / reads, and may an entry start one
+    i_lock    = ISIDE && (i_q[0].st == I_PCMP || i_q[0].st == I_PREAD ||
+                          i_q[1].st == I_PCMP || i_q[1].st == I_PREAD);
+    i_pcmp_v  = ISIDE && (i_q[0].st == I_PCMP || i_q[1].st == I_PCMP);
+    i_pcmp_id = (i_q[0].st == I_PCMP) ? 1'b0 : 1'b1;
+    i_lk      = lookup(tag_of(i_q[i_pcmp_id].addr));
+    i_pdel    = ISIDE && (i_q[0].st == I_PREAD || i_q[1].st == I_PREAD);
+    i_pdel_id = (i_q[0].st == I_PREAD) ? 1'b0 : 1'b1;
+    for (int id = 0; id < 2; id++) begin
+      i_probe_ok[id] = !((s_q.state == S_WANT || s_q.state == S_CMP || s_q.state == S_DATA) &&
+                         sn_set == set_of(i_q[id].addr));
+      for (int k = 0; k < NUM_MSHR; k++)
+        if (m_q[k].state != R_IDLE && set_of(m_q[k].addr) == set_of(i_q[id].addr)) i_probe_ok[id] = 1'b0;
+    end
+
+    // beats to the I-cache: a probe's beat (data RAM) first; a ReadOnce beat
+    // for the other entry then waits at the head of the DAT FIFO
+    if (i_pdel) begin
+      is_dat_v_o    = 1'b1;
+      is_dat_id_o   = i_pdel_id;
+      is_dat_beat_o = i_q[i_pdel_id].beats;
+      is_dat_o      = ram_rdata;
+      is_dat_err_o  = 1'b0;
+    end else begin
+      is_dat_v_o    = ISIDE && rxd_v && rxd.txnid[11] && (rxd.opcode == DAT_COMP_DATA);
+      is_dat_id_o   = rxd.txnid[0];
+      is_dat_beat_o = rxd.dataid[1:0];
+      is_dat_o      = rxd.data;
+      is_dat_err_o  = (rxd.resperr != '0);
+    end
+
+    for (int id = 0; id < 2; id++) begin
+      i_d[id] = i_q[id];
+      if (is_req_ack_o && is_req_id_i == 1'(id)) begin
+        i_d[id].st          = I_PROBE;
+        i_d[id].addr        = is_req_addr_i;
+        i_d[id].allow_retry = 1'b1;
+        i_d[id].pcrd_type   = '0;
+        i_d[id].got_retry   = 1'b0;
+        i_d[id].beats       = '0;
+      end
+      if (i_req_win && i_req_sel == 1'(id) && req_rdy) i_d[id].st = I_WAIT;
+      if (rxr_v && rxr.opcode == RSP_RETRY_ACK && rxr.txnid == i_txnid(1'(id))) begin
+        i_d[id].got_retry = 1'b1;
+        i_d[id].pcrd_type = rxr.pcrdttype;
+      end
+      if (i_q[id].st == I_WAIT && i_q[id].got_retry) begin
+        i_d[id].st        = I_RETRY;
+        i_d[id].got_retry = 1'b0;
+      end
+      if (i_pcrd_win && i_pcrd_sel == 1'(id)) begin
+        i_d[id].st          = I_REQ;
+        i_d[id].allow_retry = 1'b0;
+      end
+      // the probe
+      if (i_pgrant && i_psel == 1'(id)) i_d[id].st = I_PCMP;
+      if (i_q[id].st == I_PCMP) begin
+        if (i_lk.hit) begin
+          i_d[id].st    = I_PREAD;          // beat 0 is read in this cycle
+          i_d[id].way   = i_lk.hway;
+          i_d[id].beats = '0;
+        end else begin
+          i_d[id].st    = I_REQ;            // not here: ReadOnce
+        end
+      end
+      if (i_q[id].st == I_PREAD) begin    // beat i_q.beats is handed over now
+        i_d[id].beats = i_q[id].beats + 2'd1;
+        if (i_q[id].beats == 2'd3) i_d[id].st = I_IDLE;
+      end
+      // ReadOnce beats
+      if (i_q[id].st == I_WAIT && !i_pdel && is_dat_v_o && is_dat_id_o == 1'(id)) begin
+        i_d[id].beats = i_q[id].beats + 2'd1;
+        if (i_q[id].beats == 2'd3) i_d[id].st = I_IDLE;
+      end
+    end
+  end
+
+  always_ff @(posedge clk or negedge resetn) begin
+    if (!resetn) begin
+      for (int id = 0; id < 2; id++) begin
+        i_q[id]    <= '0;
+        i_q[id].st <= I_IDLE;
+      end
+    end else begin
+      i_q[0] <= i_d[0];
+      i_q[1] <= i_d[1];
+    end
+  end
+
+  // synthesis translate_off
+  always @(posedge clk)
+    if (resetn && ISIDE && is_dat_v_o && !i_pdel && i_q[is_dat_id_o].st != I_WAIT)
+      $error("[%0t] rnf_dcache: I-side CompData for fill %0d, which is not waiting for one", $time, is_dat_id_o);
+  // synthesis translate_on
 
   // ------------------------------------------------------------------ RAM port arbiter
   // CompData at the head of the DAT FIFO, per MSHR
@@ -759,6 +997,9 @@ module rnf_dcache
         e_port[k] = 1'b1;
         port_lock = 1'b1;
       end
+    if (i_lock) port_lock = 1'b1;               // an I-side probe compares / reads
+    i_pgrant = 1'b0;
+    i_psel   = 1'b0;
     if (!port_lock) begin
       // a snoop only starts on a set the hit pipeline is not working on (the
       // pipeline read that set's tags / data and may still write it in P2),
@@ -774,14 +1015,19 @@ module rnf_dcache
           end
         end
         a_grant = !found;
+        // lowest priority: an I-side probe (tag read now, compare next cycle)
+        if (!found && ISIDE) begin
+          if (i_q[0].st == I_PROBE && i_probe_ok[0])      begin i_pgrant = 1'b1; i_psel = 1'b0; end
+          else if (i_q[1].st == I_PROBE && i_probe_ok[1]) begin i_pgrant = 1'b1; i_psel = 1'b1; end
+        end
       end
     end
   end
 
   // ------------------------------------------------------------------ perf / debug
   logic perf_hit_m, perf_miss, perf_evict, perf_snp, perf_snp_hit, perf_snp_data;
-  logic [1:0] perf_hit;                      // hits this cycle: an MSHR lookup + the hit pipeline (P2)
-  assign perf_hit = 2'(perf_hit_m) + 2'(p2_hit);
+  logic [1:0] perf_hit;                      // hits this cycle: an MSHR lookup + the hit pipeline (P2) + a fast load
+  assign perf_hit = 2'(perf_hit_m) + 2'(p2_hit) + 2'(fl_hit);
   logic [4:0] perf_wb, perf_retry;           // can happen in several MSHRs in one cycle
 
   // the MSHR doing a lookup this cycle and what it found (for testbench coverage)
@@ -849,11 +1095,11 @@ module rnf_dcache
       in_lookup[k] = (m_q[k].state == R_LOOKUP);
       nc_mine[k]   = (m_q[k].state == R_WAIT) && (m_q[k].txn == T_NCRD) && !m_q[k].got_retry && rxd_mine[k];
     end
-    g_req  = rr_pick(want_req, rot_q);
+    g_req  = i_req_win ? '0 : rr_pick(want_req, rot_q);  // I-side fills go first (few, latency critical)
     g_dat  = s_dat_v  ? '0 : rr_pick(want_dat, rot_q);    // the snoop FSM goes first on DAT
     g_ack  = s_rsp_v  ? '0 : rr_pick(want_ack, rot_q);    // ... and on RSP
     g_rsp  = p2_rsp_v ? '0 : rr_pick(want_rsp, rot_q);    // P2 (a hit) owns rsp_q this cycle
-    g_pcrd = rr_pick(want_pcrd, rot_q);
+    g_pcrd = i_pcrd_win ? '0 : rr_pick(want_pcrd, rot_q);
   end
 
   // the selected entry of each shared resource (at most one bit set)
@@ -900,8 +1146,8 @@ module rnf_dcache
     rr_inc        = 1'b0;
     rr_set        = '0;
     pcrd_inc      = 1'b0;
-    pcrd_dec      = (g_pcrd != '0);
-    pcrd_dec_type = e_pc.pcrd_type;
+    pcrd_dec      = (g_pcrd != '0) || i_pcrd_win;
+    pcrd_dec_type = i_pcrd_win ? i_q[i_pcrd_sel].pcrd_type : e_pc.pcrd_type;
 
     c_ready    = 1'b0;
     // the core answer of an MSHR (granted R_RESP / R_LOAD): one selected entry
@@ -928,13 +1174,32 @@ module rnf_dcache
     r_dat_wdata = rxd.data;
 
     // TX channels: one flit each, from the granted entry
-    req_v   = (g_req != '0);
-    req_c   = mk_req(e_req);
+    req_v   = (g_req != '0) || i_req_win;
+    req_c   = i_req_win ? mk_ireq(i_q[i_req_sel], i_req_sel) : mk_req(e_req);
     r_ack_v = (g_ack != '0);
     ack_c   = mk_ack(e_ack);
     r_dat_v = (g_dat != '0);
     wdat_c  = mk_wdat(e_dat);
-    rxd_pop = rxd_v && !(|rxd_mine);           // a DAT flit nobody waits for is dropped
+    rxd_pop = rxd_v && !(|rxd_mine) &&         // a DAT flit nobody waits for is dropped
+              !(ISIDE && i_pdel && rxd.txnid[11]);  // (an I-side beat waits while a probe hands its own)
+
+    // I-side probe on port B (it owns the port: no MSHR does this cycle)
+    if (i_pgrant) begin
+      r_tag_re  = 1'b1;
+      r_tag_set = set_of(i_q[i_psel].addr);
+    end
+    if (i_pcmp_v && i_lk.hit) begin
+      r_dat_re   = 1'b1;
+      r_dat_set  = set_of(i_q[i_pcmp_id].addr);
+      r_dat_way  = i_lk.hway;
+      r_dat_beat = 2'd0;
+    end
+    if (i_pdel && i_q[i_pdel_id].beats != 2'd3) begin
+      r_dat_re   = 1'b1;
+      r_dat_set  = set_of(i_q[i_pdel_id].addr);
+      r_dat_way  = i_q[i_pdel_id].way;
+      r_dat_beat = i_q[i_pdel_id].beats + 2'd1;
+    end
 
     perf_hit_m = 1'b0; perf_miss = 1'b0; perf_evict = 1'b0; perf_wb = '0; perf_retry = '0;
 
@@ -1472,11 +1737,15 @@ module rnf_dcache
     core.rsp.src       = rsp_q.src;
     core.rsp.err       = rsp_q.err ? Y : N;
     core.rsp.chr_state = rsp_q.st;
+    // fast load path: the lookahead of the previous cycle hit (flops)
+    core.fast.valid    = fast_v_q ? Y : N;
+    core.fast.data     = fast_d_q;
   end
 
   // ------------------------------------------------------------------ registers
   logic [31:0] perf_hits_r, perf_misses_r, perf_evictions_r, perf_writebacks_r, perf_retries_r;
   logic [31:0] perf_snoops_r, perf_snoop_hits_r, perf_snoop_data_r;
+  logic [31:0] perf_fast_r;                  // fast load hits (also in perf_hits_r)
 
   always_ff @(posedge clk or negedge resetn) begin
     if (!resetn) begin
@@ -1505,6 +1774,7 @@ module rnf_dcache
       perf_snoops_r     <= '0;
       perf_snoop_hits_r <= '0;
       perf_snoop_data_r <= '0;
+      perf_fast_r       <= '0;
     end else begin
       for (int k = 0; k < NUM_MSHR; k++) m_q[k] <= m_d[k];
       s_q   <= s_d;
@@ -1532,6 +1802,7 @@ module rnf_dcache
       end
 
       perf_hits_r       <= perf_hits_r + 32'(perf_hit);
+      if (fl_hit)        perf_fast_r       <= perf_fast_r + 1;
       if (perf_miss)     perf_misses_r     <= perf_misses_r + 1;
       if (perf_evict)    perf_evictions_r  <= perf_evictions_r + 1;
       perf_writebacks_r <= perf_writebacks_r + 32'(perf_wb);

@@ -5,6 +5,9 @@
 //   one write port (byte enables), two registered read ports.
 //   port A: the hit pipeline (P1 read of the request's beat, P2 store-hit write)
 //   port B: the MSHRs and the snoop FSM (fills, write-back / snoop reads, ...)
+//   a_rdata_f_o: port A's read without the register (same address, LUTRAM
+//          read in the cycle): the dcache's fast load path compares and
+//          registers it itself. A write in the same cycle is not seen.
 // Both ports may read in the same cycle. Only one of them may write in a cycle:
 // the dcache arranges that (see "write port" in rnf_dcache); a_we wins if both.
 module rnf_data_ram #(
@@ -18,6 +21,7 @@ module rnf_data_ram #(
   input  logic [15:0]              a_be_i,
   input  logic [127:0]             a_wdata_i,
   output logic [127:0]             a_rdata_o,
+  output logic [127:0]             a_rdata_f_o,     // unregistered port A read
   // port B
   input  logic [$clog2(DEPTH)-1:0] b_addr_i,
   input  logic                     b_re_i,
@@ -41,7 +45,9 @@ module rnf_data_ram #(
         if (wbe[b]) mem[waddr][b*8 +: 8] <= wdata[b*8 +: 8];
   end
 
-  // two read ports, registered
+  // two read ports, registered (port A also unregistered)
+  assign a_rdata_f_o = mem[a_addr_i];
+
   always_ff @(posedge clk) begin
     if (a_re_i) a_rdata_o <= mem[a_addr_i];
     if (b_re_i) b_rdata_o <= mem[b_addr_i];

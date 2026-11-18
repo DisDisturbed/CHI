@@ -63,6 +63,9 @@ module Tb_RNF;
   parameter int CORE_MAX_OUT           = 16;       // requests the core keeps in flight at most (<= 2**IW)
   parameter int NUM_MSHR               = 4;        // dcache MSHRs; must be <= NUM_TRACKERS (HN-F)
   parameter bit REQUIRE_CORE_OOO       = (NUM_MSHR > 1); // also require the dcache to have taken several requests at once and answered out of order
+  parameter bit FAST_LD                = 1;        // dcache fast load path; the driver sends lookaheads before cacheable loads
+  parameter int LA_PCT                 = 50;       // cacheable loads that get a lookahead first
+  parameter bit ICACHE                 = 1;        // split I-cache (rnf_icache on the dcache's I-side port) + fetch driver
   parameter int CMD_TIMEOUT_CYCLES     = 400000;
   parameter int OVERALL_TIMEOUT_CYCLES = 16000000;
 
@@ -90,6 +93,12 @@ module Tb_RNF;
   chi_dat snf_dat_tx_if(), snf_dat_rx_if();
 
   rnf_core_if #(.AddrSize(AW), .MaxAccessWidth(DW), .ReqIdxWidth(IW)) core_if();
+  rnf_core_if #(.AddrSize(AW), .MaxAccessWidth(128), .ReqIdxWidth(IW)) icore_if();   // I-cache port
+  logic                ic_inv, ic_busy, fetch_en;
+  logic                is_req_v, is_req_id, is_req_ack, is_dat_v, is_dat_id, is_dat_err;
+  logic [AW-1:0]       is_req_addr;
+  logic [1:0]          is_dat_beat;
+  logic [127:0]        is_dat;
 
   // ---------------------------------------------------------------- HN-F
   HN_F #(
@@ -117,18 +126,37 @@ module Tb_RNF;
   // ---------------------------------------------------------------- RN-F 0: RTL dcache + core driver
   rnf_dcache #(
     .NODEID(7'h01), .HNID(HN_ID), .AddrSize(AW), .MaxAccessWidth(DW), .ReqIdxWidth(IW),
-    .SETS(SETS), .WAYS(WAYS), .RX_FIFO_DEPTH(RX_FIFO_DEPTH), .NUM_MSHR(NUM_MSHR)
+    .SETS(SETS), .WAYS(WAYS), .RX_FIFO_DEPTH(RX_FIFO_DEPTH), .NUM_MSHR(NUM_MSHR),
+    .FAST_LD(FAST_LD), .ISIDE(ICACHE)
   ) dut (
     .clk(clk), .resetn(resetn),
     .core(core_if),
+    .is_req_v_i(is_req_v), .is_req_id_i(is_req_id), .is_req_addr_i(is_req_addr), .is_req_ack_o(is_req_ack),
+    .is_dat_v_o(is_dat_v), .is_dat_id_o(is_dat_id), .is_dat_beat_o(is_dat_beat), .is_dat_o(is_dat),
+    .is_dat_err_o(is_dat_err),
     .req_tx(rnf_req_if[0]), .snp_rx(rnf_snp_if[0]),
     .rsp_rx(rnf_rsp_tx_if[0]), .rsp_tx(rnf_rsp_rx_if[0]),
     .dat_rx(rnf_dat_tx_if[0]), .dat_tx(rnf_dat_rx_if[0])
   );
 
+  // ---------------------------------------------------------------- RN-F 0: I-cache + fetch driver (ICACHE)
+  // (the same wiring as rnf_node: the dcache's I-side port carries its fills)
+  rnf_icache #(.AddrSize(AW), .MaxAccessWidth(128), .ReqIdxWidth(IW), .SETS(32), .WAYS(2)) idut (
+    .clk(clk), .resetn(resetn), .core(icore_if), .inv_i(ic_inv), .busy_o(ic_busy),
+    .is_req_v_o(is_req_v), .is_req_id_o(is_req_id), .is_req_addr_o(is_req_addr), .is_req_ack_i(is_req_ack),
+    .is_dat_v_i(is_dat_v), .is_dat_id_i(is_dat_id), .is_dat_beat_i(is_dat_beat), .is_dat_i(is_dat),
+    .is_dat_err_i(is_dat_err)
+  );
+
+  rnf_fetch_driver #(.SEED(SEED * 7 + 5), .AddrSize(AW), .ReqIdxWidth(IW)) fdrv (
+    .clk(clk), .resetn(resetn), .enable(fetch_en && ICACHE), .icore(icore_if), .inv_o(ic_inv), .busy_i(ic_busy)
+  );
+  initial fetch_en = 1'b1;
+
   rnf_core_driver #(
     .NAME("RNF0"), .IDX(0), .SEED(SEED * 7 + 1), .AddrSize(AW), .MaxAccessWidth(DW), .ReqIdxWidth(IW),
-    .OPS_MULT(CORE_OPS_MULT), .NC_PCT(NC_PCT), .PRIV_PCT(PRIV_PCT), .MAX_OUT(CORE_MAX_OUT)
+    .OPS_MULT(CORE_OPS_MULT), .NC_PCT(NC_PCT), .PRIV_PCT(PRIV_PCT), .MAX_OUT(CORE_MAX_OUT),
+    .LA_PCT(FAST_LD ? LA_PCT : 0)
   ) drv (
     .clk(clk), .resetn(resetn), .core(core_if)
   );
@@ -439,6 +467,34 @@ module Tb_RNF;
     if (nmiss >= 1 && dut.perf_hit) sb.cov_hit("dc mshr: hit under an open miss");
 
     if (core_if.req.valid == Y && core_if.ready == Y && cv_rsp_prev) sb.cov_hit("dc core: request accepted the cycle after a response");
+
+    // fast load path
+    if (dut.fl_go) begin
+      if (dut.fl_hit)                         sb.cov_hit("dc fast: lookahead hit");
+      if (!dut.fl_way_hit)                    sb.cov_hit("dc fast: lookahead missed");
+      if (dut.fl_way_hit && dut.fl_blk)       sb.cov_hit("dc fast: hit refused, the set is busy");
+      if (dut.head_v)                         sb.cov_hit("dc fast: lookahead took port A from the FIFO");
+      if (dut.fl_hit && nmiss >= 1)           sb.cov_hit("dc fast: hit under an open miss");
+    end
+    if ((core_if.la.valid == Y) && FAST_LD && !dut.fl_go) sb.cov_hit("dc fast: lookahead not tried (P2 store on port A)");
+
+    // split I-cache
+    if (ICACHE) begin
+      if (idut.accept && idut.c_hit)                       sb.cov_hit("ic: hit (1 cycle)");
+      if (idut.accept && !idut.c_now && !idut.c_in_fill)   sb.cov_hit("ic: miss, new fill");
+      if (idut.accept && !idut.c_hit && idut.c_in_fill)    sb.cov_hit("ic: request on a line still being filled");
+      if (idut.accept && !idut.c_hit && idut.c_in_fill && idut.c_now) sb.cov_hit("ic: chunk of a line being filled answered at once");
+      if (idut.start && idut.dem_v_q)                      sb.cov_hit("ic: next-line prefetch");
+      if (idut.inv_i)                                      sb.cov_hit("ic: FENCE.I");
+      if (idut.inv_i && (idut.valid_q != '0))              sb.cov_hit("ic: FENCE.I with valid lines");
+      if (int'(dut.i_q[0].st) == 6 || int'(dut.i_q[1].st) == 6) sb.cov_hit("ic: fill retried (RetryAck)");
+      if (dut.i_pcmp_v && dut.i_lk.hit)                    sb.cov_hit("ic: fill served by the node's own D-cache");
+      if (dut.i_pcmp_v && !dut.i_lk.hit)                   sb.cov_hit("ic: probe missed, ReadOnce sent");
+      if (dut.i_pdel && dut.rxd_v && dut.rxd.txnid[11])    sb.cov_hit("ic: ReadOnce beat waited for a probe beat");
+      if (idut.is_dat_v_i && idut.is_dat_err_i)            sb.cov_hit("ic: fill beat with an error");
+      if (dut.i_req_win && (dut.want_req != '0))           sb.cov_hit("ic: fill request went before an MSHR's");
+      if (idut.f_q[0].v && idut.f_q[1].v)                  sb.cov_hit("ic: two fills open");
+    end
     cv_rsp_prev = (core_if.rsp.valid == Y);
   endfunction
 
@@ -577,6 +633,25 @@ module Tb_RNF;
       need("dc pipe: back-to-back issue");
       need("dc pipe: request waited for an MSHR on its set");
     end
+    if (ICACHE) begin
+      need("ic: hit (1 cycle)");
+      need("ic: miss, new fill");
+      need("ic: request on a line still being filled");
+      need("ic: next-line prefetch");
+      need("ic: FENCE.I with valid lines");
+      need("ic: fill request went before an MSHR's");
+      need("ic: two fills open");
+      need("ic: probe missed, ReadOnce sent");
+    end
+    if (FAST_LD) begin
+      need("dc fast: lookahead hit");
+      need("dc fast: lookahead missed");
+      need("dc fast: hit refused, the set is busy");
+      need("dc fast: lookahead took port A from the FIFO");
+      need("dc fast: lookahead not tried (P2 store on port A)");
+      need("core: fast load answered");
+      need("core: fast load missed, sent on req");
+    end
   endfunction
 
   string sn_kind [4] = '{"cached", "cached", "nc", "nc"};
@@ -588,10 +663,14 @@ module Tb_RNF;
     $display("  private exact checks: %0d (%0d of them on bytes merged from 2+ stores)", drv.n_priv_chk, drv.n_merge_chk);
     $display("  in flight (core)    : up to %0d issued, up to %0d accepted by the dcache at once; %0d responses out of order", drv.max_drv_out, drv.max_dut_out, drv.n_ooo);
     $display("  core stalls         : %0d on a byte hazard, %0d on a full window; %0d err responses", drv.n_hz_stall, drv.n_full_stall, drv.n_err_rsp);
-    $display("  hits / misses       : %0d / %0d", dut.perf_hits_r, dut.perf_misses_r);
+    $display("  hits / misses       : %0d / %0d (%0d of the hits on the fast load path)", dut.perf_hits_r, dut.perf_misses_r, dut.perf_fast_r);
     $display("  Evict / WriteBack   : %0d / %0d", dut.perf_evictions_r, dut.perf_writebacks_r);
     $display("  snoops              : %0d (%0d hit a line, %0d answered with data)", dut.perf_snoops_r, dut.perf_snoop_hits_r, dut.perf_snoop_data_r);
     $display("  RetryAck            : %0d", dut.perf_retries_r);
+    if (ICACHE)
+      $display("  I-cache fetches     : %0d (%0d answered in 1 cycle, %0d later: avg %0.1f, max %0d cycles), %0d FENCE.I, %0d errors, %0d mismatches",
+               fdrv.n_fetch, fdrv.n_1cyc, fdrv.n_miss_lat, (fdrv.n_miss_lat != 0) ? real'(fdrv.lat_sum) / fdrv.n_miss_lat : 0.0,
+               fdrv.lat_max, fdrv.n_inv, fdrv.n_err, fdrv.n_bad);
   endfunction
 
   function automatic void print_categories();
@@ -654,7 +733,8 @@ module Tb_RNF;
       issue_cmd(CMD_RANDOM, OPS_PER_ROUND, "random round after the mid-traffic resets");
     end
 
-    // 4. flush, final checks
+    // 4. flush, final checks (fetching stops first: no fill open at the end)
+    fetch_en = 1'b0;
     base_knobs();
     issue_cmd(CMD_REMOTE, RS_CLEAN_PRIV, "CleanInvalid on the private lines");
     issue_cmd(CMD_FLUSH, 0, "end-of-test flush");

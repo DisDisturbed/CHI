@@ -186,6 +186,10 @@ module rnf_chi_checker #(
         if (st == L_U && !snp_open_on(la)) perr($sformatf("ReadUnique addr=%0h for a line it already holds Unique", la));
         if (!f.expcompack) perr("ReadUnique without ExpCompAck");
       end
+      REQ_READ_ONCE: begin                      // I-cache fill (rnf_icache): a snapshot, the line is not held
+        if (f.expcompack) perr("ReadOnce with ExpCompAck (the I-cache sends none)");
+        if (!f.txnid[11]) perr($sformatf("ReadOnce addr=%0h with TxnID %0h: I-side TxnIDs have bit 11 set", la, f.txnid));
+      end
       REQ_EVICT: begin
         if (!(held.exists(la) && held[la])) perr($sformatf("Evict addr=%0h for a line it never got", la));
         if (st != L_I && dirty_of(la) && !snp_open_on(la)) perr($sformatf("Evict addr=%0h for a dirty line: the data is lost", la));
@@ -219,7 +223,8 @@ module rnf_chi_checker #(
     end
     t = new();
     t.f = f; t.la = la;
-    t.is_rd = (f.opcode == REQ_READ_SHARED || f.opcode == REQ_READ_UNIQUE || f.opcode == REQ_READ_NO_SNOOP);
+    t.is_rd = (f.opcode == REQ_READ_SHARED || f.opcode == REQ_READ_UNIQUE || f.opcode == REQ_READ_NO_SNOOP ||
+               f.opcode == REQ_READ_ONCE);
     t.is_wr = (f.opcode == REQ_WRITE_BACK_FULL || f.opcode == REQ_WRITE_NO_SNOOP_PTL);
     t.is_nc = !coh;
     t.need  = coh ? 4'hF : (4'b0001 << f.addr[5:4]);
@@ -255,7 +260,7 @@ module rnf_chi_checker #(
     if (!t.is_rd) return;
     if (t.seen == '0) begin
       t.cresp = f.resp; t.cdbid = f.dbid; t.chome = f.homenid;
-      if (!t.is_nc) ack_wait[t.la] = ack_wait.exists(t.la) ? ack_wait[t.la] + 1 : 1;
+      if (!t.is_nc && t.f.expcompack) ack_wait[t.la] = ack_wait.exists(t.la) ? ack_wait[t.la] + 1 : 1;
     end
     if (f.resperr[1]) t.cerr = 1;
     t.seen[f.dataid] = 1;

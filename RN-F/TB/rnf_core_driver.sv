@@ -16,6 +16,10 @@
 //     merge stress.
 //   * Accesses are 1, 2, 4 or 8 bytes, always aligned to their size (an
 //     unaligned access is a trap in the core and never reaches the dcache).
+//   * Fast load path (LA_PCT > 0): a cacheable load first goes on core.la
+//     for one cycle (the request is not on req yet). If core.fast answers it
+//     the next cycle, the load is done there; otherwise it goes on req the
+//     cycle after that, as usual.
 //   * How many requests the dcache actually takes at once is up to the
 //     dcache: it is measured (coverage "core: ..."), the driver never relies
 //     on it.
@@ -59,7 +63,8 @@ module rnf_core_driver #(
   parameter int    NUM_PRIV       = 12,      // private lines
   parameter int    GAP_MAX        = 6,       // idle cycles between single accesses
   parameter int    OP_TIMEOUT     = 20000,
-  parameter int    MAX_OUT        = (1 << ReqIdxWidth)   // requests the core keeps in flight at most
+  parameter int    MAX_OUT        = (1 << ReqIdxWidth),  // requests the core keeps in flight at most
+  parameter int    LA_PCT         = 0        // cacheable loads that get a lookahead (core.la) first
 ) (
   input wire clk,
   input wire resetn,
@@ -93,6 +98,7 @@ module rnf_core_driver #(
     bit          has_orig;         // private load: some loaded bytes were never stored
     bit          wr_conc;          // private load: some loaded bytes come from a store that was in flight with another one
     bit          conc;             // store: issued while another store to the line was in flight
+    bit          fast;             // load answered on core.fast (fast load path)
   endclass
 
   tb_rng       rng;
@@ -102,6 +108,7 @@ module rnf_core_driver #(
   int unsigned n_load = 0, n_store = 0, n_nc = 0, n_busy = 0, n_priv = 0, n_priv_chk = 0;
   int unsigned n_hz_stall = 0, n_full_stall = 0, n_ooo = 0, n_err_rsp = 0, n_merge_chk = 0;
   int unsigned max_drv_out = 0, max_dut_out = 0;
+  int unsigned n_la = 0, n_fast = 0;
   int unsigned last_rsp_cyc = 0, last_acc_cyc = 0;
   bit          seen_rsp = 0, seen_acc = 0;
 
@@ -213,6 +220,9 @@ module rnf_core_driver #(
   logic [MaxAccessWidth-1:0] d_data  = '0;
   logic [ReqIdxWidth-1:0]    d_idx   = '0;
   mem_unit_e                 d_src   = MEM_UNIT_LOAD;
+  yn_status_e                d_la_v  = N;
+  logic [AddrSize-1:0]       d_la_a  = '0;
+  width_e                    d_la_w  = WIDTH_1;
   event                      drive_ev;
 
   always @(drive_ev) begin
@@ -226,6 +236,9 @@ module rnf_core_driver #(
     core.req.src       <= #1 d_src;
     core.req.cacheable <= #1 d_cacheable;
     core.req.chr_state <= #1 CS_I;
+    core.la.valid      <= #1 d_la_v;
+    core.la.addr       <= #1 d_la_a;
+    core.la.width      <= #1 d_la_w;
   end
 
   task automatic drive_idle();
@@ -296,7 +309,7 @@ module rnf_core_driver #(
   endfunction
 
   // ---------------------------------------------------------------- monitor
-  function automatic void finish_op(core_op o, logic [MaxAccessWidth-1:0] rdata, bit rerr, chr_state_e cst);
+  function automatic void finish_op(core_op o, logic [MaxAccessWidth-1:0] rdata, bit rerr, chr_state_e cst, bit fast = 0);
     lockkind_e lk;
     line_t     gotl;
     int        k;
@@ -317,7 +330,7 @@ module rnf_core_driver #(
     // contract: chr_state is I for non-cacheable accesses
     if (o.nc && cst != CS_I)
       sb.err("PROTOCOL", $sformatf("%s: non-cacheable %s addr=%0h answered with chr_state=%s, expected CS_I", NAME, s_op(o.store), o.a, cst.name()));
-    if (!o.nc && !rerr) sb.cov_hit($sformatf("core: cached %s answered with chr_state %s", s_op(o.store), cst.name()));
+    if (!o.nc && !rerr && !fast) sb.cov_hit($sformatf("core: cached %s answered with chr_state %s", s_op(o.store), cst.name()));
 
     if (o.store) begin
       if (rerr) sb.wr_abort(o.la, o.wp); else sb.wr_end(o.la, o.wp, NAME);
@@ -406,6 +419,27 @@ module rnf_core_driver #(
     last_acc_cyc = cyc; seen_acc = 1;
   endfunction
 
+  // fast load path: core.fast in this cycle answers the lookahead of the
+  // previous cycle (la_prev_op), nothing else
+  core_op      la_cur_op, la_prev_op;
+  bit          la_prev = 0;
+
+  function automatic void on_fast();
+    core_op o;
+    o = la_prev_op;
+    if (!la_prev || o == null) begin
+      sb.err("PROTOCOL", $sformatf("%s: core.fast.valid without a lookahead in the previous cycle", NAME));
+      return;
+    end
+    o.accepted = 1; o.t_acc = cyc; o.seq = acc_seq++;
+    o.done = 1; o.fast = 1;
+    n_fast++;
+    sb.cov_hit("core: fast load answered");
+    if (!o.dead) finish_op(o, core.fast.data, 0, CS_I, 1);
+    infl.delete(o.idx);
+    last_rsp_cyc = cyc; seen_rsp = 1;
+  endfunction
+
   function automatic void on_timeout(core_op o);
     sb.n_timeout++;
     sb.err("TIMEOUT", $sformatf("%s: %s%s idx=%0d addr=%0h size=%0dB got no response within %0d cycles", NAME, o.nc ? "non-cacheable " : "",
@@ -422,6 +456,9 @@ module rnf_core_driver #(
       priv_sync();
       if (resetn) begin
         if (core.rsp.valid == Y) on_rsp();
+        if (core.fast.valid == Y) on_fast();
+        la_prev    = (core.la.valid == Y);
+        la_prev_op = la_cur_op;
         if (core.req.valid == Y && core.ready == Y) on_accept();
         foreach (infl[k]) if (infl[k].accepted && !infl[k].done && !infl[k].dead && (cyc - infl[k].t_acc) > OP_TIMEOUT) on_timeout(infl[k]);
       end
@@ -530,6 +567,26 @@ module rnf_core_driver #(
     sb.cov_hit($sformatf("drv: request presented with %s other request(s) in flight", nb(n_live())));
     infl[idx] = o;
     if (n_live() > max_drv_out) max_drv_out = n_live();
+
+    // fast load path: one cycle on core.la, then core.fast answers or not
+    if (!store && !nc && LA_PCT > 0 && rng.range(0, 99) < LA_PCT) begin
+      n_la++;
+      d_valid = N;
+      d_la_v  = Y; d_la_a = AddrSize'(a); d_la_w = w;
+      la_cur_op = o;
+      -> drive_ev;
+      o.t_drv = cyc;
+      tick();                                   // C0 ends: the dcache looked it up
+      d_la_v    = N;
+      la_cur_op = null;
+      -> drive_ev;
+      tick();                                   // C1 ends: the monitor saw core.fast
+      if (o.done || ep != sb.epoch) begin       // answered on core.fast (or a reset came)
+        drive_idle();
+        return;
+      end
+      sb.cov_hit("core: fast load missed, sent on req");
+    end
 
     d_valid     = Y;
     d_op        = store ? MEM_OP_STORE : MEM_OP_LOAD;

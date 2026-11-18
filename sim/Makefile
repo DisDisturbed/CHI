@@ -172,7 +172,7 @@ stress:
 RNF_STRESS_CFGS ?= "" "NUM_MSHR=1" "NUM_MSHR=2 NUM_TRACKERS=2" "NUM_MSHR=2 NUM_TRACKERS=8" \
                    "NUM_MSHR=8 NUM_TRACKERS=8" "NUM_MSHR=4 NUM_TRACKERS=8" \
                    "RX_FIFO_DEPTH=2" "RX_FIFO_DEPTH=15" "SETS=4 WAYS=2" "SETS=64 WAYS=8" \
-                   "MID_RESETS=6" "NUM_ROUNDS=30 OPS_PER_ROUND=100"
+                   "MID_RESETS=6" "NUM_ROUNDS=30 OPS_PER_ROUND=100" "FAST_LD=0" "LA_PCT=100"
 
 stress-rnf:
 	@for g in $(RNF_STRESS_CFGS); do \

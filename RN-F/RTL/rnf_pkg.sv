@@ -74,11 +74,31 @@ interface rnf_core_if #(
     rnf_pkg::chr_state_e       chr_state;
   } rsp_t;
 
+  // Fast load path (rnf_dcache FAST_LD = 1). In cycle C0 the core puts a
+  // cacheable load on la (from flops: it is not sent on req yet); the dcache
+  // looks it up in C0 and answers in C1 on fast: valid = the load hit, data as
+  // in rsp.data (load_of). On a hit the core must NOT send the load on req,
+  // it is done; otherwise it sends it on req as usual. A lookahead has no side
+  // effects, the core may drop it. Same ordering rule as for req: no request
+  // in flight may be a store to the bytes the load reads (or vice versa).
+  typedef struct packed {
+    common_pkg::yn_status_e    valid;
+    logic [AddrSize-1:0]       addr;
+    common_pkg::width_e        width;
+  } la_t;
+
+  typedef struct packed {
+    common_pkg::yn_status_e    valid;
+    logic [MaxAccessWidth-1:0] data;
+  } fast_t;
+
   req_t                   req;
   rsp_t                   rsp;
   common_pkg::yn_status_e ready;
+  la_t                    la;
+  fast_t                  fast;
 
-  modport core  (output req, input  rsp, input  ready);
-  modport cache (input  req, output rsp, output ready);
+  modport core  (output req, output la, input  rsp, input  ready, input  fast);
+  modport cache (input  req, input  la, output rsp, output ready, output fast);
 
 endinterface

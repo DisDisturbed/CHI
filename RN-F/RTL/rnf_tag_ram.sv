@@ -12,6 +12,9 @@
 //   port B (set_i / re_i / we_i ...): the MSHRs and the snoop FSM
 //   port A (set_a_i / re_a_i / we_a_i): the hit pipeline; its write only
 //          changes the state of one way (a store hit on UC -> UD)
+//   tag_af_o / state_af_o: port A's read without the register (the set of
+//          set_a_i in this cycle), for the dcache's fast load path. A write in
+//          the same cycle is not seen.
 module rnf_tag_ram #(
   parameter int SETS  = 16,
   parameter int WAYS  = 4,
@@ -33,6 +36,8 @@ module rnf_tag_ram #(
   input  logic                          re_a_i,
   output logic [WAYS-1:0][TAG_W-1:0]    tag_a_o,
   output chi_pkg::cache_state_e [WAYS-1:0] state_a_o,
+  output logic [WAYS-1:0][TAG_W-1:0]    tag_af_o,    // unregistered port A read
+  output chi_pkg::cache_state_e [WAYS-1:0] state_af_o,
   input  logic                          we_a_i,
   input  logic [$clog2(SETS)-1:0]       wset_a_i,
   input  logic [$clog2(WAYS)-1:0]       way_a_i,
@@ -64,6 +69,10 @@ module rnf_tag_ram #(
       if (we_i && way_i == w)   tag_mem[set_i]  <= tag_i;
       if (st_we && st_way == w) st_mem[st_set]  <= st_val;
     end
+
+    // port A unregistered (fast load path)
+    assign tag_af_o[w]   = tag_mem[set_a_i];
+    assign state_af_o[w] = valid_q[set_a_i][w] ? cache_state_e'(st_mem[set_a_i]) : CS_I;
 
     // registered reads
     always_ff @(posedge clk) begin
