@@ -23,6 +23,7 @@
 
 module rnf_model #(
   parameter chi_pkg::node_id_e NODEID    = 7'h00,
+  parameter chi_pkg::node_id_e HNID      = 7'h40, // TgtID of every request / response (routed by the XP)
   parameter string              NAME     = "RNF",
   parameter int                 NUM_BEATS = 4 // must match HN_F's CacheLineWidth/DataWidth
 ) (
@@ -77,6 +78,7 @@ module rnf_model #(
     req_cr_out++;
     f            = '0;
     f.qos        = 4'h0;
+    f.tgtid      = HNID;
     f.srcid      = NODEID;
     f.txnid      = txnid;
     f.opcode     = opcode;
@@ -101,6 +103,7 @@ module rnf_model #(
     while ((rsp_cr_in - rsp_cr_out) <= 0) @(posedge clk);
     rsp_cr_out++;
     f        = '0;
+    f.tgtid  = HNID;
     f.srcid  = NODEID;
     f.txnid  = txnid;
     f.opcode = opcode;
@@ -131,7 +134,8 @@ module rnf_model #(
       end
       dat_cr_out++;
       f        = '0;
-      f.srcid  = NODEID;
+      f.tgtid  = HNID;
+    f.srcid  = NODEID;
       f.txnid  = txnid;
       f.opcode = opcode;
       f.resp   = resp;
@@ -352,10 +356,34 @@ module Tb_HNF;
   chi_dat rnf_dat_rx_if [2](); // HN_F RX from RN-F (write-data/snoop-resp-data)
   chi_dat rnf_dat_tx_if [2](); // HN_F TX to RN-F   (CompData)
 
+  // XP <-> HN_F
+  chi_req hn_req_if    [1]();
+  chi_snp hn_snp_if    [1]();
+  chi_rsp hn_rsp_tx_if [1](), hn_rsp_rx_if [1]();
+  chi_dat hn_dat_tx_if [1](), hn_dat_rx_if [1]();
+
   // HN_F <-> SN-F
   chi_req snf_req_if();
   chi_rsp snf_rsp_if();
   chi_dat snf_dat_tx_if(), snf_dat_rx_if();
+
+  // RN-F0 / RN-F1 (NodeID 1 / 2) on the XP, the HN_F (0x40) behind it
+  xp #(.NRN(2), .NHN(1)) xp (
+    .clk       (clk),
+    .resetn    (resetn),
+    .rn_req    (rnf_req_if),
+    .rn_snp    (rnf_snp_if),
+    .rn_rsp_rx (rnf_rsp_rx_if),
+    .rn_rsp_tx (rnf_rsp_tx_if),
+    .rn_dat_rx (rnf_dat_rx_if),
+    .rn_dat_tx (rnf_dat_tx_if),
+    .hn_req    (hn_req_if),
+    .hn_snp    (hn_snp_if),
+    .hn_rsp_tx (hn_rsp_tx_if),
+    .hn_rsp_rx (hn_rsp_rx_if),
+    .hn_dat_tx (hn_dat_tx_if),
+    .hn_dat_rx (hn_dat_rx_if)
+  );
 
   HN_F #(
     .NUM_TRACKERS   (4),
@@ -368,12 +396,12 @@ module Tb_HNF;
   ) dut (
     .clk        (clk),
     .resetn     (resetn),
-    .rnf_req    (rnf_req_if),
-    .rnf_snp    (rnf_snp_if),
-    .rnf_rsp_rx (rnf_rsp_rx_if),
-    .rnf_rsp_tx (rnf_rsp_tx_if),
-    .rnf_dat_rx (rnf_dat_rx_if),
-    .rnf_dat_tx (rnf_dat_tx_if),
+    .req_rx     (hn_req_if[0]),
+    .snp_tx     (hn_snp_if[0]),
+    .rsp_rx     (hn_rsp_tx_if[0]),
+    .rsp_tx     (hn_rsp_rx_if[0]),
+    .dat_rx     (hn_dat_tx_if[0]),
+    .dat_tx     (hn_dat_rx_if[0]),
     .snf_req    (snf_req_if),
     .snf_rsp    (snf_rsp_if),
     .snf_dat_tx (snf_dat_tx_if),

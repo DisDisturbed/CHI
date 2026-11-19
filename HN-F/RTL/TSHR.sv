@@ -8,7 +8,8 @@
 // it sees one requester and one snoop target at a time snf is not a snoop target it is just a dumb slave
 // top module should instantiate this module multiple times to track multiple outstanding requests at one
 // HN-F also need to track which TSHR is free to give request to them
-// HN-F also need to know which port RN-F plugs
+// HN-F maps the requester's SrcID to its RN-F index (req_port_i); snoops carry
+// TgtID = RNF_NID[target index] so the XP can route them
 // HN-F also need address hazard detection to detect which tracker is safe to give
 //
 // Snoop filter (snoop_filter.sv, owned by the HN-F)
@@ -49,6 +50,7 @@ module TSHR
   parameter chi_pkg::node_id_e HNFID = 7'h40,
   parameter chi_pkg::node_id_e SNFID = 7'h00,
   parameter int NUM_RNF        = 2,
+  parameter chi_pkg::nid_list_t RNF_NID = chi_pkg::NID_SEQ1,  // node ID of RN-F index i (snoop TgtID)
   parameter int SF_WAYW        = 1,
   parameter bit SF_BROADCAST   = 1'b0,   // 1: snoop every other RN-F, ignore the filter's presence bits
   localparam int RNF_IDX_W     = (NUM_RNF <= 1) ? 1 : $clog2(NUM_RNF)
@@ -623,6 +625,7 @@ module TSHR
     snp_flitv          = Y;
     snp_flitpend       = Y;
     snp_flit.qos       = qos_q;
+    snp_flit.tgtid     = RNF_NID[snp_tgt_q];
     snp_flit.srcid     = HNFID;
     snp_flit.txnid     = HN_TXNID;
     snp_flit.fwdnid    = '0;

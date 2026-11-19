@@ -67,8 +67,11 @@ else ifeq ($(TB),directed)
 else ifeq ($(TB),rnf)
   TOP      := Tb_RNF
   ALL_G    := SEED=$(SEED) $(G)
+else ifeq ($(TB),hni)
+  TOP      := TB_hni
+  ALL_G    := SEED=$(SEED) $(G)
 else
-  $(error Unknown TB '$(TB)'. Use TB=random, TB=directed or TB=rnf)
+  $(error Unknown TB '$(TB)'. Use TB=random, TB=directed, TB=rnf or TB=hni)
 endif
 
 # Parameters are fixed at compile time, so every distinct set gets its own
@@ -83,7 +86,7 @@ FST   := $(OUT)/wave.fst
 GTKW  := waves/$(TB).gtkw
 
 SRCS  := $(wildcard ../common/RTL/*.sv ../common/TB/*.sv ../HN-F/RTL/*.sv ../HN-F/TB/*/*.sv \
-                   ../RN-F/RTL/*.sv ../RN-F/TB/*.sv ../SN-F/RTL/*.sv) \
+                   ../RN-F/RTL/*.sv ../RN-F/TB/*.sv ../SN-F/RTL/*.sv ../HN-I/RTL/*.sv ../HN-I/TB/*.sv ../XP/RTL/*.sv) \
          $(wildcard filelists/*.f) support/sim_dump.sv Makefile
 
 # IMPURE: rnf_model.sv uses no_inline_task on tasks that reach sb.*, see README.
@@ -112,7 +115,7 @@ help:
 	@echo "make wave    open the run with the same options, VIEWER=gtkwave|surfer"
 	@echo "make sim     run, then wave"
 	@echo "make lint    all Verilator warnings, no build"
-	@echo "make regress TB=random SEEDS='1 2 3' (no waveforms, prints a summary)"
+	@echo "make regress TB=random|rnf|hni SEEDS='1 2 3' (no waveforms, prints a summary)"
 	@echo "make stress  SEEDS='1 2 3' (regress over every configuration in STRESS_CFGS)"
 	@echo "make stress-rnf SEEDS='1 2 3' (TB=rnf regress over RNF_STRESS_CFGS: MSHRs x trackers, ...)"
 	@echo "make clean   delete build/ and out/"

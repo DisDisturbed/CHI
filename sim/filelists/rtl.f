@@ -3,9 +3,10 @@
 ../HN-F/RTL/credit_cntr.sv
 ../HN-F/RTL/rx_credit_gen.sv
 ../HN-F/RTL/Allocator.sv
-../HN-F/RTL/rx_port_select.sv
 ../HN-F/RTL/req_rx_arbiter.sv
 ../HN-F/RTL/tx_chain_arbiter.sv
 ../HN-F/RTL/snoop_filter.sv
 ../HN-F/RTL/TSHR.sv
 ../HN-F/RTL/HN-F.sv
+// crosspoint: RN-Fs <-> home nodes (HN-F, HN-I)
+../XP/RTL/xp.sv

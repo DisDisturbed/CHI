@@ -8,6 +8,7 @@
 ../RN-F/RTL/rnf_dcache.sv
 ../RN-F/RTL/rnf_icache.sv
 ../RN-F/RTL/rnf_node.sv
+../HN-I/RTL/hni.sv
 ../common/TB/chi_tb_pkg.sv
 ../common/TB/rnf_model.sv
 ../common/TB/snf_model.sv

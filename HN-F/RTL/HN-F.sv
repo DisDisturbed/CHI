@@ -2,11 +2,21 @@
 // HN_F - basic functional baseline
 // any number of RN-Fs: an inclusive snoop filter (snoop_filter.sv, SF_SETS x
 // SF_WAYS entries, one presence bit per RN-F) decides which RN-Fs a tracker
-// snoops; the tracker snoops them one at a time (TSHR.sv)
-
-/*  HN-F only gives an rnf a REQ credit when a
-    free tracker is not already promised to another outstanding credit
-    Every accepted request has a tracker Ports take turns.*/
+// snoops (TSHR.sv)
+//
+// One CHI link per channel to the XP (XP/RTL/xp.sv); the SN-F has its own
+// direct link. RN-Fs are told apart by node ID: RNF_NID[i] is the node ID of
+// RN-F index i (the snoop filter presence bit i).
+//   REQ in : the requester's SrcID gives its RN-F index (req_port_idx_q)
+//   SNP out: TgtID = RNF_NID[target index] (set by the TSHR), the XP routes it
+//   RSP/DAT in: every tracker sees every flit; the requester side matches
+//            TxnID + SrcID (CompAck, write data), the snoop side gets the flit
+//            on the RN-F index its SrcID names (SnpResp*, SnpRespData*)
+//   RSP/DAT out: TgtID = the requester's SrcID, the XP routes it
+//
+// REQ link credits: one per free tracker that is not already promised to a
+// credit the XP holds, so every request that arrives gets a tracker (no
+// RetryAck towards the RN-Fs). The XP shares them out round-robin.
 
 module HN_F
   import chi_pkg::*;
@@ -22,34 +32,42 @@ module HN_F
   parameter int TxCreditMax    = 15,
   parameter int SF_SETS        = 16,     // snoop filter sets (power of 2)
   parameter int SF_WAYS        = 4,      // snoop filter ways
-  parameter bit SF_BROADCAST   = 1'b0    // 1: snoop every other RN-F on each request (no filtering;
+  parameter bit SF_BROADCAST   = 1'b0,   // 1: snoop every other RN-F on each request (no filtering;
                                          //    the filter still tracks lines and back-invalidates)
+  parameter node_id_e  NODEID  = 7'h40,  // this HN-F
+  parameter node_id_e  SNFID   = 7'h00,  // the SN-F behind it
+  parameter nid_list_t RNF_NID = NID_SEQ1 // node ID of RN-F index i
 ) (
   input  wire clk,
   input  wire resetn,
-  chi_req.rx rnf_req    [NUM_RNF], 
-  chi_snp.tx rnf_snp    [NUM_RNF], 
-  chi_rsp.rx rnf_rsp_rx [NUM_RNF], 
-  chi_rsp.tx rnf_rsp_tx [NUM_RNF], 
-  chi_dat.rx rnf_dat_rx [NUM_RNF], 
-  chi_dat.tx rnf_dat_tx [NUM_RNF], 
 
-  //assumed one snf or my brain is going to explode
-  chi_req.tx snf_req,              
-  chi_rsp.rx snf_rsp,              
-  chi_dat.tx snf_dat_tx,           
-  chi_dat.rx snf_dat_rx            
+  // the XP link: every RN-F
+  chi_req.rx req_rx,
+  chi_snp.tx snp_tx,
+  chi_rsp.rx rsp_rx,
+  chi_rsp.tx rsp_tx,
+  chi_dat.rx dat_rx,
+  chi_dat.tx dat_tx,
+
+  // the SN-F (direct link)
+  chi_req.tx snf_req,
+  chi_rsp.rx snf_rsp,
+  chi_dat.tx snf_dat_tx,
+  chi_dat.rx snf_dat_rx
 );
 
   initial begin
-    if (NUM_RNF < 1) begin
-      $fatal(1, "HN_F needs at least one RN-F");
+    if (NUM_RNF < 1 || NUM_RNF > MAX_NODES) begin
+      $fatal(1, "HN_F NUM_RNF (%0d) must be 1..%0d", NUM_RNF, MAX_NODES);
     end
     if (TxCreditMax < 15) begin
       $fatal(1, "HN_F TxCreditMax (%0d) must be at least 15, the CHI maximum a receiver may grant, or credits are lost", TxCreditMax);
     end
-    if (NUM_RNF > NUM_TRACKERS) begin
-      $fatal(1, "HN_F NUM_RNF (%0d) must be <= NUM_TRACKERS (%0d) or some requests will starve", NUM_RNF, NUM_TRACKERS);
+    for (int a = 0; a < NUM_RNF; a++) begin
+      if (RNF_NID[a] == NODEID || RNF_NID[a] == SNFID)
+        $fatal(1, "HN_F RNF_NID[%0d] = %0h is the HN-F's or the SN-F's node ID", a, RNF_NID[a]);
+      for (int b = a + 1; b < NUM_RNF; b++)
+        if (RNF_NID[a] == RNF_NID[b]) $fatal(1, "HN_F RNF_NID[%0d] and [%0d] are both %0h", a, b, RNF_NID[a]);
     end
   end
 
@@ -133,9 +151,9 @@ module HN_F
   common_pkg::yn_status_e         trk_sn_dat_rx_flitpend[NUM_TRACKERS];
   tshr_flit_pkg::local_dat_flit_t trk_sn_dat_rx_flit    [NUM_TRACKERS];
 
-// this line is actually pretty important 
-  logic [RNF_IDX_W-1:0] req_port_idx_q [NUM_TRACKERS]; // which RN-F is  requester
-  logic [RNF_IDX_W-1:0] snp_port_idx   [NUM_TRACKERS]; // which RN-F is snoop target (driven by the tracker)
+
+  logic [RNF_IDX_W-1:0] req_port_idx_q [NUM_TRACKERS]; // RN-F index of the requester (from its SrcID)
+  logic [RNF_IDX_W-1:0] snp_port_idx   [NUM_TRACKERS]; // RN-F index of the snoop target (TSHR; its TgtID routes the snoop)
 
   // back-invalidation of a snoop filter victim, per tracker
   logic                 trk_bi       [NUM_TRACKERS];
@@ -154,41 +172,58 @@ module HN_F
   logic [SF_WAYW-1:0]   sf_wr_way    [NUM_TRACKERS];
   logic [NUM_RNF-1:0]   sf_wr_pres   [NUM_TRACKERS];
 
-  common_pkg::yn_status_e         rnf_req_flitv_flat   [NUM_RNF];
-  common_pkg::yn_status_e         rnf_req_flitpend_flat[NUM_RNF];
-  tshr_flit_pkg::local_req_flit_t rnf_req_flit_flat    [NUM_RNF];
-  logic                           rnf_req_lcrdv_flat   [NUM_RNF];
-
-  logic [RNF_IDX_W-1:0]           alloc_port_idx [NUM_TRACKERS];
+  // ---- REQ from the XP
+  common_pkg::yn_status_e         req_flitv_flat   [1];
+  tshr_flit_pkg::local_req_flit_t req_flit_flat    [1];
+  logic                           req_lcrdv_flat   [1];
+  logic [0:0]                     alloc_port_idx   [NUM_TRACKERS];  // single input: unused
   logic                           alloc_drop;
 
-  generate
-    for (genvar r = 0; r < NUM_RNF; r++) begin : gen_req_bridge
-      assign rnf_req_flitv_flat[r]    = rnf_req[r].flitv;
-      assign rnf_req_flitpend_flat[r] = rnf_req[r].flitpend;
-      assign rnf_req_flit_flat[r]     = local_req_flit_t'(rnf_req[r].flit);
-      assign rnf_req[r].lcrdv         = rnf_req_lcrdv_flat[r];
+  assign req_flitv_flat[0] = req_rx.flitv;
+  assign req_flit_flat[0]  = local_req_flit_t'(req_rx.flit);
+  assign req_rx.lcrdv      = req_lcrdv_flat[0];
+
+  // the requester's RN-F index, from its SrcID
+  logic                 req_src_known;
+  logic [RNF_IDX_W-1:0] req_src_idx;
+  always_comb begin
+    req_src_known = 1'b0;
+    req_src_idx   = '0;
+    for (int p = NUM_RNF - 1; p >= 0; p--) begin
+      if (req_flit_flat[0].srcid == RNF_NID[p]) begin
+        req_src_known = 1'b1;
+        req_src_idx   = RNF_IDX_W'(p);
+      end
     end
-  endgenerate
-   //try to make the relationship between trackers and RX channel (it doesnt work they are constantly fighting)
+  end
+
+  always_ff @(posedge clk) begin
+    if (resetn && (req_flitv_flat[0] == Y) && !req_src_known) begin
+      $error("[%0t] HN_F: request from SrcID %0h, which is not an RN-F of this HN-F (RNF_NID)", $time, req_flit_flat[0].srcid);
+    end
+  end
+
+  // REQ credits on the XP link: up to one per free tracker
+  localparam int ReqCredits = (NUM_TRACKERS < 15) ? NUM_TRACKERS : 15;
   req_rx_arbiter #(
-    .NUM_RNF      (NUM_RNF),
-    .NUM_TRACKERS (NUM_TRACKERS)
+    .NUM_RNF        (1),
+    .NUM_TRACKERS   (NUM_TRACKERS),
+    .CreditsPerPort (ReqCredits)
   ) u_req_rx_arb (
     .clk                  (clk),
     .resetn               (resetn),
-    .rnf_req_flitv        (rnf_req_flitv_flat),
-    .rnf_req_lcrdv        (rnf_req_lcrdv_flat),
+    .rnf_req_flitv        (req_flitv_flat),
+    .rnf_req_lcrdv        (req_lcrdv_flat),
     .tracker_ready        (tracker_ready)
   );
   //just which tshr gets the request 
    
   Allocator #(
     .NUM_TRACKERS(NUM_TRACKERS),
-    .NUM_RNF     (NUM_RNF)
+    .NUM_RNF     (1)
   ) u_allocator (
-    .inbound_req_v_i    ( rnf_req_flitv_flat ),
-    .inbound_req_flit_i ( rnf_req_flit_flat ),
+    .inbound_req_v_i    ( req_flitv_flat ),
+    .inbound_req_flit_i ( req_flit_flat ),
 
     .tracker_ready_i    ( tracker_ready ),
 
@@ -214,13 +249,14 @@ module HN_F
       for (int t = 0; t < NUM_TRACKERS; t++) req_port_idx_q[t] <= '0;
     end else begin
       for (int t = 0; t < NUM_TRACKERS; t++) begin
-        if (trk_req_flitv[t] == Y) req_port_idx_q[t] <= alloc_port_idx[t];
+        if (trk_req_flitv[t] == Y) req_port_idx_q[t] <= req_src_idx;
       end
     end
   end
 
   localparam int LineOffW = $clog2(CacheLineWidth / 8);
   
+  // one request is allocated per cycle: every tracker busy at that time is older
   always_ff @(posedge clk or negedge resetn) begin
     if (!resetn) begin
       for (int a = 0; a < NUM_TRACKERS; a++)
@@ -229,9 +265,7 @@ module HN_F
       for (int a = 0; a < NUM_TRACKERS; a++) begin
         for (int b = 0; b < NUM_TRACKERS; b++) begin
           if (trk_req_flitv[a] == Y) begin
-            trk_older_q[a][b] <= (a != b) &&
-                                 (tracker_valid[b] ||
-                                  ((trk_req_flitv[b] == Y) && (alloc_port_idx[b] < alloc_port_idx[a])));
+            trk_older_q[a][b] <= (a != b) && tracker_valid[b];
           end else if (tracker_ready[b]) begin
             trk_older_q[a][b] <= 1'b0;
           end
@@ -333,9 +367,10 @@ module HN_F
         .DataWidth      (DataWidth),
         .CacheLineWidth (CacheLineWidth),
         .TRK_ID         (i),
-        .HNFID          (7'h40),
-        .SNFID          (7'h00),
+        .HNFID          (NODEID),
+        .SNFID          (SNFID),
         .NUM_RNF        (NUM_RNF),
+        .RNF_NID        (RNF_NID),
         .SF_WAYW        (SF_WAYW),
         .SF_BROADCAST   (SF_BROADCAST)
       ) u_tshr_inst (
@@ -436,141 +471,82 @@ module HN_F
 
     end
   endgenerate
-  common_pkg::yn_status_e snp_masked_flitv [NUM_RNF][NUM_TRACKERS];
-  logic                   snp_targets_me   [NUM_RNF][NUM_TRACKERS];
-  logic                   snp_port_gnt     [NUM_RNF][NUM_TRACKERS];
+  // ---------------------------------------------------------------- TX to the XP
+  // one arbiter per channel; the TgtID in each flit routes it
+  common_pkg::yn_status_e snp_tx_flitv_flat, snp_tx_flitpend_flat;
+  local_snp_flit_t        snp_tx_flit_flat;
 
-  common_pkg::yn_status_e rnf_snp_flitv_flat   [NUM_RNF];
-  common_pkg::yn_status_e rnf_snp_flitpend_flat[NUM_RNF];
-  local_snp_flit_t        rnf_snp_flit_flat    [NUM_RNF];
-  
-  generate
-    for (genvar p = 0; p < NUM_RNF; p++) begin : gen_snp_port
+  tx_chan_arbiter #(
+    .NUM_TRACKERS (NUM_TRACKERS),
+    .flit_t       (local_snp_flit_t),
+    .MaxCredits   (TxCreditMax)
+  ) u_snp_arb (
+    .clk            (clk),
+    .resetn         (resetn),
+    .trk_flitv      (trk_snp_flitv),
+    .trk_flitpend   (trk_snp_flitpend),
+    .trk_flit       (trk_snp_flit),
+    .trk_targets_me (tracker_valid),
+    .trk_gnt        (trk_snp_gnt),
+    .phy_flitv      (snp_tx_flitv_flat),
+    .phy_flitpend   (snp_tx_flitpend_flat),
+    .phy_flit       (snp_tx_flit_flat),
+    .phy_lcrdv      (snp_tx.lcrdv)
+  );
 
-      for (genvar t = 0; t < NUM_TRACKERS; t++) begin : gen_snp_mask
-        assign snp_targets_me[p][t]   = tracker_valid[t] && (snp_port_idx[t] == p);
-        assign snp_masked_flitv[p][t] = snp_targets_me[p][t] ? trk_snp_flitv[t] : N;
-      end
+  assign snp_tx.flitv    = snp_tx_flitv_flat;
+  assign snp_tx.flitpend = snp_tx_flitpend_flat;
+  assign snp_tx.flit     = snp_tx_flit_flat;
 
-      tx_chan_arbiter #(
-        .NUM_TRACKERS (NUM_TRACKERS),
-        .flit_t       (local_snp_flit_t),
-        .MaxCredits   (TxCreditMax)
-      ) u_snp_arb (
-        .clk            (clk),
-        .resetn         (resetn),
-        .trk_flitv      (snp_masked_flitv[p]),
-        .trk_flitpend   (trk_snp_flitpend),
-        .trk_flit       (trk_snp_flit),
-        .trk_targets_me (snp_targets_me[p]),
-        .trk_gnt        (snp_port_gnt[p]),
-        .phy_flitv      (rnf_snp_flitv_flat[p]),
-        .phy_flitpend   (rnf_snp_flitpend_flat[p]),
-        .phy_flit       (rnf_snp_flit_flat[p]),
-        .phy_lcrdv      (rnf_snp[p].lcrdv)
-      );
+  common_pkg::yn_status_e rsp_tx_flitv_flat, rsp_tx_flitpend_flat;
+  local_rsp_flit_t        rsp_tx_flit_flat;
 
-      assign rnf_snp[p].flitv    = rnf_snp_flitv_flat[p];
-      assign rnf_snp[p].flitpend = rnf_snp_flitpend_flat[p];
-//      assign rnf_snp[p].flit     = chi_snp::snp_flit_t'(rnf_snp_flit_flat[p]); 
-      assign rnf_snp[p].flit     = rnf_snp_flit_flat[p];
-    end
-  endgenerate
+  tx_chan_arbiter #(
+    .NUM_TRACKERS (NUM_TRACKERS),
+    .flit_t       (local_rsp_flit_t),
+    .MaxCredits   (TxCreditMax)
+  ) u_rsp_tx_arb (
+    .clk            (clk),
+    .resetn         (resetn),
+    .trk_flitv      (trk_rsp_tx_flitv),
+    .trk_flitpend   (trk_rsp_tx_flitpend),
+    .trk_flit       (trk_rsp_tx_flit),
+    .trk_targets_me (tracker_valid),
+    .trk_gnt        (trk_rsp_tx_gnt),
+    .phy_flitv      (rsp_tx_flitv_flat),
+    .phy_flitpend   (rsp_tx_flitpend_flat),
+    .phy_flit       (rsp_tx_flit_flat),
+    .phy_lcrdv      (rsp_tx.lcrdv)
+  );
 
-  always_comb begin
-    for (int t = 0; t < NUM_TRACKERS; t++) begin
-      trk_snp_gnt[t] = 1'b0;
-      for (int p = 0; p < NUM_RNF; p++) trk_snp_gnt[t] |= snp_port_gnt[p][t];
-    end
-  end
+  assign rsp_tx.flitv    = rsp_tx_flitv_flat;
+  assign rsp_tx.flitpend = rsp_tx_flitpend_flat;
+  assign rsp_tx.flit     = rsp_tx_flit_flat;
 
-  // RSP TX and DAT TX to the requester same arbitration pattern masked
-  // by req_port_idx_q instead of snp_port_idx 
-  common_pkg::yn_status_e rsp_tx_masked_flitv [NUM_RNF][NUM_TRACKERS];
-  logic                   rsp_tx_targets_me   [NUM_RNF][NUM_TRACKERS];
-  logic                   rsp_tx_port_gnt     [NUM_RNF][NUM_TRACKERS];
+  common_pkg::yn_status_e dat_tx_flitv_flat, dat_tx_flitpend_flat;
+  local_dat_flit_t        dat_tx_flit_flat;
 
-  common_pkg::yn_status_e rnf_rsp_tx_flitv_flat   [NUM_RNF];
-  common_pkg::yn_status_e rnf_rsp_tx_flitpend_flat[NUM_RNF];
-  local_rsp_flit_t        rnf_rsp_tx_flit_flat    [NUM_RNF];
+  tx_chan_arbiter #(
+    .NUM_TRACKERS (NUM_TRACKERS),
+    .flit_t       (local_dat_flit_t),
+    .MaxCredits   (TxCreditMax)
+  ) u_dat_tx_arb (
+    .clk            (clk),
+    .resetn         (resetn),
+    .trk_flitv      (trk_dat_tx_flitv),
+    .trk_flitpend   (trk_dat_tx_flitpend),
+    .trk_flit       (trk_dat_tx_flit),
+    .trk_targets_me (tracker_valid),
+    .trk_gnt        (trk_dat_tx_gnt),
+    .phy_flitv      (dat_tx_flitv_flat),
+    .phy_flitpend   (dat_tx_flitpend_flat),
+    .phy_flit       (dat_tx_flit_flat),
+    .phy_lcrdv      (dat_tx.lcrdv)
+  );
 
-  common_pkg::yn_status_e dat_tx_masked_flitv [NUM_RNF][NUM_TRACKERS];
-  logic                   dat_tx_targets_me   [NUM_RNF][NUM_TRACKERS];
-  logic                   dat_tx_port_gnt     [NUM_RNF][NUM_TRACKERS];
-
-  common_pkg::yn_status_e rnf_dat_tx_flitv_flat   [NUM_RNF];
-  common_pkg::yn_status_e rnf_dat_tx_flitpend_flat[NUM_RNF];
-  local_dat_flit_t        rnf_dat_tx_flit_flat    [NUM_RNF];
- // generate arbiter for the req channel
- //just a huge plumming
-  generate
-    for (genvar p = 0; p < NUM_RNF; p++) begin : gen_reqtgt_port
-
-      for (genvar t = 0; t < NUM_TRACKERS; t++) begin : gen_reqtgt_mask
-        assign rsp_tx_targets_me[p][t]   = tracker_valid[t] && (req_port_idx_q[t] == p);
-        assign rsp_tx_masked_flitv[p][t] = rsp_tx_targets_me[p][t] ? trk_rsp_tx_flitv[t] : N;
-
-        assign dat_tx_targets_me[p][t]   = tracker_valid[t] && (req_port_idx_q[t] == p);
-        assign dat_tx_masked_flitv[p][t] = dat_tx_targets_me[p][t] ? trk_dat_tx_flitv[t] : N;
-      end
-
-      tx_chan_arbiter #(
-        .NUM_TRACKERS (NUM_TRACKERS),
-        .flit_t       (local_rsp_flit_t),
-        .MaxCredits   (TxCreditMax)
-      ) u_rsp_tx_arb (
-        .clk            (clk),
-        .resetn         (resetn),
-        .trk_flitv      (rsp_tx_masked_flitv[p]),
-        .trk_flitpend   (trk_rsp_tx_flitpend),
-        .trk_flit       (trk_rsp_tx_flit),
-        .trk_targets_me (rsp_tx_targets_me[p]),
-        .trk_gnt        (rsp_tx_port_gnt[p]),
-        .phy_flitv      (rnf_rsp_tx_flitv_flat[p]),
-        .phy_flitpend   (rnf_rsp_tx_flitpend_flat[p]),
-        .phy_flit       (rnf_rsp_tx_flit_flat[p]),
-        .phy_lcrdv      (rnf_rsp_tx[p].lcrdv)
-      );
-
-      assign rnf_rsp_tx[p].flitv    = rnf_rsp_tx_flitv_flat[p];
-      assign rnf_rsp_tx[p].flitpend = rnf_rsp_tx_flitpend_flat[p];
-//      assign rnf_rsp_tx[p].flit     = chi_rsp::rsp_flit_t'(rnf_rsp_tx_flit_flat[p]);
-      assign rnf_rsp_tx[p].flit     = rnf_rsp_tx_flit_flat[p];
-      tx_chan_arbiter #(
-        .NUM_TRACKERS (NUM_TRACKERS),
-        .flit_t       (local_dat_flit_t),
-        .MaxCredits   (TxCreditMax)
-      ) u_dat_tx_arb (
-        .clk            (clk),
-        .resetn         (resetn),
-        .trk_flitv      (dat_tx_masked_flitv[p]),
-        .trk_flitpend   (trk_dat_tx_flitpend),
-        .trk_flit       (trk_dat_tx_flit),
-        .trk_targets_me (dat_tx_targets_me[p]),
-        .trk_gnt        (dat_tx_port_gnt[p]),
-        .phy_flitv      (rnf_dat_tx_flitv_flat[p]),
-        .phy_flitpend   (rnf_dat_tx_flitpend_flat[p]),
-        .phy_flit       (rnf_dat_tx_flit_flat[p]),
-        .phy_lcrdv      (rnf_dat_tx[p].lcrdv)
-      );
-
-      assign rnf_dat_tx[p].flitv    = rnf_dat_tx_flitv_flat[p];
-      assign rnf_dat_tx[p].flitpend = rnf_dat_tx_flitpend_flat[p];
-//      assign rnf_dat_tx[p].flit     = chi_dat::dat_flit_t'(rnf_dat_tx_flit_flat[p]);
-      assign rnf_dat_tx[p].flit     = rnf_dat_tx_flit_flat[p];
-    end
-  endgenerate
-
-  always_comb begin
-    for (int t = 0; t < NUM_TRACKERS; t++) begin
-      trk_rsp_tx_gnt[t] = 1'b0;
-      trk_dat_tx_gnt[t] = 1'b0;
-      for (int p = 0; p < NUM_RNF; p++) begin
-        trk_rsp_tx_gnt[t] |= rsp_tx_port_gnt[p][t];
-        trk_dat_tx_gnt[t] |= dat_tx_port_gnt[p][t];
-      end
-    end
-  end
+  assign dat_tx.flitv    = dat_tx_flitv_flat;
+  assign dat_tx.flitpend = dat_tx_flitpend_flat;
+  assign dat_tx.flit     = dat_tx_flit_flat;
 
   // SN-F TX path  every live tracker is a participant no per port masking needed (i am not claiming i can do it)
   logic sn_targets_me [NUM_TRACKERS];
@@ -629,96 +605,65 @@ module HN_F
 //  assign snf_dat_tx.flit     = chi_dat::dat_flit_t'(sn_dat_tx_flit_flat);
     assign snf_dat_tx.flit     = sn_dat_tx_flit_flat;
 
-  common_pkg::yn_status_e rnf_rsp_rx_flitv_flat   [NUM_RNF];
-  common_pkg::yn_status_e rnf_rsp_rx_flitpend_flat[NUM_RNF];
-  local_rsp_flit_t        rnf_rsp_rx_flit_flat    [NUM_RNF];
+  // ---------------------------------------------------------------- RX from the XP
+  // the HN-F always sinks RSP / DAT (no RX buffer), so credits go out freely
+  common_pkg::yn_status_e rsp_rx_flitv_flat, rsp_rx_flitpend_flat;
+  local_rsp_flit_t        rsp_rx_flit_flat;
+  assign rsp_rx_flitv_flat    = rsp_rx.flitv;
+  assign rsp_rx_flitpend_flat = rsp_rx.flitpend;
+  assign rsp_rx_flit_flat     = local_rsp_flit_t'(rsp_rx.flit);
 
-  generate
-    for (genvar p = 0; p < NUM_RNF; p++) begin : gen_rsp_rx_bridge
-      assign rnf_rsp_rx_flitv_flat[p]    = rnf_rsp_rx[p].flitv;
-      assign rnf_rsp_rx_flitpend_flat[p] = rnf_rsp_rx[p].flitpend;
-      assign rnf_rsp_rx_flit_flat[p]     = local_rsp_flit_t'(rnf_rsp_rx[p].flit);
-
-      rx_credit_gen u_rsp_rx_cred (
-        .clk    (clk),
-        .resetn (resetn),
-        .flitv  (rnf_rsp_rx[p].flitv == Y),
-        .lcrdv  (rnf_rsp_rx[p].lcrdv)
-      );
-    end
-  endgenerate
-
-  rx_port_select #(
-    .NUM_TRACKERS (NUM_TRACKERS),
-    .NUM_PORTS    (NUM_RNF),
-    .flit_t       (local_rsp_flit_t)
-  ) u_rsp_rx_req_sel (
-    .phy_flitv         (rnf_rsp_rx_flitv_flat),
-    .phy_flitpend      (rnf_rsp_rx_flitpend_flat),
-    .phy_flit          (rnf_rsp_rx_flit_flat),
-    .trk_target_idx    (req_port_idx_q),
-    .trk_target_valid  (tracker_valid),
-    .trk_flitv         (trk_rsp_rx_req_flitv),
-    .trk_flitpend      (trk_rsp_rx_req_flitpend),
-    .trk_flit          (trk_rsp_rx_req_flit)
+  rx_credit_gen u_rsp_rx_cred (
+    .clk    (clk),
+    .resetn (resetn),
+    .flitv  (rsp_rx.flitv == Y),
+    .lcrdv  (rsp_rx.lcrdv)
   );
 
-  // snoop responses (SnpResp*): broadcast, every tracker sees every port and
-  // takes the flits with its own TxnID (several snoops of one tracker can be
-  // open on different ports, see TSHR ST_SNOOP_PAR)
-  always_comb begin
-    for (int t = 0; t < NUM_TRACKERS; t++)
-      for (int p = 0; p < NUM_RNF; p++) begin
-        trk_rsp_rx_snp_flitv[t][p]    = rnf_rsp_rx_flitv_flat[p];
-        trk_rsp_rx_snp_flitpend[t][p] = rnf_rsp_rx_flitpend_flat[p];
-        trk_rsp_rx_snp_flit[t][p]     = rnf_rsp_rx_flit_flat[p];
-      end
-  end
+  common_pkg::yn_status_e dat_rx_flitv_flat, dat_rx_flitpend_flat;
+  local_dat_flit_t        dat_rx_flit_flat;
+  assign dat_rx_flitv_flat    = dat_rx.flitv;
+  assign dat_rx_flitpend_flat = dat_rx.flitpend;
+  assign dat_rx_flit_flat     = local_dat_flit_t'(dat_rx.flit);
 
-  common_pkg::yn_status_e rnf_dat_rx_flitv_flat   [NUM_RNF];
-  common_pkg::yn_status_e rnf_dat_rx_flitpend_flat[NUM_RNF];
-  local_dat_flit_t        rnf_dat_rx_flit_flat    [NUM_RNF];
-
-  generate
-    for (genvar p = 0; p < NUM_RNF; p++) begin : gen_dat_rx_bridge
-      assign rnf_dat_rx_flitv_flat[p]    = rnf_dat_rx[p].flitv;
-      assign rnf_dat_rx_flitpend_flat[p] = rnf_dat_rx[p].flitpend;
-      assign rnf_dat_rx_flit_flat[p]     = local_dat_flit_t'(rnf_dat_rx[p].flit);
-
-      rx_credit_gen u_dat_rx_cred (
-        .clk    (clk),
-        .resetn (resetn),
-        .flitv  (rnf_dat_rx[p].flitv == Y),
-        .lcrdv  (rnf_dat_rx[p].lcrdv)
-      );
-    end
-  endgenerate
-
-  rx_port_select #(
-    .NUM_TRACKERS (NUM_TRACKERS),
-    .NUM_PORTS    (NUM_RNF),
-    .flit_t       (local_dat_flit_t)
-  ) u_dat_rx_req_sel (
-    .phy_flitv         (rnf_dat_rx_flitv_flat),
-    .phy_flitpend      (rnf_dat_rx_flitpend_flat),
-    .phy_flit          (rnf_dat_rx_flit_flat),
-    .trk_target_idx    (req_port_idx_q),
-    .trk_target_valid  (tracker_valid),
-    .trk_flitv         (trk_dat_rx_req_flitv),
-    .trk_flitpend      (trk_dat_rx_req_flitpend),
-    .trk_flit          (trk_dat_rx_req_flit)
+  rx_credit_gen u_dat_rx_cred (
+    .clk    (clk),
+    .resetn (resetn),
+    .flitv  (dat_rx.flitv == Y),
+    .lcrdv  (dat_rx.lcrdv)
   );
 
-  // snoop data (SnpRespData*): broadcast like the snoop responses above
+  // which RN-F index sent the flit (snoop responses are kept per RN-F index)
+  logic rsp_from [NUM_RNF];
+  logic dat_from [NUM_RNF];
   always_comb begin
-    for (int t = 0; t < NUM_TRACKERS; t++)
-      for (int p = 0; p < NUM_RNF; p++) begin
-        trk_dat_rx_snp_flitv[t][p]    = rnf_dat_rx_flitv_flat[p];
-        trk_dat_rx_snp_flitpend[t][p] = rnf_dat_rx_flitpend_flat[p];
-        trk_dat_rx_snp_flit[t][p]     = rnf_dat_rx_flit_flat[p];
-      end
+    for (int p = 0; p < NUM_RNF; p++) begin
+      rsp_from[p] = (rsp_rx_flitv_flat == Y) && (rsp_rx_flit_flat.srcid == RNF_NID[p]);
+      dat_from[p] = (dat_rx_flitv_flat == Y) && (dat_rx_flit_flat.srcid == RNF_NID[p]);
+    end
   end
 
+  always_comb begin
+    for (int t = 0; t < NUM_TRACKERS; t++) begin
+      // requester side (CompAck, write data): the tracker matches TxnID + SrcID
+      trk_rsp_rx_req_flitv[t]    = tracker_valid[t] ? rsp_rx_flitv_flat    : N;
+      trk_rsp_rx_req_flitpend[t] = tracker_valid[t] ? rsp_rx_flitpend_flat : N;
+      trk_rsp_rx_req_flit[t]     = rsp_rx_flit_flat;
+      trk_dat_rx_req_flitv[t]    = tracker_valid[t] ? dat_rx_flitv_flat    : N;
+      trk_dat_rx_req_flitpend[t] = tracker_valid[t] ? dat_rx_flitpend_flat : N;
+      trk_dat_rx_req_flit[t]     = dat_rx_flit_flat;
+      // snoop side (SnpResp*, SnpRespData*): on the sender's RN-F index; the
+      // tracker keeps the flits with its own TxnID
+      for (int p = 0; p < NUM_RNF; p++) begin
+        trk_rsp_rx_snp_flitv[t][p]    = rsp_from[p] ? Y : N;
+        trk_rsp_rx_snp_flitpend[t][p] = rsp_from[p] ? rsp_rx_flitpend_flat : N;
+        trk_rsp_rx_snp_flit[t][p]     = rsp_rx_flit_flat;
+        trk_dat_rx_snp_flitv[t][p]    = dat_from[p] ? Y : N;
+        trk_dat_rx_snp_flitpend[t][p] = dat_from[p] ? dat_rx_flitpend_flat : N;
+        trk_dat_rx_snp_flit[t][p]     = dat_rx_flit_flat;
+      end
+    end
+  end
 
   common_pkg::yn_status_e snf_rsp_flitv_flat, snf_rsp_flitpend_flat;
   local_rsp_flit_t        snf_rsp_flit_flat;

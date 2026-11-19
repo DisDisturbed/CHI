@@ -39,7 +39,11 @@ module rnf_chi_checker #(
   parameter chi_pkg::node_id_e NODEID      = 7'h01,
   parameter chi_pkg::node_id_e HNID        = 7'h40,
   parameter string             NAME        = "RNF0",
-  parameter int                SNP_RSP_MAX = 200
+  parameter int                SNP_RSP_MAX = 200,
+  // device range -> HN-I (the RN-F's system address map)
+  parameter chi_pkg::node_id_e HNIID       = 7'h50,
+  parameter logic [38:0]       DEV_BASE    = '0,
+  parameter logic [38:0]       DEV_SIZE    = '0
 ) (
   input wire  clk,
   input wire  resetn,
@@ -162,6 +166,15 @@ module rnf_chi_checker #(
     if (t.data_done && t.got_comp) txn_done(t);
   endfunction
 
+  function automatic bit is_dev(logic [38:0] a);
+    return (DEV_SIZE != '0) && ((a & ~(DEV_SIZE - 39'd1)) == DEV_BASE);
+  endfunction
+
+  // home node of a request / its write data
+  function automatic chi_pkg::node_id_e home_of(logic [38:0] a);
+    return is_dev(a) ? HNIID : HNID;
+  endfunction
+
   // ---------------------------------------------------------------- request
   function automatic void on_req(local_req_flit_t f);
     txn_c  t;
@@ -170,8 +183,8 @@ module rnf_chi_checker #(
     bit    coh;
     la = line_of(f.addr);
     st = st_of(la);
-    if (f.srcid !== NODEID || f.tgtid !== HNID)
-      perr($sformatf("%s txnid=%0d has SrcID=%0h TgtID=%0h (expected %0h/%0h)", f.opcode.name(), f.txnid, f.srcid, f.tgtid, NODEID, HNID));
+    if (f.srcid !== NODEID || f.tgtid !== home_of(f.addr))
+      perr($sformatf("%s txnid=%0d addr=%0h has SrcID=%0h TgtID=%0h (expected %0h/%0h)", f.opcode.name(), f.txnid, f.addr, f.srcid, f.tgtid, NODEID, home_of(f.addr)));
     if (tx.exists(f.txnid))
       perr($sformatf("%s reuses TxnID %0d while %s with that TxnID is still in flight", f.opcode.name(), f.txnid, tx[f.txnid].f.opcode.name()));
     if (f.allowretry != Y)
@@ -212,8 +225,8 @@ module rnf_chi_checker #(
     if (coh) begin
       if (f.size != WIDTH_64)           perr($sformatf("%s size=%0dB, a line request must be 64 bytes", f.opcode.name(), size_bytes(f.size)));
       if (f.memattr != MEMATTR_NORMAL_WB) perr($sformatf("%s MemAttr=%04b (expected %04b)", f.opcode.name(), f.memattr, MEMATTR_NORMAL_WB));
-    end else if (f.memattr != MEMATTR_NORMAL_NC) begin
-      perr($sformatf("%s MemAttr=%04b (expected %04b)", f.opcode.name(), f.memattr, MEMATTR_NORMAL_NC));
+    end else if (f.memattr != (is_dev(f.addr) ? MEMATTR_DEVICE : MEMATTR_NORMAL_NC)) begin
+      perr($sformatf("%s addr=%0h MemAttr=%04b (expected %04b)", f.opcode.name(), f.addr, f.memattr, is_dev(f.addr) ? MEMATTR_DEVICE : MEMATTR_NORMAL_NC));
     end
     // what the open core requests caused
     foreach (creq[k]) if (creq[k].cach) begin
@@ -274,6 +287,8 @@ module rnf_chi_checker #(
     snp_c  s;
     addr_t la;
     la = line_of(f.addr);
+    if (f.tgtid !== NODEID || f.srcid !== HNID)
+      perr($sformatf("snoop %s txnid=%0d has TgtID=%0h SrcID=%0h (expected %0h/%0h)", f.opcode.name(), f.txnid, f.tgtid, f.srcid, NODEID, HNID));
     if (sn.exists(f.txnid)) begin
       perr($sformatf("snoop TxnID %0d is used again by the HN-F before the first one was answered", f.txnid));
       return;
@@ -438,8 +453,8 @@ module rnf_chi_checker #(
     if (t.data_done) perr($sformatf("%s: more write data after the last beat (dbid=%0d)", t.f.opcode.name(), f.txnid));
     if ((f.opcode == DAT_COPY_BACK_WR_DATA) != cb)
       perr($sformatf("%s answered with %s", t.f.opcode.name(), f.opcode.name()));
-    if (f.tgtid !== HNID || f.srcid !== NODEID)
-      perr($sformatf("%s dbid=%0d has TgtID=%0h SrcID=%0h (expected %0h/%0h)", f.opcode.name(), f.txnid, f.tgtid, f.srcid, HNID, NODEID));
+    if (f.tgtid !== home_of(t.f.addr) || f.srcid !== NODEID)
+      perr($sformatf("%s dbid=%0d has TgtID=%0h SrcID=%0h (expected %0h/%0h)", f.opcode.name(), f.txnid, f.tgtid, f.srcid, home_of(t.f.addr), NODEID));
     if (t.wseen[f.dataid]) perr($sformatf("%s dbid=%0d: DataID %0d sent twice", f.opcode.name(), f.txnid, f.dataid));
     if (t.wseen != '0 && f.resp !== t.wresp) perr($sformatf("%s dbid=%0d: beats carry different Resp", f.opcode.name(), f.txnid));
     t.wresp = f.resp;

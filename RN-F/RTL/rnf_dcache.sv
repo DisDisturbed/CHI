@@ -1,5 +1,4 @@
 `timescale 1ns/1ps
-`default_nettype none
 // FSM encodings of rnf_dcache (in a package so a testbench can name them)
 package rnf_dcache_pkg;
 
@@ -96,6 +95,15 @@ endpackage : rnf_dcache_pkg
 //              non-cacheable        ReadNoSnp / WriteNoSnpPtl
 //              RetryAck is followed by a resend once the PCrdGrant is there.
 //
+//  System address map: an access in the device range (DEV_BASE, DEV_SIZE: a
+//              power of two, aligned; DEV_SIZE 0 = no device range) is never
+//              cached; it goes out as ReadNoSnp / WriteNoSnpPtl with Device
+//              MemAttr to the HN-I (TgtID HNIID), the write data too.
+//              Everything else goes to the HN-F (HNID). Device accesses are
+//              not ordered among themselves here (like any non-cacheable
+//              access, only per set): a core that needs program order keeps
+//              one device access in flight (the WASP bridge does).
+//
 //  Snoops    : served by their own FSM at any time. Policy: a snoop that
 //              allows it leaves a Shared Clean copy and passes dirty data on
 //              (SnpRespData_SC_PD); SnpOnce keeps the state; SnpUnique /
@@ -119,7 +127,11 @@ module rnf_dcache
   parameter int       TX_CREDIT_MAX  = 15,
   parameter int       NUM_MSHR       = 4,
   parameter bit       FAST_LD        = 0,    // fast load path (core.la / core.fast), see "fast load path"
-  parameter bit       ISIDE          = 0     // I-side port for rnf_icache (rnf_node), see "I-side"
+  parameter bit       ISIDE          = 0,    // I-side port for rnf_icache (rnf_node), see "I-side"
+  // system address map (see "System address map")
+  parameter node_id_e            HNIID    = 7'h50,
+  parameter logic [AddrSize-1:0] DEV_BASE = '0,
+  parameter logic [AddrSize-1:0] DEV_SIZE = '0
 ) (
   input wire clk,
   input wire resetn,
@@ -507,6 +519,21 @@ module rnf_dcache
     return n;
   endfunction
 
+  // ------------------------------------------------------------------ system address map
+  initial begin
+    if (DEV_SIZE != '0 && (((DEV_SIZE & (DEV_SIZE - 1'b1)) != '0) || ((DEV_BASE & (DEV_SIZE - 1'b1)) != '0)))
+      $fatal(1, "rnf_dcache: the device range (DEV_BASE %0h, DEV_SIZE %0h) must be a power of two, aligned", DEV_BASE, DEV_SIZE);
+  end
+
+  function automatic logic is_dev(logic [AddrSize-1:0] a);
+    return (DEV_SIZE != '0) && ((a & ~(DEV_SIZE - 1'b1)) == DEV_BASE);
+  endfunction
+
+  // home node of a non-cacheable access
+  function automatic node_id_e nc_home(logic [AddrSize-1:0] a);
+    return is_dev(a) ? HNIID : HNID;
+  endfunction
+
   function automatic local_req_flit_t mk_req(rreg_t e);
     local_req_flit_t f;
     f            = '0;
@@ -533,15 +560,17 @@ module rnf_dcache
       end
       T_NCRD: begin
         f.opcode  = REQ_READ_NO_SNOOP;
+        f.tgtid   = nc_home(e.addr);
         f.addr    = TSHR_ADDR_WIDTH'(e.addr);
         f.size    = e.width;
-        f.memattr = MEMATTR_NORMAL_NC;
+        f.memattr = is_dev(e.addr) ? MEMATTR_DEVICE : MEMATTR_NORMAL_NC;
       end
       default: begin
         f.opcode  = REQ_WRITE_NO_SNOOP_PTL;
+        f.tgtid   = nc_home(e.addr);
         f.addr    = TSHR_ADDR_WIDTH'(e.addr);
         f.size    = e.width;
-        f.memattr = MEMATTR_NORMAL_NC;
+        f.memattr = is_dev(e.addr) ? MEMATTR_DEVICE : MEMATTR_NORMAL_NC;
       end
     endcase
     return f;
@@ -562,8 +591,10 @@ module rnf_dcache
       f.be     = e.wb_vld ? '1 : '0;
       f.data   = e.wb_vld ? e.wb_buf[e.cnt*128 +: 128] : '0;
     end else begin
-      f.opcode = DAT_NON_COPY_BACK_WR_DATA;
-      f.resp   = RESP_I;
+      f.tgtid   = nc_home(e.addr);
+      f.homenid = nc_home(e.addr);
+      f.opcode  = DAT_NON_COPY_BACK_WR_DATA;
+      f.resp    = RESP_I;
       f.dataid = e.addr[5:4];
       f.be     = be_of(e.width, e.addr[3:0]);
       f.data   = 128'(e.data) << {e.addr[3:0], 3'b000};
@@ -1784,7 +1815,7 @@ module rnf_dcache
       if (accept_w) begin
         fq_mem[fq_wr_q] <= '{op: core.req.op, addr: core.req.addr, width: core.req.width,
                                data: core.req.data, idx: core.req.idx, src: core.req.src,
-                               cach: (core.req.cacheable == Y)};
+                               cach: (core.req.cacheable == Y) && !is_dev(core.req.addr)};
         fq_wr_q <= ~fq_wr_q;
       end
       if (issue_w) fq_rd_q <= ~fq_rd_q;
@@ -1830,4 +1861,3 @@ module rnf_dcache
   // synthesis translate_on
 
 endmodule
-`default_nettype wire

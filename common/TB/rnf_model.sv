@@ -116,6 +116,8 @@ module rnf_model #(
     la = line_of(f.addr);
     if (sb.chk_ids && f.srcid !== HNID)
       sb.err("PROTOCOL", $sformatf("%s: snoop %s txnid=%0d has SrcID=%0h (expected %0h): the response would go to the wrong node", NAME, f.opcode.name(), f.txnid, f.srcid, HNID));
+    if (sb.chk_ids && f.tgtid !== NODEID)
+      sb.err("PROTOCOL", $sformatf("%s: snoop %s txnid=%0d has TgtID=%0h (expected %0h): routed to the wrong RN-F", NAME, f.opcode.name(), f.txnid, f.tgtid, NODEID));
     if (ack_wait.exists(la) && ack_wait[la] > 0)
       sb.err("SNOOP_ORDER", $sformatf("%s: snoop %s addr=%0h arrived after CompData and before my CompAck for that line (HN-F must hold snoops until CompAck)", NAME, f.opcode.name(), la));
     if (snp_busy.exists(f.txnid) && snp_busy[f.txnid])

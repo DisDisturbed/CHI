@@ -1,5 +1,4 @@
 `timescale 1ns/1ps
-`default_nettype none
 // =============================================================================
 // rnf_node - one CHI RN-F node: rnf_dcache (+ rnf_icache when ICACHE = 1).
 //
@@ -29,7 +28,11 @@ module rnf_node
   parameter bit       FAST_LD        = 0,
   parameter bit       ICACHE         = 0,
   parameter int       I_SETS         = 32,
-  parameter int       I_WAYS         = 2
+  parameter int       I_WAYS         = 2,
+  // system address map: the device range goes to the HN-I (rnf_dcache)
+  parameter node_id_e            HNIID    = 7'h50,
+  parameter logic [AddrSize-1:0] DEV_BASE = '0,
+  parameter logic [AddrSize-1:0] DEV_SIZE = '0
 ) (
   input wire clk,
   input wire resetn,
@@ -55,7 +58,8 @@ module rnf_node
   rnf_dcache #(
     .NODEID(NODEID), .HNID(HNID), .AddrSize(AddrSize), .MaxAccessWidth(MaxAccessWidth),
     .ReqIdxWidth(ReqIdxWidth), .SETS(SETS), .WAYS(WAYS), .RX_FIFO_DEPTH(RX_FIFO_DEPTH),
-    .TX_CREDIT_MAX(TX_CREDIT_MAX), .NUM_MSHR(NUM_MSHR), .FAST_LD(FAST_LD), .ISIDE(ICACHE)
+    .TX_CREDIT_MAX(TX_CREDIT_MAX), .NUM_MSHR(NUM_MSHR), .FAST_LD(FAST_LD), .ISIDE(ICACHE),
+    .HNIID(HNIID), .DEV_BASE(DEV_BASE), .DEV_SIZE(DEV_SIZE)
   ) u_dc (
     .clk(clk), .resetn(resetn), .core(core),
     .req_tx(req_tx), .snp_rx(snp_rx), .rsp_rx(rsp_rx), .rsp_tx(rsp_tx), .dat_rx(dat_rx), .dat_tx(dat_tx),

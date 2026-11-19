@@ -161,6 +161,15 @@ package chi_pkg;
   localparam int MEMATTR_ALLOCATE_BIT  = 3;
   localparam mem_attr_e MEMATTR_NORMAL_WB = 4'b1101; // Allocate, Cacheable, EWA - what the TB RN-Fs send on coherent requests
   localparam mem_attr_e MEMATTR_NORMAL_NC = 4'b0001; // non-cacheable, EWA       - what the TB RN-Fs send on ReadNoSnp / WriteNoSnp
+  localparam mem_attr_e MEMATTR_DEVICE    = 4'b0010; // Device (nRnE, no early write response) - RN-F accesses to the HN-I
+
+  // Node ID tables (XP routing, HN-F RN-F index <-> node ID). Entry [i] is the
+  // node ID of port / RN-F index i; up to MAX_NODES entries, unused ones ignored.
+  localparam int MAX_NODES = 16;
+  typedef logic [MAX_NODES-1:0][6:0] nid_list_t;
+  // RN-F index i -> node ID i+1 (what the testbenches have always used)
+  localparam nid_list_t NID_SEQ1 = {7'd16, 7'd15, 7'd14, 7'd13, 7'd12, 7'd11, 7'd10, 7'd9,
+                                    7'd8,  7'd7,  7'd6,  7'd5,  7'd4,  7'd3,  7'd2,  7'd1};
 
 endpackage : chi_pkg
 
@@ -186,6 +195,7 @@ package tshr_flit_pkg;
 
   typedef struct packed {
     logic [3:0]                  qos;
+    node_id_e                    tgtid;      // the snooped RN-F (routing through the XP)
     node_id_e                    srcid;
     logic [11:0]                 txnid;
     node_id_e                    fwdnid;
@@ -345,6 +355,7 @@ interface chi_snp #(
 
   typedef struct packed {
     logic [3:0]           qos;
+    chi_pkg::node_id_e    tgtid;
     chi_pkg::node_id_e    srcid;
     logic [11:0]          txnid;
     chi_pkg::node_id_e    fwdnid;

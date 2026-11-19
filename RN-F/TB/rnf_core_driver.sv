@@ -654,7 +654,11 @@ module rnf_core_driver #(
 
   function automatic addr_t pick_line();
     int unsigned hn;
-    if (rng.chance(k_nc_pct))   return sb.nc_pool[rng.range(0, sb.nc_pool.size() - 1)];
+    if (rng.chance(k_nc_pct)) begin
+      // half of the non-cacheable accesses go to the device range (HN-I), when there is one
+      if (sb.dev_pool.size() != 0 && rng.chance(50)) return sb.dev_pool[rng.range(0, sb.dev_pool.size() - 1)];
+      return sb.nc_pool[rng.range(0, sb.nc_pool.size() - 1)];
+    end
     if (rng.chance(k_priv_pct)) return priv[rng.range(0, priv.size() - 1)];
     hn = (sb.hot_n < sb.pool.size()) ? sb.hot_n : sb.pool.size();
     if (rng.chance(sb.hot_pct)) return sb.pool[rng.range(0, hn - 1)];

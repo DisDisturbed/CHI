@@ -103,11 +103,42 @@ module Tb_HNF_Random;
   chi_dat rnf_dat_rx_if [NRNF]();
   chi_dat rnf_dat_tx_if [NRNF]();
 
+  // XP <-> HN-F (one link per channel)
+  chi_req hn_req_if    [1]();
+  chi_snp hn_snp_if    [1]();
+  chi_rsp hn_rsp_tx_if [1]();   // XP -> HN-F
+  chi_rsp hn_rsp_rx_if [1]();   // HN-F -> XP
+  chi_dat hn_dat_tx_if [1]();
+  chi_dat hn_dat_rx_if [1]();
+
   chi_req snf_req_if();
   chi_rsp snf_rsp_if();
   chi_dat snf_dat_tx_if(), snf_dat_rx_if();
 
-  // ---------------------------------------------------------------- DUT
+  // ---------------------------------------------------------------- XP + DUT
+  // RN-F i (NodeID i+1) on XP port i; the HN-F on home port 0
+  xp #(
+    .NRN    (NRNF),
+    .NHN    (1),
+    .RN_NID (NID_SEQ1),
+    .HN_NID ({{(MAX_NODES - 1){7'h00}}, HN_ID})
+  ) xp (
+    .clk       (clk),
+    .resetn    (resetn),
+    .rn_req    (rnf_req_if),
+    .rn_snp    (rnf_snp_if),
+    .rn_rsp_rx (rnf_rsp_rx_if),
+    .rn_rsp_tx (rnf_rsp_tx_if),
+    .rn_dat_rx (rnf_dat_rx_if),
+    .rn_dat_tx (rnf_dat_tx_if),
+    .hn_req    (hn_req_if),
+    .hn_snp    (hn_snp_if),
+    .hn_rsp_tx (hn_rsp_tx_if),
+    .hn_rsp_rx (hn_rsp_rx_if),
+    .hn_dat_tx (hn_dat_tx_if),
+    .hn_dat_rx (hn_dat_rx_if)
+  );
+
   HN_F #(
     .NUM_TRACKERS   (NUM_TRACKERS),
     .NUM_RNF        (NRNF),
@@ -117,16 +148,19 @@ module Tb_HNF_Random;
     .TxCreditMax    (15),
     .SF_SETS        (SF_SETS),
     .SF_WAYS        (SF_WAYS),
-    .SF_BROADCAST   (SF_BROADCAST)
+    .SF_BROADCAST   (SF_BROADCAST),
+    .NODEID         (HN_ID),
+    .SNFID          (SN_ID),
+    .RNF_NID        (NID_SEQ1)
   ) dut (
     .clk        (clk),
     .resetn     (resetn),
-    .rnf_req    (rnf_req_if),
-    .rnf_snp    (rnf_snp_if),
-    .rnf_rsp_rx (rnf_rsp_rx_if),
-    .rnf_rsp_tx (rnf_rsp_tx_if),
-    .rnf_dat_rx (rnf_dat_rx_if),
-    .rnf_dat_tx (rnf_dat_tx_if),
+    .req_rx     (hn_req_if[0]),
+    .snp_tx     (hn_snp_if[0]),
+    .rsp_rx     (hn_rsp_tx_if[0]),
+    .rsp_tx     (hn_rsp_rx_if[0]),
+    .dat_rx     (hn_dat_tx_if[0]),
+    .dat_tx     (hn_dat_rx_if[0]),
     .snf_req    (snf_req_if),
     .snf_rsp    (snf_rsp_if),
     .snf_dat_tx (snf_dat_tx_if),
@@ -161,20 +195,21 @@ module Tb_HNF_Random;
 
     assign req_v[i]     = (rnf_req_if[i].flitv == Y);
     assign req_a[i]     = rnf_req_if[i].flit.addr;
-    assign cr_hn_snp[i] = int'(dut.gen_snp_port[i].u_snp_arb.u_port_cred.credit_q);
+    // the RN-F's link partner is the XP
+    assign cr_hn_snp[i] = int'(xp.u_snp.out_cr[i]);
     assign cr_rn_snp[i] = u.snp_gr - u.snp_rc;
-    assign cr_hn_rsp[i] = int'(dut.gen_reqtgt_port[i].u_rsp_tx_arb.u_port_cred.credit_q);
+    assign cr_hn_rsp[i] = int'(xp.u_rsp_dn.out_cr[i]);
     assign cr_rn_rsp[i] = u.rsp_gr - u.rsp_rc;
-    assign cr_hn_dat[i] = int'(dut.gen_reqtgt_port[i].u_dat_tx_arb.u_port_cred.credit_q);
+    assign cr_hn_dat[i] = int'(xp.u_dat_dn.out_cr[i]);
     assign cr_rn_dat[i] = u.dat_gr - u.dat_rc;
-    assign cr_hn_req[i] = int'(dut.u_req_rx_arb.port_cr_q[i]);
+    assign cr_hn_req[i] = int'(xp.u_req.in_cr[i]);
     assign cr_rn_req[i] = u.req_cr_in - u.req_cr_out;
-    assign cr_hn_rrx[i] = int'(dut.gen_rsp_rx_bridge[i].u_rsp_rx_cred.outstanding_q);
+    assign cr_hn_rrx[i] = int'(xp.u_rsp_up.in_cr[i]);
     assign cr_rn_rrx[i] = u.rsp_cr_in - u.rsp_cr_out;
-    assign cr_hn_drx[i] = int'(dut.gen_dat_rx_bridge[i].u_dat_rx_cred.outstanding_q);
+    assign cr_hn_drx[i] = int'(xp.u_dat_up.in_cr[i]);
     assign cr_rn_drx[i] = u.dat_cr_in - u.dat_cr_out;
 
-    // strict link layer on the HN-F TX ports towards this RN-F
+    // strict link layer on the XP TX ports towards this RN-F
     always @(posedge clk) begin
       if (resetn && sb != null) begin
         chk_flitpend_one($sformatf("SNP    -> RNF%0d", i), rnf_snp_if[i].flitv,    rnf_snp_if[i].flitpend);
@@ -409,6 +444,9 @@ module Tb_HNF_Random;
     // the RN-F ports are checked in gen_rn
     chk_flitpend_one("REQ    -> SNF",  snf_req_if.flitv,       snf_req_if.flitpend);
     chk_flitpend_one("WDAT   -> SNF",  snf_dat_tx_if.flitv,    snf_dat_tx_if.flitpend);
+    chk_flitpend_one("SNP    -> XP",   hn_snp_if[0].flitv,     hn_snp_if[0].flitpend);
+    chk_flitpend_one("RSP    -> XP",   hn_rsp_rx_if[0].flitv,  hn_rsp_rx_if[0].flitpend);
+    chk_flitpend_one("DAT    -> XP",   hn_dat_rx_if[0].flitv,  hn_dat_rx_if[0].flitpend);
   endfunction
 
   function automatic void bool_cov();
@@ -459,12 +497,24 @@ module Tb_HNF_Random;
 
   function automatic void cr_eq(string what, int hn, int partner);
     if (hn != partner)
-      sb.err("CREDIT_LEAK", $sformatf("%s: HN-F counts %0d link credits, the link partner counts %0d", what, hn, partner));
+      sb.err("CREDIT_LEAK", $sformatf("%s: sender side counts %0d link credits, the link partner counts %0d", what, hn, partner));
   endfunction
 
-  // every credit counter in the HN-F must agree with the agent on the other end
+  // every credit counter must agree with the one on the other end of its link:
+  // RN-F agents <-> XP, XP <-> HN-F, HN-F <-> SN-F. The XP queues must be empty.
   function automatic void check_credits();
-    // HN-F TX ports: credits the RN-F / SN-F granted and HN-F has not spent
+    cr_eq("REQ  XP -> HN-F", int'(xp.u_req.out_cr[0]),     int'(dut.u_req_rx_arb.port_cr_q[0]));
+    cr_eq("RSP  XP -> HN-F", int'(xp.u_rsp_up.out_cr[0]),  int'(dut.u_rsp_rx_cred.outstanding_q));
+    cr_eq("DAT  XP -> HN-F", int'(xp.u_dat_up.out_cr[0]),  int'(dut.u_dat_rx_cred.outstanding_q));
+    cr_eq("SNP  HN-F -> XP", int'(dut.u_snp_arb.u_port_cred.credit_q),    int'(xp.u_snp.in_cr[0]));
+    cr_eq("RSP  HN-F -> XP", int'(dut.u_rsp_tx_arb.u_port_cred.credit_q), int'(xp.u_rsp_dn.in_cr[0]));
+    cr_eq("DAT  HN-F -> XP", int'(dut.u_dat_tx_arb.u_port_cred.credit_q), int'(xp.u_dat_dn.in_cr[0]));
+    if (xp.u_snp.in_cnt[0] != 0 || xp.u_rsp_dn.in_cnt[0] != 0 || xp.u_dat_dn.in_cnt[0] != 0)
+      sb.err("XP_STATE", "XP still holds flits from the HN-F with every tracker idle");
+    for (int i = 0; i < NRNF; i++)
+      if (xp.u_req.in_cnt[i] != 0 || xp.u_rsp_up.in_cnt[i] != 0 || xp.u_dat_up.in_cnt[i] != 0)
+        sb.err("XP_STATE", $sformatf("XP still holds flits from RNF%0d with every tracker idle", i));
+    // RN-F links: credits the RN-F granted and the XP has not spent, and back
     for (int i = 0; i < NRNF; i++) begin
       cr_eq($sformatf("SNP  -> RNF%0d", i), cr_hn_snp[i], cr_rn_snp[i]);
       cr_eq($sformatf("RSP  -> RNF%0d", i), cr_hn_rsp[i], cr_rn_rsp[i]);

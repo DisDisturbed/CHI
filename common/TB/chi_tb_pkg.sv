@@ -307,6 +307,7 @@ package chi_tb_pkg;
     int unsigned w [NUM_OPS];
     addr_t       pool [$];
     addr_t       nc_pool [$];
+    addr_t       dev_pool [$];   // non-cacheable lines in the device range (HN-I); snf_mem holds their image too
     bit          err_line [addr_t];
     // ---- control ----
     int unsigned epoch;
@@ -555,7 +556,8 @@ package chi_tb_pkg;
     endfunction
 
     function bit is_nc(addr_t a);
-      foreach (nc_pool[i]) if (line_of(nc_pool[i]) == line_of(a)) return 1;
+      foreach (nc_pool[i])  if (line_of(nc_pool[i])  == line_of(a)) return 1;
+      foreach (dev_pool[i]) if (line_of(dev_pool[i]) == line_of(a)) return 1;
       return 0;
     endfunction
 

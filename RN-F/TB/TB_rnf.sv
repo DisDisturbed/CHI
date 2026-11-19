@@ -66,12 +66,17 @@ module Tb_RNF;
   parameter bit FAST_LD                = 1;        // dcache fast load path; the driver sends lookaheads before cacheable loads
   parameter int LA_PCT                 = 50;       // cacheable loads that get a lookahead first
   parameter bit ICACHE                 = 1;        // split I-cache (rnf_icache on the dcache's I-side port) + fetch driver
+  parameter bit DEV                    = 1;        // device range: half of the non-cacheable core accesses go to the
+                                                   // HN-I (second home on the XP) and an AXI memory behind it
   parameter int CMD_TIMEOUT_CYCLES     = 400000;
   parameter int OVERALL_TIMEOUT_CYCLES = 16000000;
 
   localparam int       NRNF  = 2;
   localparam node_id_e HN_ID = 7'h40;
   localparam node_id_e SN_ID = 7'h00;
+  localparam node_id_e HNI_ID = 7'h50;
+  localparam logic [38:0] DEV_BASE = 39'h00_C000_0000;   // device range 0xC000_0000..0xDFFF_FFFF (as in WASP_SoC)
+  localparam logic [38:0] DEV_SIZE = DEV ? 39'h00_2000_0000 : '0;
   localparam int       AW    = 39;
   localparam int       DW    = 64;
   localparam int       IW    = 4;
@@ -88,6 +93,11 @@ module Tb_RNF;
   chi_dat rnf_dat_rx_if [NRNF]();
   chi_dat rnf_dat_tx_if [NRNF]();
 
+  chi_req hn_req_if    [2]();   // XP <-> home 0: HN-F, home 1: HN-I
+  chi_snp hn_snp_if    [2]();
+  chi_rsp hn_rsp_tx_if [2](), hn_rsp_rx_if [2]();
+  chi_dat hn_dat_tx_if [2](), hn_dat_rx_if [2]();
+
   chi_req snf_req_if();
   chi_rsp snf_rsp_if();
   chi_dat snf_dat_tx_if(), snf_dat_rx_if();
@@ -100,23 +110,50 @@ module Tb_RNF;
   logic [1:0]          is_dat_beat;
   logic [127:0]        is_dat;
 
-  // ---------------------------------------------------------------- HN-F
+  // ---------------------------------------------------------------- XP + HN-F + HN-I
+  // RN-F i (NodeID i+1) on XP port i, the HN-F on home port 0, the HN-I on home port 1
+  xp #(
+    .NRN    (NRNF),
+    .NHN    (2),
+    .RN_NID (NID_SEQ1),
+    .HN_NID ({{(MAX_NODES - 2){7'h00}}, HNI_ID, HN_ID}),
+    .HN_COH ({{(MAX_NODES - 1){1'b0}}, 1'b1})
+  ) xp (
+    .clk       (clk),
+    .resetn    (resetn),
+    .rn_req    (rnf_req_if),
+    .rn_snp    (rnf_snp_if),
+    .rn_rsp_rx (rnf_rsp_rx_if),
+    .rn_rsp_tx (rnf_rsp_tx_if),
+    .rn_dat_rx (rnf_dat_rx_if),
+    .rn_dat_tx (rnf_dat_tx_if),
+    .hn_req    (hn_req_if),
+    .hn_snp    (hn_snp_if),
+    .hn_rsp_tx (hn_rsp_tx_if),
+    .hn_rsp_rx (hn_rsp_rx_if),
+    .hn_dat_tx (hn_dat_tx_if),
+    .hn_dat_rx (hn_dat_rx_if)
+  );
+
   HN_F #(
     .NUM_TRACKERS   (NUM_TRACKERS),
     .NUM_RNF        (NRNF),
     .AddrWidth      (39),
     .DataWidth      (128),
     .CacheLineWidth (512),
-    .TxCreditMax    (15)
+    .TxCreditMax    (15),
+    .NODEID         (HN_ID),
+    .SNFID          (SN_ID),
+    .RNF_NID        (NID_SEQ1)
   ) hnf (
     .clk        (clk),
     .resetn     (resetn),
-    .rnf_req    (rnf_req_if),
-    .rnf_snp    (rnf_snp_if),
-    .rnf_rsp_rx (rnf_rsp_rx_if),
-    .rnf_rsp_tx (rnf_rsp_tx_if),
-    .rnf_dat_rx (rnf_dat_rx_if),
-    .rnf_dat_tx (rnf_dat_tx_if),
+    .req_rx     (hn_req_if[0]),
+    .snp_tx     (hn_snp_if[0]),
+    .rsp_rx     (hn_rsp_tx_if[0]),
+    .rsp_tx     (hn_rsp_rx_if[0]),
+    .dat_rx     (hn_dat_tx_if[0]),
+    .dat_tx     (hn_dat_rx_if[0]),
     .snf_req    (snf_req_if),
     .snf_rsp    (snf_rsp_if),
     .snf_dat_tx (snf_dat_tx_if),
@@ -127,7 +164,8 @@ module Tb_RNF;
   rnf_dcache #(
     .NODEID(7'h01), .HNID(HN_ID), .AddrSize(AW), .MaxAccessWidth(DW), .ReqIdxWidth(IW),
     .SETS(SETS), .WAYS(WAYS), .RX_FIFO_DEPTH(RX_FIFO_DEPTH), .NUM_MSHR(NUM_MSHR),
-    .FAST_LD(FAST_LD), .ISIDE(ICACHE)
+    .FAST_LD(FAST_LD), .ISIDE(ICACHE),
+    .HNIID(HNI_ID), .DEV_BASE(DEV_BASE), .DEV_SIZE(DEV_SIZE)
   ) dut (
     .clk(clk), .resetn(resetn),
     .core(core_if),
@@ -161,7 +199,8 @@ module Tb_RNF;
     .clk(clk), .resetn(resetn), .core(core_if)
   );
 
-  rnf_chi_checker #(.NODEID(7'h01), .HNID(HN_ID), .NAME("RNF0")) chk (
+  rnf_chi_checker #(.NODEID(7'h01), .HNID(HN_ID), .NAME("RNF0"),
+                    .HNIID(HNI_ID), .DEV_BASE(DEV_BASE), .DEV_SIZE(DEV_SIZE)) chk (
     .clk(clk), .resetn(resetn), .core(core_if),
     .req(rnf_req_if[0]), .snp(rnf_snp_if[0]),
     .rsp_rx(rnf_rsp_tx_if[0]), .rsp_tx(rnf_rsp_rx_if[0]),
@@ -183,6 +222,150 @@ module Tb_RNF;
     .dat_rx(snf_dat_tx_if),
     .dat_tx(snf_dat_rx_if)
   );
+
+  // ---------------------------------------------------------------- HN-I + AXI memory (device range)
+  // The AXI slave's memory is the scoreboard's memory image (sb.snf_line /
+  // sb.snf_write): device lines never reach the SN-F, so the final memory
+  // check covers them too. Random ready / latency, bursts answered in order
+  // (reordering across IDs is TB_hni's job).
+  localparam int AXI_IDW = 4 + 2;      // hni SRC_IDW + $clog2(NUM_TRK)
+  logic [AXI_IDW-1:0] awid, bid, arid, rid;
+  logic [31:0]        awaddr, araddr, wdata, rdata;
+  logic [7:0]         awlen, arlen;
+  logic [2:0]         awsize, arsize, awprot, arprot;
+  logic [1:0]         awburst, arburst, bresp, rresp;
+  logic [3:0]         awcache, arcache, wstrb;
+  logic               awvalid, awready, wlast, wvalid, wready, bvalid, bready;
+  logic               arvalid, arready, rlast, rvalid, rready;
+
+  hni #(.NODEID(HNI_ID), .AddrWidth(AW), .DataWidth(128), .NUM_TRK(4), .SRC_IDW(4)) hni (
+    .clk(clk), .resetn(resetn),
+    .req_rx(hn_req_if[1]), .rsp_tx(hn_rsp_rx_if[1]), .dat_rx(hn_dat_tx_if[1]), .dat_tx(hn_dat_rx_if[1]),
+    .m_axi_awid(awid), .m_axi_awaddr(awaddr), .m_axi_awlen(awlen), .m_axi_awsize(awsize),
+    .m_axi_awburst(awburst), .m_axi_awcache(awcache), .m_axi_awprot(awprot),
+    .m_axi_awvalid(awvalid), .m_axi_awready(awready),
+    .m_axi_wdata(wdata), .m_axi_wstrb(wstrb), .m_axi_wlast(wlast), .m_axi_wvalid(wvalid), .m_axi_wready(wready),
+    .m_axi_bid(bid), .m_axi_bresp(bresp), .m_axi_bvalid(bvalid), .m_axi_bready(bready),
+    .m_axi_arid(arid), .m_axi_araddr(araddr), .m_axi_arlen(arlen), .m_axi_arsize(arsize),
+    .m_axi_arburst(arburst), .m_axi_arcache(arcache), .m_axi_arprot(arprot),
+    .m_axi_arvalid(arvalid), .m_axi_arready(arready),
+    .m_axi_rid(rid), .m_axi_rdata(rdata), .m_axi_rresp(rresp), .m_axi_rlast(rlast),
+    .m_axi_rvalid(rvalid), .m_axi_rready(rready)
+  );
+
+  typedef struct { logic [AXI_IDW-1:0] id; logic [31:0] a; int len, size, beat; int unsigned at; } axb_t;
+  typedef struct { logic [31:0] d; logic [3:0] s; logic l; } axw_t;
+  axb_t        ar_q [$], aw_q [$], b_q [$];
+  axw_t        w_q [$];
+  int unsigned acyc;
+  bit          r_hs, b_hs;
+  tb_rng       arng;
+  initial arng = new(SEED * 13 + 7);
+
+  // address of beat k of a burst (INCR; a narrow access is one beat)
+  function automatic logic [31:0] ax_beat(axb_t x, int k);
+    return (x.a & ~((32'd1 << x.size) - 1)) + 32'(k << x.size);
+  endfunction
+
+  always @(posedge clk) begin
+    if (!resetn) begin
+      ar_q.delete(); aw_q.delete(); w_q.delete(); b_q.delete();
+      r_hs = 0; b_hs = 0;
+    end else if (sb != null) begin
+      acyc++;
+      if (arvalid && arready) begin
+        axb_t x;
+        x.id = arid; x.a = araddr; x.len = arlen; x.size = arsize; x.beat = 0; x.at = acyc + arng.range(1, 12);
+        if (arid[AXI_IDW-1:2] != 4'd1) sb.err("DEV", $sformatf("AXI AR id=%0h: the source bits are not RNF0's node ID", arid));
+        if (!(DEV_SIZE != 0 && ((39'(araddr) & ~(DEV_SIZE - 1)) == DEV_BASE)))
+          sb.err("DEV", $sformatf("AXI AR addr=%0h outside the device range", araddr));
+        sb.cov_hit("dev: read through the HN-I");
+        if (arlen != 0) sb.cov_hit("dev: burst (> 4 B) on AXI");
+        ar_q.push_back(x);
+      end
+      if (awvalid && awready) begin
+        axb_t x;
+        x.id = awid; x.a = awaddr; x.len = awlen; x.size = awsize; x.beat = 0; x.at = 0;
+        if (awid[AXI_IDW-1:2] != 4'd1) sb.err("DEV", $sformatf("AXI AW id=%0h: the source bits are not RNF0's node ID", awid));
+        sb.cov_hit("dev: write through the HN-I");
+        if (awlen != 0) sb.cov_hit("dev: burst (> 4 B) on AXI");
+        aw_q.push_back(x);
+      end
+      if (wvalid && wready) begin
+        axw_t w;
+        w.d = wdata; w.s = wstrb; w.l = wlast;
+        w_q.push_back(w);
+      end
+      if (rvalid && rready) r_hs = 1;
+      if (bvalid && bready) b_hs = 1;
+      // a write is done when its AW and all its beats are here
+      while (aw_q.size() != 0 && w_q.size() > aw_q[0].len) begin
+        axb_t x;
+        x = aw_q.pop_front();
+        for (int k = 0; k <= x.len; k++) begin
+          axw_t    w;
+          line_t   d;
+          bemask_t m;
+          logic [31:0] ba;
+          w  = w_q.pop_front();
+          ba = ax_beat(x, k) & ~32'd3;
+          d  = '0; m = '0;
+          for (int j = 0; j < 4; j++) if (w.s[j]) begin
+            d[(int'(ba[5:0]) + j) * 8 +: 8] = w.d[j*8 +: 8];
+            m[int'(ba[5:0]) + j] = 1'b1;
+          end
+          if (m != '0) sb.snf_write(addr_t'(ba), d, m);
+          if (w.l != (k == x.len)) sb.err("DEV", $sformatf("AXI W beat %0d of %0d: WLAST=%0d", k, x.len + 1, w.l));
+        end
+        x.at = acyc + arng.range(1, 12);
+        b_q.push_back(x);
+      end
+    end
+  end
+
+  always @(negedge clk) begin
+    if (!resetn) begin
+      arready = 0; awready = 0; wready = 0; rvalid = 0; bvalid = 0;
+      rid = '0; rdata = '0; rresp = '0; rlast = 0; bid = '0; bresp = '0;
+    end else if (sb != null) begin
+      arready = arng.chance(70);
+      awready = arng.chance(70);
+      wready  = arng.chance(70);
+      if (r_hs) begin
+        r_hs   = 0;
+        rvalid = 0;
+        ar_q[0].beat++;
+        if (ar_q[0].beat > ar_q[0].len) void'(ar_q.pop_front());
+      end
+      if (!rvalid && ar_q.size() != 0 && ar_q[0].at <= acyc && arng.chance(80)) begin
+        line_t       l;
+        logic [31:0] ba;
+        ba     = ax_beat(ar_q[0], ar_q[0].beat) & ~32'd3;
+        l      = sb.snf_line(addr_t'(ba));
+        rdata  = l[int'(ba[5:0]) * 8 +: 32];
+        rid    = ar_q[0].id;
+        rresp  = 2'b00;
+        rlast  = (ar_q[0].beat == ar_q[0].len);
+        rvalid = 1;
+      end
+      if (b_hs) begin
+        b_hs   = 0;
+        bvalid = 0;
+        void'(b_q.pop_front());
+      end
+      if (!bvalid && b_q.size() != 0 && b_q[0].at <= acyc && arng.chance(80)) begin
+        bid    = b_q[0].id;
+        bresp  = 2'b00;
+        bvalid = 1;
+      end
+    end
+  end
+
+  // the device range never goes to the HN-F
+  always @(posedge clk)
+    if (resetn && sb != null && hn_req_if[0].flitv == Y && DEV_SIZE != 0 &&
+        ((hn_req_if[0].flit.addr & ~(DEV_SIZE - 39'd1)) == DEV_BASE))
+      sb.err("DEV", $sformatf("request to %0h in the device range went to the HN-F", hn_req_if[0].flit.addr));
 
   // ---------------------------------------------------------------- knobs
   function automatic void base_knobs();
@@ -633,6 +816,11 @@ module Tb_RNF;
       need("dc pipe: back-to-back issue");
       need("dc pipe: request waited for an MSHR on its set");
     end
+    if (DEV) begin
+      need("dev: read through the HN-I");
+      need("dev: write through the HN-I");
+      need("dev: burst (> 4 B) on AXI");
+    end
     if (ICACHE) begin
       need("ic: hit (1 cycle)");
       need("ic: miss, new fill");
@@ -696,6 +884,7 @@ module Tb_RNF;
     // has more lines than ways; pool[0..3] are the hot lines
     for (int i = 1; i <= 16; i++) s.pool.push_back((addr_t'(i) << 16) | (addr_t'(int'(i % 3)) << 6));
     for (int i = 0; i < 4; i++)   s.nc_pool.push_back(addr_t'(39'h20_0000) + (addr_t'(i) << 16));
+    if (DEV) for (int i = 0; i < 4; i++) s.dev_pool.push_back(addr_t'(DEV_BASE) + (addr_t'(i) << 12));
     s.flush_ci_rn = 1;       // the behavioural RN-F cleans every line at the end
     sb = s;
     base_knobs();

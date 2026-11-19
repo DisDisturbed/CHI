@@ -1,5 +1,4 @@
 `timescale 1ns/1ps
-`default_nettype none
 // =============================================================================
 // rnf_icache - instruction cache of an RN-F node (rnf_node), non-coherent.
 //
@@ -8,10 +7,13 @@
 //  Hit       : C0 (the accept cycle) reads the set's tags, valid bits and the
 //              chunk of every way without a register (LUTRAM), compares and
 //              registers the answer: rsp.valid in C1 (1 cycle).
-//  Miss      : a fill buffer sends a ReadOnce for the line through rnf_dcache's
-//              I-side port (the node's one CHI link, its TxnIDs, RetryAck /
-//              PCrdGrant handling). The demand chunk is answered from the DAT
-//              beat that carries it; the line becomes valid after the 4th beat.
+//  Miss      : C0 only registers the miss (timing: the request -> compare ->
+//              victim / fill allocation chain is cut there); in C1 a fill
+//              buffer takes the line (victim way, valid bit cleared) and sends a
+//              ReadOnce through rnf_dcache's I-side port (the node's one CHI
+//              link, its TxnIDs, RetryAck / PCrdGrant handling). The demand
+//              chunk is answered from the DAT beat that carries it; the line
+//              becomes valid after the 4th beat.
 //              Next-line prefetch: while the demand miss is open the next
 //              line's set is probed (the core cannot look up then) and, if it
 //              is missing, filled by the second fill buffer.
@@ -114,6 +116,9 @@ module rnf_icache
   logic                    dem_id_q;   // the fill that brings its line
   logic [1:0]              dem_beat_q;
   logic [ReqIdxWidth-1:0]  dem_idx_q;
+  // a demand miss seen in C0 whose fill starts in C1
+  logic                    miss_q;
+  logic [LN_W-1:0]         miss_line_q;
   // next-line prefetch probe
   logic                    pf_v_q;
   logic [LN_W-1:0]         pf_line_q;
@@ -195,9 +200,11 @@ module rnf_icache
     start = 1'b0; start_id = 1'b0; start_line = '0; start_way = '0;
     free0 = !f_q[0].v;
 
-    // a demand miss (no open fill brings its line) or a prefetch probe that misses
-    if (accept && !c_now && !c_in_fill) begin
-      start = 1'b1; start_line = c_line;
+    // a demand miss registered last cycle (no open fill brings its line), or a
+    // prefetch probe that misses (never in the same cycle: the probe follows
+    // the demand's fill start)
+    if (miss_q) begin
+      start = 1'b1; start_line = miss_line_q;
     end else if (dem_v_q && pf_v_q && !c_hit && !c_in_fill && !(f_q[0].v && f_q[1].v)) begin
       start = 1'b1; start_line = pf_line_q;
     end
@@ -240,6 +247,8 @@ module rnf_icache
       dem_id_q   <= 1'b0;
       dem_beat_q <= '0;
       dem_idx_q  <= '0;
+      miss_q     <= 1'b0;
+      miss_line_q <= '0;
       pf_v_q     <= 1'b0;
       pf_line_q  <= '0;
       rsp_v_q    <= 1'b0;
@@ -270,17 +279,29 @@ module rnf_icache
         rsp_data_q <= c_data;
         rsp_idx_q  <= core.req.idx;
       end
+      if (dem_v_q && pf_v_q) pf_v_q <= 1'b0;       // the probe is one cycle
       if (accept && !c_now) begin
         dem_v_q    <= 1'b1;
-        dem_id_q   <= c_in_fill ? c_fill_id : start_id;
         dem_beat_q <= core.req.addr[5:4];
         dem_idx_q  <= core.req.idx;
-        pf_v_q     <= 1'b1;
-        pf_line_q  <= c_line + 1'b1;
+        if (c_in_fill) begin                       // an open fill brings it: probe next
+          dem_id_q   <= c_fill_id;
+          pf_v_q     <= 1'b1;
+          pf_line_q  <= c_line + 1'b1;
+        end else begin                             // a new fill, started in C1
+          miss_q      <= 1'b1;
+          miss_line_q <= c_line;
+        end
       end
-      if (dem_v_q && pf_v_q) pf_v_q <= 1'b0;       // the probe is one cycle
+      // C1 of a miss: its fill starts now (start_id), the probe follows
+      if (miss_q) begin
+        miss_q    <= 1'b0;
+        dem_id_q  <= start_id;
+        pf_v_q    <= 1'b1;
+        pf_line_q <= miss_line_q + 1'b1;
+      end
       // the open demand: its beat was not there when it was accepted, so it comes later
-      if (dem_v_q && is_dat_v_i && is_dat_id_i == dem_id_q && is_dat_beat_i == dem_beat_q) begin
+      if (dem_v_q && !miss_q && is_dat_v_i && is_dat_id_i == dem_id_q && is_dat_beat_i == dem_beat_q) begin
         dem_v_q    <= 1'b0;
         rsp_v_q    <= 1'b1;
         rsp_err_q  <= is_dat_err_i;
@@ -292,7 +313,7 @@ module rnf_icache
 
   // synthesis translate_off
   always @(posedge clk)
-    if (resetn && dem_v_q && !f_q[dem_id_q].v)
+    if (resetn && dem_v_q && !miss_q && !f_q[dem_id_q].v)
       $error("[%0t] rnf_icache: the open demand's fill %0d is gone before its beat came", $time, dem_id_q);
   // synthesis translate_on
 

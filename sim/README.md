@@ -52,7 +52,7 @@ Files are stored with LF line endings on both PCs (`.gitattributes`).
 
 | Option | Default | Meaning |
 | --- | --- | --- |
-| `TB` | `random` | `random` (top `Tb_HNF_Random`), `directed` (top `Tb_HNF`) or `rnf` (top `Tb_RNF`, the RN-F dcache) |
+| `TB` | `random` | `random` (top `Tb_HNF_Random`), `directed` (top `Tb_HNF`), `rnf` (top `Tb_RNF`, the RN-F dcache) or `hni` (top `TB_hni`, the HN-I). The first three connect the RN-Fs to the HN-F through the XP (`XP/README.md`) |
 | `SEED` | `1` | Seed for `TB=random` and `TB=rnf` |
 | `G` | empty | Other top-level parameters, e.g. `G='NUM_ROUNDS=2 RUN_SCENARIOS=0'` |
 | `WAVES` | `1` | `WAVES=0` skips the waveform |
